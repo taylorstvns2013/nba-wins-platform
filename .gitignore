@@ -1,0 +1,34 @@
+# Unrelated folders - not part of NBA Wins Platform
+kod/
+lamp/
+phpmyadmin/
+trash/
+
+# Database credentials - NEVER commit
+nba-wins-platform/config/db_connection.php
+nba-wins-platform/config/db_connection_cli.php
+
+# Environment files
+*.env
+
+# Temporary files
+temp/
+*.tmp
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+
+# Composer vendor (can reinstall)
+vendor/
+nba-wins-platform/vendor/
+
+# Cache
+*.cache
+cache/

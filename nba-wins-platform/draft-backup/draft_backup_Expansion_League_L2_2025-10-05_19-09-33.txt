@@ -1,0 +1,87 @@
+NBA WINS POOL - DRAFT BACKUP
+==============================
+
+League: Expansion League
+League ID: 2
+Draft Completed: 2025-10-05 19:09:33
+Backup Created: 2025-10-06 08:09:34
+Total Picks: 30
+
+DRAFT RESULTS (Pick Order)
+==========================
+
+Pick #01: DeJong & DeRestless  selected Oklahoma City Thunder     (OKC) [1-0] at 18:54:29
+Pick #02: brianshane.com       selected Cleveland Cavaliers       (CLE) [0-0] at 18:54:29
+Pick #03: Max Bent             selected Houston Rockets           (HOU) [0-0] at 18:54:29
+Pick #04: Ronald Bueche        selected Denver Nuggets            (DEN) [0-1] at 18:55:34
+Pick #05: TayNasty             selected Minnesota Timberwolves    (MIN) [1-0] at 18:56:58
+Pick #06: TayNasty             selected Los Angeles Lakers        (LAL) [0-1] at 18:57:10
+Pick #07: Ronald Bueche        selected New York Knicks           (NYK) [2-0] at 18:57:44
+Pick #08: Max Bent             selected Orlando Magic             (ORL) [1-0] at 18:57:44
+Pick #09: brianshane.com       selected LA Clippers               (LAC) [0-0] at 18:57:44
+Pick #10: DeJong & DeRestless  selected Atlanta Hawks             (ATL) [0-0] at 18:58:08
+Pick #11: DeJong & DeRestless  selected Detroit Pistons           (DET) [0-0] at 18:58:49
+Pick #12: brianshane.com       selected Golden State Warriors     (GSW) [0-0] at 18:58:49
+Pick #13: Max Bent             selected San Antonio Spurs         (SAS) [0-0] at 18:58:49
+Pick #14: Ronald Bueche        selected Dallas Mavericks          (DAL) [0-0] at 18:59:43
+Pick #15: TayNasty             selected Milwaukee Bucks           (MIL) [0-0] at 19:00:25
+Pick #16: TayNasty             selected Miami Heat                (MIA) [0-1] at 19:01:13
+Pick #17: Ronald Bueche        selected Philadelphia 76ers        (PHI) [0-2] at 19:02:25
+Pick #18: Max Bent             selected Boston Celtics            (BOS) [0-0] at 19:02:25
+Pick #19: brianshane.com       selected Memphis Grizzlies         (MEM) [0-0] at 19:02:25
+Pick #20: DeJong & DeRestless  selected New Orleans Pelicans      (NOP) [0-0] at 19:02:44
+Pick #21: DeJong & DeRestless  selected Indiana Pacers            (IND) [0-0] at 19:03:54
+Pick #22: brianshane.com       selected Toronto Raptors           (TOR) [0-0] at 19:03:54
+Pick #23: Max Bent             selected Sacramento Kings          (SAC) [0-0] at 19:03:54
+Pick #24: Ronald Bueche        selected Portland Trail Blazers    (POR) [0-0] at 19:05:09
+Pick #25: TayNasty             selected Chicago Bulls             (CHI) [0-0] at 19:05:33
+Pick #26: TayNasty             selected Phoenix Suns              (PHX) [1-0] at 19:07:48
+Pick #27: Ronald Bueche        selected Charlotte Hornets         (CHA) [0-1] at 19:09:28
+Pick #28: Max Bent             selected Brooklyn Nets             (BKN) [0-0] at 19:09:28
+Pick #29: brianshane.com       selected Washington Wizards        (WAS) [0-0] at 19:09:28
+Pick #30: DeJong & DeRestless  selected Utah Jazz                 (UTA) [0-0] at 19:09:33
+
+
+TEAMS BY PARTICIPANT
+====================
+
+DeJong & DeRestless (1W-0L):
+  - Oklahoma City Thunder (OKC) [1-0]
+  - Atlanta Hawks (ATL) [0-0]
+  - Detroit Pistons (DET) [0-0]
+  - New Orleans Pelicans (NOP) [0-0]
+  - Indiana Pacers (IND) [0-0]
+  - Utah Jazz (UTA) [0-0]
+
+brianshane.com (0W-0L):
+  - Cleveland Cavaliers (CLE) [0-0]
+  - LA Clippers (LAC) [0-0]
+  - Golden State Warriors (GSW) [0-0]
+  - Memphis Grizzlies (MEM) [0-0]
+  - Toronto Raptors (TOR) [0-0]
+  - Washington Wizards (WAS) [0-0]
+
+Max Bent (1W-0L):
+  - Houston Rockets (HOU) [0-0]
+  - Orlando Magic (ORL) [1-0]
+  - San Antonio Spurs (SAS) [0-0]
+  - Boston Celtics (BOS) [0-0]
+  - Sacramento Kings (SAC) [0-0]
+  - Brooklyn Nets (BKN) [0-0]
+
+Ronald Bueche (2W-4L):
+  - Denver Nuggets (DEN) [0-1]
+  - New York Knicks (NYK) [2-0]
+  - Dallas Mavericks (DAL) [0-0]
+  - Philadelphia 76ers (PHI) [0-2]
+  - Portland Trail Blazers (POR) [0-0]
+  - Charlotte Hornets (CHA) [0-1]
+
+TayNasty (2W-2L):
+  - Minnesota Timberwolves (MIN) [1-0]
+  - Los Angeles Lakers (LAL) [0-1]
+  - Milwaukee Bucks (MIL) [0-0]
+  - Miami Heat (MIA) [0-1]
+  - Chicago Bulls (CHI) [0-0]
+  - Phoenix Suns (PHX) [1-0]
+

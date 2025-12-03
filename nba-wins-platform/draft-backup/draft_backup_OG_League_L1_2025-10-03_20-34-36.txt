@@ -1,0 +1,87 @@
+NBA WINS POOL - DRAFT BACKUP
+==============================
+
+League: OG League
+League ID: 1
+Draft Completed: 2025-10-03 20:34:36
+Backup Created: 2025-10-04 09:34:37
+Total Picks: 30
+
+DRAFT RESULTS (Pick Order)
+==========================
+
+Pick #01: DJ Jazzy Josh        selected Oklahoma City Thunder     (OKC) [0-0] at 20:14:13
+Pick #02: BasedKhan            selected Denver Nuggets            (DEN) [0-0] at 20:14:26
+Pick #03: Sweet Dick Miggy     selected Houston Rockets           (HOU) [0-0] at 20:14:49
+Pick #04: TayNasty             selected New York Knicks           (NYK) [1-0] at 20:15:14
+Pick #05: I ONLY WIPE WITH THE KING selected Los Angeles Lakers        (LAL) [0-0] at 20:15:32
+Pick #06: I ONLY WIPE WITH THE KING selected Dallas Mavericks          (DAL) [0-0] at 20:17:04
+Pick #07: TayNasty             selected Cleveland Cavaliers       (CLE) [0-0] at 20:17:55
+Pick #08: Sweet Dick Miggy     selected Detroit Pistons           (DET) [0-0] at 20:18:53
+Pick #09: BasedKhan            selected Minnesota Timberwolves    (MIN) [0-0] at 20:19:09
+Pick #10: DJ Jazzy Josh        selected LA Clippers               (LAC) [0-0] at 20:19:39
+Pick #11: DJ Jazzy Josh        selected Golden State Warriors     (GSW) [0-0] at 20:20:04
+Pick #12: BasedKhan            selected Orlando Magic             (ORL) [0-0] at 20:21:19
+Pick #13: Sweet Dick Miggy     selected San Antonio Spurs         (SAS) [0-0] at 20:23:18
+Pick #14: TayNasty             selected Atlanta Hawks             (ATL) [0-0] at 20:24:20
+Pick #15: I ONLY WIPE WITH THE KING selected Boston Celtics            (BOS) [0-0] at 20:24:49
+Pick #16: I ONLY WIPE WITH THE KING selected Indiana Pacers            (IND) [0-0] at 20:25:17
+Pick #17: TayNasty             selected Milwaukee Bucks           (MIL) [0-0] at 20:26:32
+Pick #18: Sweet Dick Miggy     selected New Orleans Pelicans      (NOP) [0-0] at 20:27:17
+Pick #19: BasedKhan            selected Memphis Grizzlies         (MEM) [0-0] at 20:27:35
+Pick #20: DJ Jazzy Josh        selected Philadelphia 76ers        (PHI) [0-1] at 20:27:46
+Pick #21: DJ Jazzy Josh        selected Miami Heat                (MIA) [0-0] at 20:28:37
+Pick #22: BasedKhan            selected Toronto Raptors           (TOR) [0-0] at 20:30:54
+Pick #23: Sweet Dick Miggy     selected Sacramento Kings          (SAC) [0-0] at 20:31:11
+Pick #24: TayNasty             selected Phoenix Suns              (PHX) [0-0] at 20:32:27
+Pick #25: I ONLY WIPE WITH THE KING selected Chicago Bulls             (CHI) [0-0] at 20:32:42
+Pick #26: I ONLY WIPE WITH THE KING selected Portland Trail Blazers    (POR) [0-0] at 20:33:26
+Pick #27: TayNasty             selected Charlotte Hornets         (CHA) [0-0] at 20:33:43
+Pick #28: Sweet Dick Miggy     selected Utah Jazz                 (UTA) [0-0] at 20:34:06
+Pick #29: BasedKhan            selected Brooklyn Nets             (BKN) [0-0] at 20:34:27
+Pick #30: DJ Jazzy Josh        selected Washington Wizards        (WAS) [0-0] at 20:34:36
+
+
+TEAMS BY PARTICIPANT
+====================
+
+DJ Jazzy Josh (0W-1L):
+  - Oklahoma City Thunder (OKC) [0-0]
+  - LA Clippers (LAC) [0-0]
+  - Golden State Warriors (GSW) [0-0]
+  - Philadelphia 76ers (PHI) [0-1]
+  - Miami Heat (MIA) [0-0]
+  - Washington Wizards (WAS) [0-0]
+
+BasedKhan (0W-0L):
+  - Denver Nuggets (DEN) [0-0]
+  - Minnesota Timberwolves (MIN) [0-0]
+  - Orlando Magic (ORL) [0-0]
+  - Memphis Grizzlies (MEM) [0-0]
+  - Toronto Raptors (TOR) [0-0]
+  - Brooklyn Nets (BKN) [0-0]
+
+Sweet Dick Miggy (0W-0L):
+  - Houston Rockets (HOU) [0-0]
+  - Detroit Pistons (DET) [0-0]
+  - San Antonio Spurs (SAS) [0-0]
+  - New Orleans Pelicans (NOP) [0-0]
+  - Sacramento Kings (SAC) [0-0]
+  - Utah Jazz (UTA) [0-0]
+
+TayNasty (1W-0L):
+  - New York Knicks (NYK) [1-0]
+  - Cleveland Cavaliers (CLE) [0-0]
+  - Atlanta Hawks (ATL) [0-0]
+  - Milwaukee Bucks (MIL) [0-0]
+  - Phoenix Suns (PHX) [0-0]
+  - Charlotte Hornets (CHA) [0-0]
+
+I ONLY WIPE WITH THE KING (0W-0L):
+  - Los Angeles Lakers (LAL) [0-0]
+  - Dallas Mavericks (DAL) [0-0]
+  - Boston Celtics (BOS) [0-0]
+  - Indiana Pacers (IND) [0-0]
+  - Chicago Bulls (CHI) [0-0]
+  - Portland Trail Blazers (POR) [0-0]
+

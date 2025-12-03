@@ -1,0 +1,87 @@
+NBA WINS POOL - DRAFT BACKUP
+==============================
+
+League: Test League
+League ID: 3
+Draft Completed: 2025-10-03 08:14:39
+Backup Created: 2025-10-03 21:14:40
+Total Picks: 30
+
+DRAFT RESULTS (Pick Order)
+==========================
+
+Pick #01: test3                selected Chicago Bulls             (CHI) [0-0] at 08:11:59
+Pick #02: Test4                selected Oklahoma City Thunder     (OKC) [0-0] at 08:12:24
+Pick #03: test2                selected Atlanta Hawks             (ATL) [0-0] at 08:12:24
+Pick #04: test                 selected Los Angeles Lakers        (LAL) [0-0] at 08:12:29
+Pick #05: test5                selected Houston Rockets           (HOU) [0-0] at 08:12:29
+Pick #06: test5                selected Orlando Magic             (ORL) [0-0] at 08:12:29
+Pick #07: test                 selected LA Clippers               (LAC) [0-0] at 08:12:47
+Pick #08: test2                selected Cleveland Cavaliers       (CLE) [0-0] at 08:12:54
+Pick #09: Test4                selected New York Knicks           (NYK) [1-0] at 08:12:58
+Pick #10: test3                selected San Antonio Spurs         (SAS) [0-0] at 08:12:58
+Pick #11: test3                selected Portland Trail Blazers    (POR) [0-0] at 08:12:58
+Pick #12: Test4                selected Denver Nuggets            (DEN) [0-0] at 08:13:16
+Pick #13: test2                selected Charlotte Hornets         (CHA) [0-0] at 08:13:26
+Pick #14: test                 selected Utah Jazz                 (UTA) [0-0] at 08:13:35
+Pick #15: test5                selected Minnesota Timberwolves    (MIN) [0-0] at 08:13:35
+Pick #16: test5                selected Detroit Pistons           (DET) [0-0] at 08:13:35
+Pick #17: test                 selected Miami Heat                (MIA) [0-0] at 08:13:39
+Pick #18: test2                selected Dallas Mavericks          (DAL) [0-0] at 08:13:44
+Pick #19: Test4                selected Golden State Warriors     (GSW) [0-0] at 08:13:55
+Pick #20: test3                selected New Orleans Pelicans      (NOP) [0-0] at 08:13:55
+Pick #21: test3                selected Sacramento Kings          (SAC) [0-0] at 08:13:55
+Pick #22: Test4                selected Milwaukee Bucks           (MIL) [0-0] at 08:14:05
+Pick #23: test2                selected Indiana Pacers            (IND) [0-0] at 08:14:13
+Pick #24: test                 selected Boston Celtics            (BOS) [0-0] at 08:14:21
+Pick #25: test5                selected Philadelphia 76ers        (PHI) [0-1] at 08:14:21
+Pick #26: test5                selected Memphis Grizzlies         (MEM) [0-0] at 08:14:21
+Pick #27: test                 selected Phoenix Suns              (PHX) [0-0] at 08:14:25
+Pick #28: test2                selected Brooklyn Nets             (BKN) [0-0] at 08:14:31
+Pick #29: Test4                selected Toronto Raptors           (TOR) [0-0] at 08:14:39
+Pick #30: test3                selected Washington Wizards        (WAS) [0-0] at 08:14:39
+
+
+TEAMS BY PARTICIPANT
+====================
+
+test3 (0W-0L):
+  - Chicago Bulls (CHI) [0-0]
+  - San Antonio Spurs (SAS) [0-0]
+  - Portland Trail Blazers (POR) [0-0]
+  - New Orleans Pelicans (NOP) [0-0]
+  - Sacramento Kings (SAC) [0-0]
+  - Washington Wizards (WAS) [0-0]
+
+Test4 (1W-0L):
+  - Oklahoma City Thunder (OKC) [0-0]
+  - New York Knicks (NYK) [1-0]
+  - Denver Nuggets (DEN) [0-0]
+  - Golden State Warriors (GSW) [0-0]
+  - Milwaukee Bucks (MIL) [0-0]
+  - Toronto Raptors (TOR) [0-0]
+
+test2 (0W-0L):
+  - Atlanta Hawks (ATL) [0-0]
+  - Cleveland Cavaliers (CLE) [0-0]
+  - Charlotte Hornets (CHA) [0-0]
+  - Dallas Mavericks (DAL) [0-0]
+  - Indiana Pacers (IND) [0-0]
+  - Brooklyn Nets (BKN) [0-0]
+
+test (0W-0L):
+  - Los Angeles Lakers (LAL) [0-0]
+  - LA Clippers (LAC) [0-0]
+  - Utah Jazz (UTA) [0-0]
+  - Miami Heat (MIA) [0-0]
+  - Boston Celtics (BOS) [0-0]
+  - Phoenix Suns (PHX) [0-0]
+
+test5 (0W-1L):
+  - Houston Rockets (HOU) [0-0]
+  - Orlando Magic (ORL) [0-0]
+  - Minnesota Timberwolves (MIN) [0-0]
+  - Detroit Pistons (DET) [0-0]
+  - Philadelphia 76ers (PHI) [0-1]
+  - Memphis Grizzlies (MEM) [0-0]
+

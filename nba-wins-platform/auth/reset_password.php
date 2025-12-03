@@ -1,0 +1,461 @@
+<?php
+// nba-wins-platform/auth/reset_password.php
+session_start();
+
+// Enable error reporting for debugging
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+require_once '../config/db_connection.php';
+
+$message = '';
+$messageType = '';
+$resetSuccess = false;
+
+if ($_POST) {
+    $resetCode = trim($_POST['reset_code'] ?? '');
+    $newPassword = $_POST['new_password'] ?? '';
+    $confirmPassword = $_POST['confirm_password'] ?? '';
+    
+    if (empty($resetCode) || empty($newPassword) || empty($confirmPassword)) {
+        $message = 'All fields are required.';
+        $messageType = 'error';
+    } elseif ($newPassword !== $confirmPassword) {
+        $message = 'Passwords do not match.';
+        $messageType = 'error';
+    } elseif (strlen($newPassword) < 6) {
+        $message = 'Password must be at least 6 characters long.';
+        $messageType = 'error';
+    } else {
+        try {
+            // Validate token
+            $tokenHash = hash('sha256', $resetCode);
+            
+            $stmt = $pdo->prepare("
+                SELECT prt.user_id, prt.expires_at, prt.used, u.username
+                FROM password_reset_tokens prt
+                JOIN users u ON prt.user_id = u.id
+                WHERE prt.token_hash = ? AND prt.used = FALSE
+                ORDER BY prt.created_at DESC
+                LIMIT 1
+            ");
+            $stmt->execute([$tokenHash]);
+            $tokenData = $stmt->fetch();
+            
+            if (!$tokenData) {
+                $message = 'Invalid or expired reset code. Please request a new one.';
+                $messageType = 'error';
+            } elseif (strtotime($tokenData['expires_at']) < time()) {
+                $message = 'This reset code has expired. Please request a new one.';
+                $messageType = 'error';
+            } else {
+                // Update password
+                $pdo->beginTransaction();
+                
+                try {
+                    // Hash new password
+                    $passwordHash = password_hash($newPassword, PASSWORD_DEFAULT);
+                    
+                    // Update user password - FIXED to use only existing columns
+                    $stmt = $pdo->prepare("
+                        UPDATE users 
+                        SET password_hash = ?, 
+                            updated_at = NOW()
+                        WHERE id = ?
+                    ");
+                    $result = $stmt->execute([$passwordHash, $tokenData['user_id']]);
+                    
+                    if (!$result || $stmt->rowCount() === 0) {
+                        throw new Exception("Failed to update password");
+                    }
+                    
+                    // Mark token as used
+                    $stmt = $pdo->prepare("
+                        UPDATE password_reset_tokens 
+                        SET used = TRUE 
+                        WHERE token_hash = ?
+                    ");
+                    $stmt->execute([$tokenHash]);
+                    
+                    // Log successful reset
+                    $stmt = $pdo->prepare("
+                        INSERT INTO password_reset_log 
+                        (user_id, email_attempted, username_attempted, success, ip_address, user_agent) 
+                        VALUES (?, '', ?, TRUE, ?, ?)
+                    ");
+                    $stmt->execute([
+                        $tokenData['user_id'],
+                        $tokenData['username'],
+                        $_SERVER['REMOTE_ADDR'] ?? '',
+                        $_SERVER['HTTP_USER_AGENT'] ?? ''
+                    ]);
+                    
+                    $pdo->commit();
+                    
+                    $message = 'Password reset successfully! You can now login with your new password.';
+                    $messageType = 'success';
+                    $resetSuccess = true;
+                    
+                    // Clear any existing sessions for this user
+                    $stmt = $pdo->prepare("DELETE FROM user_sessions WHERE user_id = ?");
+                    $stmt->execute([$tokenData['user_id']]);
+                    
+                } catch (Exception $e) {
+                    $pdo->rollBack();
+                    
+                    $message = 'An error occurred while resetting your password: ' . $e->getMessage();
+                    $messageType = 'error';
+                    error_log("Password reset error for user " . $tokenData['user_id'] . ": " . $e->getMessage());
+                }
+            }
+        } catch (Exception $e) {
+            $message = 'An unexpected error occurred: ' . $e->getMessage();
+            $messageType = 'error';
+            error_log("Password reset validation error: " . $e->getMessage());
+        }
+    }
+}
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reset Password - NBA Wins Pool</title>
+    <link rel="apple-touch-icon" type="image/png" href="../public/assets/favicon/favicon.png">
+    <link rel="icon" type="image/png" href="../public/assets/favicon/favicon.png">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-image: url('../public/assets/background/geometric_white.png');
+            background-repeat: repeat;
+            background-attachment: fixed;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .reset-container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            width: 100%;
+            max-width: 450px;
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo img {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 10px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin: 0 0 30px 0;
+            font-size: 28px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            box-sizing: border-box;
+            transition: border-color 0.3s ease;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #2196F3;
+        }
+
+        .help-text {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .submit-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #2196F3, #1976D2);
+            color: white;
+            padding: 14px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+            margin-top: 10px;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .message {
+            padding: 12px 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .message.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .message.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .password-strength {
+            margin-top: 10px;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .password-strength.weak {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        .password-strength.medium {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+
+        .password-strength.strong {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .links {
+            text-align: center;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .links a {
+            color: #2196F3;
+            text-decoration: none;
+            font-weight: 500;
+            margin: 0 10px;
+        }
+
+        .links a:hover {
+            text-decoration: underline;
+        }
+
+        .success-actions {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .success-actions a {
+            display: inline-block;
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+            padding: 12px 30px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            margin: 10px;
+            transition: transform 0.2s ease;
+        }
+
+        .success-actions a:hover {
+            transform: translateY(-1px);
+        }
+
+        .info-box {
+            background-color: #e3f2fd;
+            border: 1px solid #bbdefb;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        @media (max-width: 500px) {
+            .reset-container {
+                padding: 25px 20px;
+                margin: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="reset-container">
+        <div class="logo">
+            <img src="../public/assets/team_logos/Logo.png" alt="NBA Logo">
+            <h1>Set New Password</h1>
+        </div>
+
+        <?php if (!$resetSuccess): ?>
+            <div class="info-box">
+                <p><i class="fas fa-info-circle"></i> Enter the reset code you received and choose a new password.</p>
+            </div>
+
+            <?php if ($message): ?>
+                <div class="message <?php echo $messageType; ?>">
+                    <?php echo htmlspecialchars($message); ?>
+                </div>
+            <?php endif; ?>
+
+            <form method="POST" action="" onsubmit="return validateForm()">
+                <div class="form-group">
+                    <label for="reset_code">Reset Code</label>
+                    <input type="text" id="reset_code" name="reset_code" 
+                           placeholder="Paste your reset code here"
+                           value="<?php echo htmlspecialchars($_POST['reset_code'] ?? ''); ?>" 
+                           required autofocus>
+                    <div class="help-text">Paste the code you received from the password reset request</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="new_password">New Password</label>
+                    <input type="password" id="new_password" name="new_password" 
+                           onkeyup="checkPasswordStrength()" required>
+                    <div class="help-text">Minimum 6 characters</div>
+                    <div id="passwordStrength" class="password-strength"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="confirm_password">Confirm New Password</label>
+                    <input type="password" id="confirm_password" name="confirm_password" 
+                           onkeyup="checkPasswordMatch()" required>
+                    <div id="passwordMatch" class="help-text"></div>
+                </div>
+
+                <button type="submit" class="submit-btn">
+                    <i class="fas fa-lock"></i> Reset Password
+                </button>
+            </form>
+
+            <div class="links">
+                <a href="forgot_password.php"><i class="fas fa-key"></i> Request New Code</a>
+                <a href="login.php"><i class="fas fa-sign-in-alt"></i> Back to Login</a>
+            </div>
+        <?php else: ?>
+            <div class="message success">
+                <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($message); ?>
+            </div>
+
+            <div class="success-actions">
+                <a href="login.php">
+                    <i class="fas fa-sign-in-alt"></i> Login Now
+                </a>
+            </div>
+
+            <div class="info-box">
+                <p><i class="fas fa-info-circle"></i> Your password has been successfully updated. All existing sessions have been cleared for security.</p>
+            </div>
+        <?php endif; ?>
+    </div>
+
+    <script>
+        function checkPasswordStrength() {
+            const password = document.getElementById('new_password').value;
+            const strengthDiv = document.getElementById('passwordStrength');
+            
+            if (password.length === 0) {
+                strengthDiv.style.display = 'none';
+                return;
+            }
+            
+            strengthDiv.style.display = 'block';
+            
+            let strength = 0;
+            if (password.length >= 8) strength++;
+            if (password.match(/[a-z]+/)) strength++;
+            if (password.match(/[A-Z]+/)) strength++;
+            if (password.match(/[0-9]+/)) strength++;
+            if (password.match(/[$@#&!]+/)) strength++;
+            
+            if (strength < 2) {
+                strengthDiv.className = 'password-strength weak';
+                strengthDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Weak password';
+            } else if (strength < 4) {
+                strengthDiv.className = 'password-strength medium';
+                strengthDiv.innerHTML = '<i class="fas fa-shield-alt"></i> Medium strength';
+            } else {
+                strengthDiv.className = 'password-strength strong';
+                strengthDiv.innerHTML = '<i class="fas fa-check-circle"></i> Strong password';
+            }
+        }
+        
+        function checkPasswordMatch() {
+            const password = document.getElementById('new_password').value;
+            const confirmPassword = document.getElementById('confirm_password').value;
+            const matchDiv = document.getElementById('passwordMatch');
+            
+            if (confirmPassword.length === 0) {
+                matchDiv.innerHTML = '';
+                return;
+            }
+            
+            if (password === confirmPassword) {
+                matchDiv.innerHTML = '<span style="color: #155724;"><i class="fas fa-check"></i> Passwords match</span>';
+            } else {
+                matchDiv.innerHTML = '<span style="color: #721c24;"><i class="fas fa-times"></i> Passwords do not match</span>';
+            }
+        }
+        
+        function validateForm() {
+            const password = document.getElementById('new_password').value;
+            const confirmPassword = document.getElementById('confirm_password').value;
+            const resetCode = document.getElementById('reset_code').value.trim();
+            
+            if (resetCode.length === 0) {
+                alert('Please enter your reset code!');
+                return false;
+            }
+            
+            if (password !== confirmPassword) {
+                alert('Passwords do not match!');
+                return false;
+            }
+            
+            if (password.length < 6) {
+                alert('Password must be at least 6 characters long!');
+                return false;
+            }
+            
+            return true;
+        }
+    </script>
+</body>
+</html>
