@@ -1,6 +1,6 @@
 # NBA Wins Platform
 
-A multi-league fantasy sports platform where participants draft NBA teams and compete based on total regular season wins.
+A multi-league fantasy sports platform where participants draft NBA teams and compete based on total regular season, IST, and playoff wins.
 
 ## Features
 
