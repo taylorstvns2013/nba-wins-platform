@@ -585,6 +585,93 @@ try {
         $bMaxWins = max(array_map(fn($night) => $night['games_won'], $b['nights']));
         return $bMaxWins - $aMaxWins;
     });
+    
+    // =====================================================================
+    // HEARTBREAKER NIGHTS - Multiple teams played, all lost
+    // =====================================================================
+    $stmt = $pdo->prepare("
+        SELECT 
+            heartbreak_nights.participant_name,
+            heartbreak_nights.date,
+            heartbreak_nights.games_lost,
+            heartbreak_nights.user_id,
+            heartbreak_nights.profile_photo,
+            GROUP_CONCAT(DISTINCT CONCAT(
+                CASE 
+                    WHEN g.home_team = lpt.team_name THEN g.home_team_code
+                    ELSE g.away_team_code
+                END,
+                ' ',
+                g.home_points,
+                '-',
+                g.away_points,
+                ' ',
+                CASE 
+                    WHEN g.home_team = lpt.team_name THEN g.away_team_code
+                    ELSE g.home_team_code
+                END
+            ) ORDER BY g.start_time SEPARATOR ', ') as game_results
+        FROM (
+            SELECT 
+                COALESCE(u.display_name, lp.participant_name) as participant_name,
+                g.date,
+                COUNT(DISTINCT g.id) as games_played,
+                COUNT(DISTINCT CASE 
+                    WHEN (lpt.team_name = g.home_team AND g.home_points < g.away_points) OR
+                         (lpt.team_name = g.away_team AND g.away_points < g.home_points)
+                    THEN g.id 
+                END) as games_lost,
+                u.id as user_id,
+                u.profile_photo
+            FROM league_participants lp
+            LEFT JOIN users u ON lp.user_id = u.id
+            JOIN league_participant_teams lpt ON lp.id = lpt.league_participant_id
+            JOIN games g ON (lpt.team_name = g.home_team OR lpt.team_name = g.away_team)
+            WHERE g.status_long IN ('Final', 'Finished')
+            AND lp.league_id = ?
+            GROUP BY lp.id, u.display_name, lp.participant_name, g.date, u.id, u.profile_photo
+            HAVING games_played >= 2 AND games_played = games_lost
+        ) heartbreak_nights
+        JOIN league_participants lp2 ON COALESCE(
+            (SELECT display_name FROM users WHERE id = lp2.user_id),
+            lp2.participant_name
+        ) = heartbreak_nights.participant_name
+        JOIN league_participant_teams lpt ON lpt.league_participant_id = lp2.id
+        JOIN games g ON (lpt.team_name = g.home_team OR lpt.team_name = g.away_team)
+            AND g.date = heartbreak_nights.date
+        WHERE lp2.league_id = ?
+        GROUP BY heartbreak_nights.participant_name, heartbreak_nights.date, heartbreak_nights.games_lost, heartbreak_nights.user_id, heartbreak_nights.profile_photo
+        ORDER BY heartbreak_nights.games_lost DESC, heartbreak_nights.date DESC
+    ");
+    $stmt->execute([$currentLeagueId, $currentLeagueId]);
+    
+    $heartbreakNights = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Group heartbreak nights by participant
+    $participantHeartbreakNights = [];
+    foreach ($heartbreakNights as $night) {
+        $name = $night['participant_name'];
+        if (!isset($participantHeartbreakNights[$name])) {
+            $participantHeartbreakNights[$name] = [
+                'nights' => [],
+                'user_id' => $night['user_id'],
+                'profile_photo' => $night['profile_photo']
+            ];
+        }
+        $participantHeartbreakNights[$name]['nights'][] = $night;
+    }
+    
+    // Sort by number of heartbreak nights, then by most losses in a single night
+    uasort($participantHeartbreakNights, function($a, $b) {
+        $countDiff = count($b['nights']) - count($a['nights']);
+        if ($countDiff !== 0) {
+            return $countDiff;
+        }
+        $aMaxLosses = max(array_map(fn($night) => $night['games_lost'], $a['nights']));
+        $bMaxLosses = max(array_map(fn($night) => $night['games_lost'], $b['nights']));
+        return $bMaxLosses - $aMaxLosses;
+    });
+    
         
     // =====================================================================
     // OVER/UNDERACHIEVING TEAMS - For current league teams only
@@ -1295,8 +1382,59 @@ try {
             </div>
         </div>
     
-        <!-- Over/Underachievers Slide -->
+        <!-- Heartbreaker Nights Slide -->
         <div class="slide" id="slide8">
+            <div class="text-6xl mb-8">💔</div>
+            <h2 class="text-3xl font-bold mb-8 text-center">Heartbreaker Nights</h2>
+            <div class="text-center text-gray-400 mb-6">Multiple teams played, all defeated</div>
+            
+            <div class="flex flex-col items-center w-full max-w-md">
+                <?php if (!empty($participantHeartbreakNights)): ?>
+                    <?php 
+                    $rank = 0;
+                    $prevCount = null;
+                    foreach ($participantHeartbreakNights as $participant => $data): 
+                        $heartbreakCount = count($data['nights']);
+                        $mostLossesInOneNight = max(array_map(function($night) {
+                            return $night['games_lost'];
+                        }, $data['nights']));
+                        
+                        if ($heartbreakCount !== $prevCount) {
+                            $rank++;
+                        }
+                        $prevCount = $heartbreakCount;
+                    ?>
+                        <div class="w-full mb-6">
+                            <div class="bg-white/10 rounded-lg p-4">
+                                <div class="flex justify-between items-center">
+                                    <div class="flex items-center gap-3">
+                                        <div class="text-gray-400 font-bold">#<?php echo $rank; ?></div>
+                                        <?php 
+                                        $profile_photo_url = getProfilePhotoUrl($data['user_id'], $data['profile_photo']);
+                                        ?>
+                                        <img src="<?php echo htmlspecialchars($profile_photo_url); ?>" 
+                                             alt="<?php echo htmlspecialchars($participant); ?>" 
+                                             class="profile-photo"
+                                             onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiIGZpbGw9IiNFNUU3RUIiLz4KcGF0aCBkPSJNMjAgMjJDMjMuMzEzNyAyMiAyNiAxOS4zMTM3IDI2IDE2QzI2IDEyLjY4NjMgMjMuMzEzNyAxMCAyMCAxMEMxNi42ODYzIDEwIDE0IDEyLjY4NjMgMTQgMTZDMTQgMTkuMzEzNyAxNi42ODYzIDIyIDIwIDIyWiIgZmlsbD0iIzlDQTNBRiIvPgo8cGF0aCBkPSJNMjggMzBDMjggMjUuNTgxNyAyNC40MTgzIDIyIDIwIDIyQzE1LjU4MTcgMjIgMTIgMjUuNTgxNyAxMiAzMEgyOFoiIGZpbGw9IiM5Q0EzQUYiLz4KPC9zdmc+Cg=='">
+                                        <div class="text-xl font-bold"><?php echo htmlspecialchars($participant); ?></div>
+                                    </div>
+                                    <div class="flex items-center gap-4">
+                                        <div class="text-sm text-gray-400">
+                                            <?php echo $heartbreakCount; ?> rough nights
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <div class="text-center text-gray-400">No heartbreaker nights yet - lucky you!</div>
+                <?php endif; ?>
+            </div>
+        </div>
+    
+        <!-- Over/Underachievers Slide -->
+        <div class="slide" id="slide9">
             <div class="text-6xl mb-8">🌟</div>
             <h2 class="text-3xl font-bold mb-8 text-center">Bet The House</h2>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl w-full">
@@ -1342,7 +1480,7 @@ try {
         </div>
 
         <!-- Platform-Wide Top 5 Leaderboard Slide -->
-        <div class="slide" id="slide9">
+        <div class="slide" id="slide10">
             <div class="text-6xl mb-8">🌐</div>
             <h2 class="text-3xl font-bold mb-8 text-center">Platform-Wide Top 5</h2>
             <div class="text-center text-gray-400 mb-6">Best performers across all leagues</div>
