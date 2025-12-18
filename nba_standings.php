@@ -361,6 +361,20 @@ try {
         ORDER BY conference ASC, win DESC
     ");
     $teamRecords = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // NBA Cup Champion - hardcoded (update this when needed)
+    // Set to null if no champion, or team name if there is one
+    $nbaCupChampion = 'New York Knicks'; // 2024-25 NBA Cup Champion
+    
+    // Add NBA Cup champion flag to each team's data
+    $hasNbaCupChampion = false;
+    foreach ($teamRecords as &$team) {
+        $team['nba_cup_champion'] = ($team['name'] === $nbaCupChampion);
+        if ($team['nba_cup_champion']) {
+            $hasNbaCupChampion = true;
+        }
+    }
+    unset($team); // Break reference
 
 } catch(PDOException $e) {
     die("Could not connect to the database $db_name :" . $e->getMessage());
@@ -634,6 +648,30 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
         color: #dc3545;
         font-weight: bold;
     }
+    
+    .nba-cup-indicator {
+        color: #28a745;
+        font-weight: bold;
+        font-size: 11px;
+        margin-left: 4px;
+        vertical-align: super;
+    }
+    
+    .nba-cup-legend {
+        margin-top: 20px;
+        padding: 15px;
+        background-color: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        font-size: 14px;
+        color: #666;
+        text-align: center;
+    }
+    
+    .nba-cup-legend .indicator {
+        color: #28a745;
+        font-weight: bold;
+    }
 
     .menu-container {
         position: fixed;
@@ -848,7 +886,18 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
                                         <?php echo htmlspecialchars($team['name']); ?>
                                     </a>
                                 </td>
-                                <td><?php echo $team['win'] . '-' . $team['loss']; ?></td>
+                                <td>
+                                    <?php 
+                                    // Display adjusted wins for NBA Cup champion (minus 1 for display, since championship game doesn't count toward NBA standings)
+                                    $displayWins = $team['nba_cup_champion'] ? $team['win'] - 1 : $team['win'];
+                                    echo $displayWins . '-' . $team['loss']; 
+                                    
+                                    // Show green +1 indicator if NBA Cup champion
+                                    if ($team['nba_cup_champion']): 
+                                    ?>
+                                        <span class="nba-cup-indicator">+1</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td>
                                     <?php if ($team['streak'] > 0): ?>
                                         <span class="<?php echo $team['winstreak'] == 1 ? 'win-streak' : 'lose-streak'; ?>">
@@ -886,7 +935,18 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
                                         <?php echo htmlspecialchars($team['name']); ?>
                                     </a>
                                 </td>
-                                <td><?php echo $team['win'] . '-' . $team['loss']; ?></td>
+                                <td>
+                                    <?php 
+                                    // Display adjusted wins for NBA Cup champion (minus 1 for display, since championship game doesn't count toward NBA standings)
+                                    $displayWins = $team['nba_cup_champion'] ? $team['win'] - 1 : $team['win'];
+                                    echo $displayWins . '-' . $team['loss']; 
+                                    
+                                    // Show green +1 indicator if NBA Cup champion
+                                    if ($team['nba_cup_champion']): 
+                                    ?>
+                                        <span class="nba-cup-indicator">+1</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td>
                                     <?php if ($team['streak'] > 0): ?>
                                         <span class="<?php echo $team['winstreak'] == 1 ? 'win-streak' : 'lose-streak'; ?>">
@@ -900,6 +960,12 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
                     </table>
                 </div>
             </div>
+            
+            <?php if ($hasNbaCupChampion): ?>
+            <div class="nba-cup-legend">
+                <span class="indicator">+1</span> indicates NBA Cup Champion. Win is included in win totals for the league but does not impact NBA standings.
+            </div>
+            <?php endif; ?>
     </div>
 
 </body>
