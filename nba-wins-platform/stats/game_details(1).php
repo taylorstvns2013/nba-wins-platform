@@ -977,6 +977,7 @@ function normalizeTeamName($teamName) {
     <div class="container">
         <!-- Team Matchup Header -->
         <div class="matchup-header">
+            <h1>Box Score</h1>
             
             <!-- Home Team -->
             <div class="team-row home-team">

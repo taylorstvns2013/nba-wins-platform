@@ -481,6 +481,18 @@ function getParticipantGameCounts($games, $participants) {
         font-size: 14px;
     }
     
+    #participantsTable tbody tr {
+        transition: all 0.2s ease;
+    }
+    
+    #participantsTable tbody tr:hover {
+        transform: translateX(2px);
+    }
+    
+    #participantsTable tbody tr:not(.rank-1):not(.rank-2):not(.rank-3):hover {
+        background-color: rgba(0, 0, 0, 0.05);
+    }
+    
     #participantsTable th {
         background-color: var(--primary-color);
         color: white;
@@ -490,6 +502,31 @@ function getParticipantGameCounts($games, $participants) {
     
     tr:nth-child(even) {
         background-color: rgba(248, 248, 248, 0.8);
+    }
+    
+    /* Subtle podium gradients - left to right fade */
+    #participantsTable tbody tr.rank-1 {
+        background: linear-gradient(to right, rgba(255, 215, 0, 0.15) 0%, rgba(255, 215, 0, 0.08) 50%, rgba(255, 215, 0, 0.02) 70%, transparent 90%) !important;
+    }
+    
+    #participantsTable tbody tr.rank-1:hover {
+        background: linear-gradient(to right, rgba(255, 215, 0, 0.20) 0%, rgba(255, 215, 0, 0.12) 50%, rgba(255, 215, 0, 0.04) 70%, rgba(0, 0, 0, 0.02) 90%) !important;
+    }
+    
+    #participantsTable tbody tr.rank-2 {
+        background: linear-gradient(to right, rgba(192, 192, 192, 0.15) 0%, rgba(192, 192, 192, 0.08) 50%, rgba(192, 192, 192, 0.02) 70%, transparent 90%) !important;
+    }
+    
+    #participantsTable tbody tr.rank-2:hover {
+        background: linear-gradient(to right, rgba(192, 192, 192, 0.20) 0%, rgba(192, 192, 192, 0.12) 50%, rgba(192, 192, 192, 0.04) 70%, rgba(0, 0, 0, 0.02) 90%) !important;
+    }
+    
+    #participantsTable tbody tr.rank-3 {
+        background: linear-gradient(to right, rgba(205, 127, 50, 0.15) 0%, rgba(205, 127, 50, 0.08) 50%, rgba(205, 127, 50, 0.02) 70%, transparent 90%) !important;
+    }
+    
+    #participantsTable tbody tr.rank-3:hover {
+        background: linear-gradient(to right, rgba(205, 127, 50, 0.20) 0%, rgba(205, 127, 50, 0.12) 50%, rgba(205, 127, 50, 0.04) 70%, rgba(0, 0, 0, 0.02) 90%) !important;
     }
     
     .participant-name {
@@ -620,10 +657,16 @@ function getParticipantGameCounts($games, $participants) {
         max-width: calc(50% - 10px);
         display: flex;
         flex-direction: column;
-        background-color: rgba(211, 211, 211, 0.3);
+        background: linear-gradient(135deg, rgba(211, 211, 211, 0.4) 0%, rgba(190, 190, 190, 0.4) 100%);
         border-radius: 8px;
         overflow: hidden;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+        transition: all 0.2s ease;
+    }
+    
+    .game:hover {
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+        transform: translateY(-2px);
     }
     
     .game.hidden {
@@ -635,10 +678,16 @@ function getParticipantGameCounts($games, $participants) {
         align-items: center;
         padding: 10px;
         justify-content: space-between;
+        transition: all 0.2s ease;
     }
     
     .team:first-child {
         border-bottom: 1px solid var(--border-color);
+    }
+    
+    .team.winner {
+        background: linear-gradient(90deg, rgba(34, 139, 34, 0.08) 0%, rgba(34, 139, 34, 0.02) 100%);
+        border-left: 3px solid #228B22;
     }
     
     .team-info {
@@ -652,9 +701,10 @@ function getParticipantGameCounts($games, $participants) {
     }
     
     .team-logo {
-        width: 30px;
-        height: 30px;
+        width: 33px;
+        height: 33px;
         margin-right: 10px;
+        vertical-align: middle;
     }
     
     .team-code {
@@ -1255,7 +1305,11 @@ function getParticipantGameCounts($games, $participants) {
             height: 16px;
         }
         .game {
-            padding: 8px;
+            padding: 0; /* FIXED: Remove padding so buttons extend to edges */
+        }
+        
+        .team {
+            padding: 10px 8px; /* ADDED: Add padding to teams instead */
         }
         .team-code {
             font-size: 12px;
@@ -1467,14 +1521,11 @@ function getParticipantGameCounts($games, $participants) {
                     }
                     $prevScore = $participant['total_wins'];
                 ?>
-                <tr class="expandable-row" onclick="toggleTeams('<?php echo $participant['name']; ?>', this)" id="row-<?php echo $participant['name']; ?>">
+                <tr class="expandable-row <?php echo ($rank <= 3) ? 'rank-' . $rank : ''; ?>" onclick="toggleTeams('<?php echo $participant['name']; ?>', this)" id="row-<?php echo $participant['name']; ?>">
                     <td>
                         <div class="rank-container">
                             <?php echo $rank; ?>
                             <i class="fas fa-chevron-down expand-indicator"></i>
-                            <?php if ($participant['total_wins'] == $highestScore): ?>
-                                <i class="fa-solid fa-trophy" style="color: gold;" title="1st Place"></i>
-                            <?php endif; ?>
                         </div>
                     </td>
                     <td class="participant-name">
@@ -1543,7 +1594,6 @@ function getParticipantGameCounts($games, $participants) {
                 </button>
             </div>
             <h2>
-                Games for <?php echo date('F j, Y', strtotime($selectedDate)); ?>
                 <?php if ($isNbaCupDate): ?>
                     <img src="/nba-wins-platform/public/assets/league_logos/nba_cup.png" 
                          alt="NBA Cup" 
@@ -1587,7 +1637,7 @@ function getParticipantGameCounts($games, $participants) {
                         <div class="game" 
                              data-home-participant="<?php echo htmlspecialchars($game['home_participant'] ?? ''); ?>"
                              data-away-participant="<?php echo htmlspecialchars($game['away_participant'] ?? ''); ?>">
-                            <div class="team home-team">
+                        <div class="team home-team <?php echo (($game_status === 'Final' || $game_status === 'Finished' || $game['status_long'] === 'Finished') && $home_points > $away_points) ? 'winner' : ''; ?>">
                                 <div class="team-info">
                                     <a href="/nba-wins-platform/stats/team_data.php?team=<?php echo urlencode($game['home_team']); ?>" 
                                        style="text-decoration: none; color: inherit; display: flex; align-items: center;">
@@ -1602,13 +1652,10 @@ function getParticipantGameCounts($games, $participants) {
                                     <?php endif; ?>
                                 </div>
                                 <div class="score-container">
-                                    <?php if (($game_status === 'Final' || $game_status === 'Finished' || $game['status_long'] === 'Finished') && $home_points > $away_points): ?>
-                                        <i class="fa-solid fa-circle-arrow-right" style="margin-right: 8px; color: #228B22;"></i>
-                                    <?php endif; ?>
                                     <span class="score"><?php echo $home_points; ?></span>
                                 </div>
                             </div>
-                            <div class="team away-team">
+                            <div class="team away-team <?php echo (($game_status === 'Final' || $game_status === 'Finished' || $game['status_long'] === 'Finished') && $away_points > $home_points) ? 'winner' : ''; ?>">
                                 <div class="team-info">
                                     <a href="/nba-wins-platform/stats/team_data.php?team=<?php echo urlencode($game['away_team']); ?>" 
                                        style="text-decoration: none; color: inherit; display: flex; align-items: center;">
@@ -1623,9 +1670,6 @@ function getParticipantGameCounts($games, $participants) {
                                     <?php endif; ?>
                                 </div>
                                 <div class="score-container">
-                                    <?php if (($game_status === 'Final' || $game_status === 'Finished' || $game['status_long'] === 'Finished') && $away_points > $home_points): ?>
-                                        <i class="fa-solid fa-circle-arrow-right" style="margin-right: 8px; color: #228B22;"></i>
-                                    <?php endif; ?> 
                                     <span class="score"><?php echo $away_points; ?></span>
                                 </div>
                             </div>
@@ -1639,6 +1683,17 @@ function getParticipantGameCounts($games, $participants) {
                                     <a href="/nba-wins-platform/stats/game_details.php?home_team=<?php echo urlencode($game['home_team_code'] ?? substr($game['home_team'], 0, 3)); ?>&away_team=<?php echo urlencode($game['away_team_code'] ?? substr($game['away_team'], 0, 3)); ?>&date=<?php echo urlencode($game['date']); ?>" 
                                        class="game-button stats-button">
                                         Box Score
+                                    </a>
+                                </div>
+                            <?php elseif ($game_status === 'Postponed' || $game['status_long'] === 'Postponed'): ?>
+                                <!-- Postponed game -->
+                                <div class="game-buttons">
+                                    <div class="game-button watch-button" style="background-color: #FF6B6B; cursor: default; pointer-events: none;">
+                                        POSTPONED
+                                    </div>
+                                    <a href="/nba-wins-platform/stats/team_comparison.php?home_team=<?php echo urlencode($game['home_team_code'] ?? substr($game['home_team'], 0, 3)); ?>&away_team=<?php echo urlencode($game['away_team_code'] ?? substr($game['away_team'], 0, 3)); ?>&date=<?php echo urlencode($game['date']); ?>" 
+                                       class="game-button stats-button">
+                                        Preview
                                     </a>
                                 </div>
                             <?php else: ?>
