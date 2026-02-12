@@ -15,7 +15,33 @@ if (!$leagueContext || !$leagueContext['league_id']) {
 }
 
 $currentLeagueId = $leagueContext['league_id'];
-$seasonStartDate = '2025-10-21';
+$seasonStartDate = '2025-10-20';
+$snapshotEndDate = '2026-02-18';
+
+// Create temporary snapshot standings table (wins/losses only through All-Star break)
+try {
+    $pdo->exec("DROP TEMPORARY TABLE IF EXISTS snapshot_standings");
+    $pdo->exec("
+        CREATE TEMPORARY TABLE snapshot_standings AS
+        SELECT 
+            nt.name,
+            COALESCE(SUM(CASE 
+                WHEN (g.home_team = nt.name AND g.home_points > g.away_points) 
+                  OR (g.away_team = nt.name AND g.away_points > g.home_points) 
+                THEN 1 ELSE 0 END), 0) as win,
+            COALESCE(SUM(CASE 
+                WHEN (g.home_team = nt.name AND g.home_points < g.away_points) 
+                  OR (g.away_team = nt.name AND g.away_points < g.home_points) 
+                THEN 1 ELSE 0 END), 0) as loss
+        FROM nba_teams nt
+        LEFT JOIN games g ON (g.home_team = nt.name OR g.away_team = nt.name)
+            AND g.status_long IN ('Final', 'Finished')
+            AND g.date BETWEEN '2025-10-20' AND '2026-02-18'
+        GROUP BY nt.name
+    ");
+} catch(PDOException $e) {
+    error_log("Failed to create snapshot_standings: " . $e->getMessage());
+}
 
 // Team logo mapping function - maps team names to actual logo filenames
 function getTeamLogo($teamName) {
@@ -88,6 +114,7 @@ try {
             FROM league_participant_daily_wins lpw2
             JOIN league_participants lp2 ON lpw2.league_participant_id = lp2.id
             WHERE lp2.league_id = ?
+            AND lpw2.date <= '2026-02-18'
         )
         AND lp.league_id = ?
         ORDER BY lpw.total_wins DESC
@@ -119,7 +146,7 @@ try {
             JOIN users u ON lp.user_id = u.id
             JOIN league_participant_teams lpt ON lp.id = lpt.league_participant_id
             JOIN nba_teams nt ON lpt.team_name = nt.name
-            JOIN 2025_2026 t ON nt.name = t.name
+            JOIN snapshot_standings t ON nt.name = t.name
             LEFT JOIN draft_picks dp ON (
                 lp.id = dp.league_participant_id 
                 AND dp.team_id = nt.id
@@ -162,6 +189,7 @@ try {
         LEFT JOIN users u ON lp.user_id = u.id
         WHERE lp.league_id = ?
         AND lpw.total_wins > 0
+        AND lpw.date <= '2026-02-18'
         ORDER BY lpw.date ASC, lpw.total_wins DESC
     ");
     $stmt->execute([$currentLeagueId]);
@@ -230,6 +258,7 @@ try {
         LEFT JOIN users u ON lp.user_id = u.id
         WHERE lp.league_id = ?
         AND lpw1.date >= ?
+        AND lpw1.date <= '2026-02-18'
         AND lpw1.total_wins > 0
         AND NOT EXISTS (
             SELECT 1 
@@ -278,6 +307,7 @@ try {
             JOIN league_participants lp ON pdw.league_participant_id = lp.id
             LEFT JOIN users u ON lp.user_id = u.id
             WHERE pdw.date >= ?
+                AND pdw.date <= ?
                 AND lp.league_id = ?
                 AND lp.status = 'active'
             GROUP BY 
@@ -296,6 +326,7 @@ try {
             FROM league_participant_daily_wins pdw
             JOIN league_participants lp ON pdw.league_participant_id = lp.id
             WHERE pdw.date >= ?
+                AND pdw.date <= ?
                 AND lp.league_id = ?
                 AND lp.status = 'active'
             GROUP BY 
@@ -309,7 +340,7 @@ try {
             main.week_start_date DESC
         LIMIT 30
     ");
-    $stmt->execute([$seasonStartDate, $currentLeagueId, $seasonStartDate, $currentLeagueId]);
+    $stmt->execute([$seasonStartDate, $snapshotEndDate, $currentLeagueId, $seasonStartDate, $snapshotEndDate, $currentLeagueId]);
     $allWeeks = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // Store user info for later use
@@ -365,7 +396,7 @@ try {
         FROM league_participant_daily_wins lpw
         JOIN league_participants lp ON lpw.league_participant_id = lp.id
         LEFT JOIN users u ON lp.user_id = u.id
-        WHERE lpw.date >= ? AND lp.league_id = ?
+        WHERE lpw.date >= ? AND lpw.date <= ? AND lp.league_id = ?
         GROUP BY 
             lp.id,
             u.display_name,
@@ -377,7 +408,7 @@ try {
         HAVING monthly_wins > 0
         ORDER BY monthly_wins DESC
     ");
-    $stmt->execute([$seasonStartDate, $currentLeagueId]);
+    $stmt->execute([$seasonStartDate, $snapshotEndDate, $currentLeagueId]);
     
     $bestMonths = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
@@ -464,13 +495,14 @@ try {
                 WHERE (g.home_team IN ($placeholders) OR g.away_team IN ($placeholders))
                 AND g.status_long IN ('Final', 'Finished')
                 AND g.date >= ?
+                AND g.date <= ?
                 ORDER BY g.date DESC, g.start_time DESC
             ");
             
             $params = array_merge(
                 $participantTeams, $participantTeams,
                 $participantTeams, $participantTeams,
-                [$seasonStartDate]
+                [$seasonStartDate, $snapshotEndDate]
             );
             $stmt->execute($params);
             $games = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -577,13 +609,14 @@ try {
                 WHERE (g.home_team IN ($placeholders) OR g.away_team IN ($placeholders))
                 AND g.status_long IN ('Final', 'Finished')
                 AND g.date >= ?
+                AND g.date <= ?
                 ORDER BY g.date DESC, g.start_time DESC
             ");
             
             $params = array_merge(
                 $participantTeams, $participantTeams,
                 $participantTeams, $participantTeams,
-                [$seasonStartDate]
+                [$seasonStartDate, $snapshotEndDate]
             );
             $stmt->execute($params);
             $games = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -669,6 +702,7 @@ try {
         JOIN games g ON (lpt.team_name = g.home_team OR lpt.team_name = g.away_team)
         WHERE g.status_long IN ('Final', 'Finished')
         AND ABS(g.home_points - g.away_points) <= 3
+        AND g.date BETWEEN '2025-10-20' AND '2026-02-18'
         AND lp.league_id = ?
         GROUP BY lp.id, u.display_name, lp.participant_name, u.id, u.profile_photo
         ORDER BY close_wins DESC, close_losses ASC
@@ -719,6 +753,7 @@ try {
             JOIN league_participant_teams lpt ON lp.id = lpt.league_participant_id
             JOIN games g ON (lpt.team_name = g.home_team OR lpt.team_name = g.away_team)
             WHERE g.status_long IN ('Final', 'Finished')
+            AND g.date BETWEEN '2025-10-20' AND '2026-02-18'
             AND lp.league_id = ?
             GROUP BY lp.id, u.display_name, lp.participant_name, g.date, u.id, u.profile_photo
             HAVING games_played >= 2 AND games_played = games_won
@@ -730,6 +765,7 @@ try {
         JOIN league_participant_teams lpt ON lpt.league_participant_id = lp2.id
         JOIN games g ON (lpt.team_name = g.home_team OR lpt.team_name = g.away_team)
             AND g.date = perfect_nights.date
+            AND g.date BETWEEN '2025-10-20' AND '2026-02-18'
         WHERE lp2.league_id = ?
         GROUP BY perfect_nights.participant_name, perfect_nights.date, perfect_nights.games_won, perfect_nights.user_id, perfect_nights.profile_photo
         ORDER BY perfect_nights.games_won DESC, perfect_nights.date DESC
@@ -809,6 +845,7 @@ try {
             JOIN league_participant_teams lpt ON lp.id = lpt.league_participant_id
             JOIN games g ON (lpt.team_name = g.home_team OR lpt.team_name = g.away_team)
             WHERE g.status_long IN ('Final', 'Finished')
+            AND g.date BETWEEN '2025-10-20' AND '2026-02-18'
             AND lp.league_id = ?
             GROUP BY lp.id, u.display_name, lp.participant_name, g.date, u.id, u.profile_photo
             HAVING games_played >= 2 AND games_played = games_lost
@@ -820,6 +857,7 @@ try {
         JOIN league_participant_teams lpt ON lpt.league_participant_id = lp2.id
         JOIN games g ON (lpt.team_name = g.home_team OR lpt.team_name = g.away_team)
             AND g.date = heartbreak_nights.date
+            AND g.date BETWEEN '2025-10-20' AND '2026-02-18'
         WHERE lp2.league_id = ?
         GROUP BY heartbreak_nights.participant_name, heartbreak_nights.date, heartbreak_nights.games_lost, heartbreak_nights.user_id, heartbreak_nights.profile_photo
         ORDER BY heartbreak_nights.games_lost DESC, heartbreak_nights.date DESC
@@ -865,14 +903,14 @@ try {
             t.loss,
             ou.over_under_number,
             ROUND(((t.win * 82.0) / NULLIF((t.win + t.loss), 0)) - ou.over_under_number, 1) as diff
-        FROM 2025_2026 t
+        FROM snapshot_standings t
         JOIN nba_teams nt ON t.name = nt.name
         JOIN over_under ou ON t.name = ou.team_name
         JOIN league_participant_teams lpt ON t.name = lpt.team_name
         JOIN league_participants lp ON lpt.league_participant_id = lp.id
         WHERE t.win + t.loss > 0
         AND lp.league_id = ?
-        GROUP BY t.id, t.name, nt.logo_filename, t.win, t.loss, ou.over_under_number
+        GROUP BY t.name, nt.logo_filename, t.win, t.loss, ou.over_under_number
         ORDER BY ABS(ROUND(((t.win * 82.0) / NULLIF((t.win + t.loss), 0)) - ou.over_under_number, 1)) DESC
     ");
     $stmt->execute([$currentLeagueId]);
@@ -895,7 +933,7 @@ try {
         LEFT JOIN users u ON lp.user_id = u.id
         JOIN leagues l ON lp.league_id = l.id
         LEFT JOIN league_participant_teams lpt ON lp.id = lpt.league_participant_id
-        LEFT JOIN 2025_2026 t ON lpt.team_name = t.name
+        LEFT JOIN snapshot_standings t ON lpt.team_name = t.name
         WHERE lp.status = 'active'
         GROUP BY lp.id, u.display_name, lp.participant_name, l.display_name, u.id, u.profile_photo
         ORDER BY total_wins DESC
@@ -918,7 +956,7 @@ try {
             AVG(COALESCE(t.win, 0)) as avg_round_wins
         FROM draft_picks dp
         JOIN nba_teams nt ON dp.team_id = nt.id
-        LEFT JOIN 2025_2026 t ON nt.name = t.name
+        LEFT JOIN snapshot_standings t ON nt.name = t.name
         WHERE EXISTS (
             SELECT 1 FROM draft_sessions ds 
             WHERE ds.id = dp.draft_session_id 
@@ -946,7 +984,7 @@ try {
         JOIN users u ON lp.user_id = u.id
         JOIN leagues l ON lp.league_id = l.id
         JOIN nba_teams nt ON dp.team_id = nt.id
-        LEFT JOIN 2025_2026 t ON nt.name = t.name
+        LEFT JOIN snapshot_standings t ON nt.name = t.name
         WHERE EXISTS (
             SELECT 1 FROM draft_sessions ds 
             WHERE ds.id = dp.draft_session_id 
@@ -1117,10 +1155,10 @@ try {
     // =====================================================================
     // SEASON SUMMARY STATS - Platform-wide totals
     // =====================================================================
-    $stmt = $pdo->query("SELECT COUNT(*) FROM games WHERE date >= '2025-10-21' AND status_long IN ('Final', 'Finished')");
+    $stmt = $pdo->query("SELECT COUNT(*) FROM games WHERE date BETWEEN '2025-10-20' AND '2026-02-18' AND status_long IN ('Final', 'Finished')");
     $totalGamesTracked = (int)$stmt->fetchColumn();
     
-    $stmt = $pdo->query("SELECT SUM(win) FROM 2025_2026");
+    $stmt = $pdo->query("SELECT SUM(win) FROM snapshot_standings");
     $totalWinsPlatform = (int)$stmt->fetchColumn();
     
     $stmt = $pdo->query("SELECT COUNT(*) FROM leagues WHERE draft_completed = TRUE");
@@ -1129,9 +1167,9 @@ try {
     $stmt = $pdo->query("SELECT COUNT(DISTINCT lp.id) FROM league_participants lp JOIN leagues l ON lp.league_id = l.id WHERE lp.status = 'active' AND l.draft_completed = TRUE");
     $totalParticipants = (int)$stmt->fetchColumn();
     
-    $stmt = $pdo->query("SELECT MIN(date) FROM league_participant_daily_wins");
-    $seasonStartDate = $stmt->fetchColumn();
-    $daysSoFar = $seasonStartDate ? (int)((time() - strtotime($seasonStartDate)) / 86400) : 0;
+    $stmt = $pdo->query("SELECT MIN(date) FROM league_participant_daily_wins WHERE date >= '2025-10-20'");
+    $seasonTrackingStart = $stmt->fetchColumn();
+    $daysSoFar = $seasonTrackingStart ? (int)((strtotime('2026-02-18') - strtotime($seasonTrackingStart)) / 86400) : 0;
 
 } catch(PDOException $e) {
     die("Database Error: " . $e->getMessage());
