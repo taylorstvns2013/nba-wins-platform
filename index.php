@@ -8,6 +8,9 @@ require_once '/data/www/default/nba-wins-platform/config/db_connection.php';
 // Require authentication - redirect to login if not authenticated
 requireAuthentication($auth);
 
+// Check if user is a guest
+$isGuest = $auth->isGuest();
+
 // Get current league context
 $leagueContext = getCurrentLeagueContext($auth);
 if (!$leagueContext || !$leagueContext['league_id']) {
@@ -35,9 +38,9 @@ $currentLeagueId = $leagueContext['league_id'];
 require_once '/data/www/default/nba-wins-platform/core/DashboardWidget.php';
 $dashboardWidget = new DashboardWidget($pdo);
 
-// Get user's pinned widgets
+// Get user's pinned widgets (guests won't have any - returns empty)
 $pinnedWidgets = [];
-if (isset($_SESSION['user_id'])) {
+if (isset($_SESSION['user_id']) && !$isGuest) {
     $stmt = $pdo->prepare("
         SELECT widget_type, display_order 
         FROM user_dashboard_widgets 
@@ -48,8 +51,8 @@ if (isset($_SESSION['user_id'])) {
     $pinnedWidgets = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
-// Check if user is in edit mode for widgets
-$widgetEditMode = isset($_GET['edit_widgets']) && $_GET['edit_widgets'] == '1';
+// Check if user is in edit mode for widgets (disabled for guests)
+$widgetEditMode = !$isGuest && isset($_GET['edit_widgets']) && $_GET['edit_widgets'] == '1';
 
 // Call Live scores
 require_once '/data/www/default/nba-wins-platform/core/game_scores_helper.php';
@@ -475,6 +478,67 @@ function getParticipantGameCounts($games, $participants) {
         font-size: 24px;
     }
     
+    /* Guest Banner Styles */
+    .guest-banner {
+        background: linear-gradient(135deg, #f59e0b, #d97706);
+        color: white;
+        padding: 10px 16px;
+        border-radius: 8px;
+        margin-bottom: 15px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 14px;
+        box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+    }
+    
+    .guest-banner-text {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .guest-banner-actions {
+        display: flex;
+        gap: 8px;
+    }
+    
+    .guest-banner-btn {
+        padding: 6px 14px;
+        border-radius: 6px;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 13px;
+        transition: all 0.2s;
+    }
+    
+    .guest-signup-btn {
+        background: white;
+        color: #d97706;
+    }
+    
+    .guest-signup-btn:hover {
+        background: #fef3c7;
+    }
+    
+    .guest-login-btn {
+        background: rgba(255, 255, 255, 0.2);
+        color: white;
+        border: 1px solid rgba(255, 255, 255, 0.4);
+    }
+    
+    .guest-login-btn:hover {
+        background: rgba(255, 255, 255, 0.3);
+    }
+    
+    @media (max-width: 500px) {
+        .guest-banner {
+            flex-direction: column;
+            gap: 10px;
+            text-align: center;
+        }
+    }
+    
     #participantsTable {
         width: 100%;
         border-collapse: separate;
@@ -876,8 +940,6 @@ function getParticipantGameCounts($games, $participants) {
     
     .refresh-button:active i {
         transform: rotate(180deg);
-    }
-        width: 200px;
     }
     
     .menu-container {
@@ -1518,6 +1580,21 @@ function getParticipantGameCounts($games, $participants) {
     <?php include '/data/www/default/nba-wins-platform/components/LeagueSwitcher.php'; ?>
     
     <div class="container">
+        
+        <?php if ($isGuest): ?>
+        <!-- Guest Banner -->
+        <div class="guest-banner">
+            <div class="guest-banner-text">
+                <i class="fas fa-eye"></i>
+                <span>You're browsing as a guest (read-only)</span>
+            </div>
+            <div class="guest-banner-actions">
+                <a href="/nba-wins-platform/auth/register.php" class="guest-banner-btn guest-signup-btn">Sign Up</a>
+                <a href="/nba-wins-platform/auth/login.php" class="guest-banner-btn guest-login-btn">Login</a>
+            </div>
+        </div>
+        <?php endif; ?>
+        
         <header>
             <img src="nba-wins-platform/public/assets/team_logos/Logo.png" alt="NBA Logo" class="basketball-logo">
             <h1>NBA Wins Pool League</h1>
@@ -1660,7 +1737,7 @@ function getParticipantGameCounts($games, $participants) {
             <?php if ($isAllStarBreak && empty($games)): ?>
                 <div style="text-align: center; padding: 2rem 1rem;">
                     <p style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.25rem;">All-Star Break</p>
-                    <p style="color: #9ca3af; font-size: 0.9rem;">The season resumes February 19th.</p>
+                    <p style="color: #9ca3af; font-size: 0.9rem;">No regular season games during the All-Star Break.<br>The season resumes February 19th.</p>
                     <?php if ($isAllStarBreakToday): ?>
                     <a href="/nba-wins-platform/recap/all_star_recap.php" 
                        style="display: inline-block; margin-top: 1.25rem; padding: 0.65rem 1.5rem; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; border-radius: 9999px; text-decoration: none; font-weight: 600; font-size: 0.95rem; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 4px 15px rgba(59,130,246,0.3);" 
@@ -1790,8 +1867,8 @@ function getParticipantGameCounts($games, $participants) {
             <?php endif; ?>
         </div>
         
-        <!-- Dashboard Widgets Section -->
-        <?php if (!empty($pinnedWidgets)): ?>
+        <!-- Dashboard Widgets Section (hidden for guests) -->
+        <?php if (!empty($pinnedWidgets) && !$isGuest): ?>
         <div class="dashboard-widgets-container">
             <div class="dashboard-widgets-header">
                 <h2>Dashboard</h2>

@@ -2449,10 +2449,10 @@ function getTeamLogo($teamName) {
                     <!-- Vegas Tabs -->
                     <div class="vegas-tabs">
                         <button class="vegas-tab active" onclick="switchVegasTab('over')">
-                            <i class="fas fa-arrow-trend-up"></i> Exceeding Expectations
+                            <i class="fas fa-arrow-trend-up"></i> Over
                         </button>
                         <button class="vegas-tab" onclick="switchVegasTab('under')">
-                            <i class="fas fa-arrow-trend-down"></i> Falling Short
+                            <i class="fas fa-arrow-trend-down"></i> Under
                         </button>
                     </div>
 

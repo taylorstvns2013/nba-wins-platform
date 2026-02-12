@@ -6,6 +6,29 @@
 // Ensure we have session data
 $currentLeagueId = $_SESSION['current_league_id'] ?? 0;
 $currentUserId = $_SESSION['user_id'] ?? 0;
+$isGuest = isset($_SESSION['is_guest']) && $_SESSION['is_guest'] === true;
+
+// For guests, get the first participant's user_id in the current league
+$firstParticipantUserId = 0;
+if ($isGuest && $currentLeagueId && isset($pdo)) {
+    try {
+        $navStmt = $pdo->prepare("
+            SELECT u.id as user_id 
+            FROM league_participants lp 
+            JOIN users u ON lp.user_id = u.id 
+            WHERE lp.league_id = ? AND lp.status = 'active' 
+            ORDER BY u.display_name ASC 
+            LIMIT 1
+        ");
+        $navStmt->execute([$currentLeagueId]);
+        $navResult = $navStmt->fetch(PDO::FETCH_ASSOC);
+        if ($navResult) {
+            $firstParticipantUserId = $navResult['user_id'];
+        }
+    } catch (Exception $e) {
+        error_log('Navigation menu - failed to get first participant: ' . $e->getMessage());
+    }
+}
 
 // Check for new articles (within last 7 days)
 $hasNewArticles = false;
@@ -54,7 +77,7 @@ if (typeof window.navigationMenuRendered === 'undefined') {
     const loadNavigationComponent = async () => {
         try {
             // Dynamically load the component (corrected path)
-            const response = await fetch('/nba-wins-platform/public/js/NavigationMenu.js');
+            const response = await fetch('/nba-wins-platform/public/js/NavigationMenu.js?v=' + Date.now());
             const componentCode = await response.text();
             
             // Execute the component code
@@ -67,7 +90,9 @@ if (typeof window.navigationMenuRendered === 'undefined') {
                 root.render(React.createElement(window.NavigationMenu, {
                     leagueId: <?php echo json_encode($currentLeagueId); ?>,
                     userId: <?php echo json_encode($currentUserId); ?>,
-                    hasNewArticles: <?php echo $hasNewArticles ? 'true' : 'false'; ?>
+                    hasNewArticles: <?php echo $hasNewArticles ? 'true' : 'false'; ?>,
+                    isGuest: <?php echo $isGuest ? 'true' : 'false'; ?>,
+                    firstParticipantUserId: <?php echo json_encode($firstParticipantUserId); ?>
                 }));
             }
         } catch (error) {

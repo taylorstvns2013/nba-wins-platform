@@ -2,7 +2,7 @@
 // Standalone Navigation Menu Component for NBA Wins Platform
 // Last Updated: November 13, 2025
 
-const NavigationMenu = ({ leagueId, userId, hasNewArticles }) => {
+const NavigationMenu = ({ leagueId, userId, hasNewArticles, isGuest, firstParticipantUserId }) => {
     const [isOpen, setIsOpen] = React.useState(false);
 
     const toggleMenu = () => {
@@ -54,11 +54,11 @@ const NavigationMenu = ({ leagueId, userId, hasNewArticles }) => {
                             </a>
                         </li>
                         <li>
-                            <a href={`/nba-wins-platform/profiles/participant_profile.php?league_id=${leagueId}&user_id=${userId}`}
+                            <a href={`/nba-wins-platform/profiles/participant_profile.php?league_id=${leagueId}&user_id=${isGuest ? firstParticipantUserId : userId}`}
                                className="menu-link"
-                               onClick={(e) => handleNavigation(e, `/nba-wins-platform/profiles/participant_profile.php?league_id=${leagueId}&user_id=${userId}`)}>
-                                <i className="fas fa-user"></i>
-                                My Profile
+                               onClick={(e) => handleNavigation(e, `/nba-wins-platform/profiles/participant_profile.php?league_id=${leagueId}&user_id=${isGuest ? firstParticipantUserId : userId}`)}>
+                                <i className={`fas ${isGuest ? 'fa-users' : 'fa-user'}`}></i>
+                                {isGuest ? 'Profiles' : 'My Profile'}
                             </a>
                         </li>
                         <li>

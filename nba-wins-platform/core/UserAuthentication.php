@@ -178,6 +178,75 @@ class UserAuthentication {
     }
     
     /**
+     * Login as guest - bypasses password, allows viewing all leagues
+     * Multiple visitors can be guest simultaneously (each gets own session)
+     */
+    public function loginAsGuest() {
+        try {
+            // Find the guest user account
+            $stmt = $this->pdo->prepare("
+                SELECT id, username, display_name 
+                FROM users 
+                WHERE username = 'guest' AND status = 'active'
+            ");
+            $stmt->execute();
+            $guest = $stmt->fetch();
+            
+            if (!$guest) {
+                return ['success' => false, 'message' => 'Guest account not configured. Please contact administrator.'];
+            }
+            
+            // Create session
+            $sessionId = $this->generateSecureToken();
+            // Guest sessions expire after 24 hours (shorter than regular 30-day sessions)
+            $guestSessionLifetime = 86400; // 24 hours
+            $expiresAt = date('Y-m-d H:i:s', time() + $guestSessionLifetime);
+            
+            // Get the first active league as default for guest
+            $stmt = $this->pdo->prepare("
+                SELECT id FROM leagues WHERE status = 'active' ORDER BY league_number ASC LIMIT 1
+            ");
+            $stmt->execute();
+            $defaultLeague = $stmt->fetchColumn();
+            
+            // Store session in database
+            $stmt = $this->pdo->prepare("
+                INSERT INTO user_sessions (id, user_id, current_league_id, ip_address, user_agent, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ");
+            $stmt->execute([
+                $sessionId,
+                $guest['id'],
+                $defaultLeague,
+                $_SERVER['REMOTE_ADDR'] ?? null,
+                $_SERVER['HTTP_USER_AGENT'] ?? null,
+                $expiresAt
+            ]);
+            
+            // Set session variables
+            session_regenerate_id(true);
+            $_SESSION['user_id'] = $guest['id'];
+            $_SESSION['username'] = $guest['username'];
+            $_SESSION['display_name'] = $guest['display_name'];
+            $_SESSION['current_league_id'] = $defaultLeague;
+            $_SESSION['session_id'] = $sessionId;
+            $_SESSION['is_guest'] = true;
+            
+            return ['success' => true, 'user' => $guest];
+            
+        } catch (Exception $e) {
+            return ['success' => false, 'message' => 'Guest login error: ' . $e->getMessage()];
+        }
+    }
+    
+    /**
+     * Check if current user is a guest
+     */
+    public function isGuest() {
+        return isset($_SESSION['is_guest']) && $_SESSION['is_guest'] === true;
+    }
+    
+    /**
      * Check if user is authenticated
      */
     public function isAuthenticated() {
@@ -207,13 +276,37 @@ class UserAuthentication {
     
     /**
      * Switch user's current league
+     * Guests can switch to any active league; regular users must be participants
      */
     public function switchLeague($leagueId) {
         if (!$this->isAuthenticated()) {
             return false;
         }
         
-        // Verify user has access to this league
+        // Guest users can view any active league
+        if ($this->isGuest()) {
+            $stmt = $this->pdo->prepare("
+                SELECT id FROM leagues WHERE id = ? AND status = 'active'
+            ");
+            $stmt->execute([$leagueId]);
+            
+            if ($stmt->rowCount() > 0) {
+                $_SESSION['current_league_id'] = $leagueId;
+                
+                if (isset($_SESSION['session_id'])) {
+                    $stmt = $this->pdo->prepare("
+                        UPDATE user_sessions 
+                        SET current_league_id = ? 
+                        WHERE id = ? AND user_id = ?
+                    ");
+                    $stmt->execute([$leagueId, $_SESSION['session_id'], $_SESSION['user_id']]);
+                }
+                return true;
+            }
+            return false;
+        }
+        
+        // Regular users - verify league membership
         $stmt = $this->pdo->prepare("
             SELECT lp.id 
             FROM league_participants lp
@@ -244,12 +337,26 @@ class UserAuthentication {
     
     /**
      * Get user's available leagues
+     * Guests see all active leagues; regular users see only their leagues
      */
     public function getUserLeagues() {
         if (!$this->isAuthenticated()) {
             return [];
         }
         
+        // Guest users see all active leagues
+        if ($this->isGuest()) {
+            $stmt = $this->pdo->prepare("
+                SELECT id, league_number, display_name, 'Guest' as participant_name
+                FROM leagues
+                WHERE status = 'active'
+                ORDER BY league_number ASC
+            ");
+            $stmt->execute();
+            return $stmt->fetchAll();
+        }
+        
+        // Regular users see their leagues
         $stmt = $this->pdo->prepare("
             SELECT l.id, l.league_number, l.display_name, lp.participant_name
             FROM leagues l
@@ -264,12 +371,25 @@ class UserAuthentication {
     
     /**
      * Get current league info
+     * Guests get league info without participant join
      */
     public function getCurrentLeague() {
         if (!$this->isAuthenticated() || !isset($_SESSION['current_league_id'])) {
             return null;
         }
         
+        // Guest users - get league info without participant membership check
+        if ($this->isGuest()) {
+            $stmt = $this->pdo->prepare("
+                SELECT l.*, 'Guest' as participant_name
+                FROM leagues l
+                WHERE l.id = ?
+            ");
+            $stmt->execute([$_SESSION['current_league_id']]);
+            return $stmt->fetch();
+        }
+        
+        // Regular users
         $stmt = $this->pdo->prepare("
             SELECT l.*, lp.participant_name
             FROM leagues l

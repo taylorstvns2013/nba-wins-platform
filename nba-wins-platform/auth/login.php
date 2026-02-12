@@ -12,6 +12,17 @@ if ($auth->isAuthenticated()) {
     exit;
 }
 
+// Handle guest login
+if (isset($_GET['guest']) && $_GET['guest'] == '1') {
+    $result = $auth->loginAsGuest();
+    if ($result['success']) {
+        header('Location: /index.php');
+        exit;
+    } else {
+        $message = $result['message'];
+    }
+}
+
 if ($_POST) {
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
@@ -124,6 +135,52 @@ if ($_POST) {
 
         .submit-btn:hover {
             transform: translateY(-1px);
+        }
+
+        .guest-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #757575, #616161);
+            color: white;
+            padding: 14px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+            margin-top: 10px;
+            text-decoration: none;
+            display: block;
+            text-align: center;
+            box-sizing: border-box;
+        }
+
+        .guest-btn:hover {
+            transform: translateY(-1px);
+            background: linear-gradient(135deg, #616161, #424242);
+        }
+
+        .divider {
+            display: flex;
+            align-items: center;
+            margin: 20px 0 10px 0;
+            color: #aaa;
+            font-size: 14px;
+        }
+
+        .divider::before,
+        .divider::after {
+            content: '';
+            flex: 1;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .divider::before {
+            margin-right: 12px;
+        }
+
+        .divider::after {
+            margin-left: 12px;
         }
 
         .message {
@@ -239,6 +296,12 @@ if ($_POST) {
                 <i class="fas fa-sign-in-alt"></i> Login
             </button>
         </form>
+
+        <div class="divider">or</div>
+
+        <a href="login.php?guest=1" class="guest-btn">
+            <i class="fas fa-eye"></i> Browse as Guest
+        </a>
 
         <div class="register-link">
             Don't have an account? <a href="register.php">Register here</a>

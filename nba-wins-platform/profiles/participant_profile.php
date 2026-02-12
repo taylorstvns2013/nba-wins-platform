@@ -25,9 +25,17 @@ require_once '../core/ProfilePhotoHandler.php';
 // Initialize photo handler
 $photoHandler = new ProfilePhotoHandler($pdo);
 
-// Handle form submissions
+// Check if viewer is a guest
+$is_guest = isset($_SESSION['is_guest']) && $_SESSION['is_guest'] === true;
+
+// Handle form submissions - block all POST actions for guests
 $success_message = '';
 $error_message = '';
+
+if ($_POST && $is_guest) {
+    $error_message = "Guest users cannot modify profiles.";
+    $_POST = []; // Clear POST to prevent processing
+}
 
 if ($_POST) {
     if (isset($_POST['action'])) {
@@ -128,6 +136,24 @@ $stmt->execute([$user_id, $league_id]);
 $participant = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$participant) {
+    // If guest is viewing and user_id not in league, redirect to first valid participant
+    if ($is_guest) {
+        $stmt = $pdo->prepare("
+            SELECT u.id as user_id 
+            FROM league_participants lp 
+            JOIN users u ON lp.user_id = u.id 
+            WHERE lp.league_id = ? AND lp.status = 'active' 
+            ORDER BY u.display_name ASC 
+            LIMIT 1
+        ");
+        $stmt->execute([$league_id]);
+        $fallback = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($fallback) {
+            header("Location: ?league_id=$league_id&user_id=" . $fallback['user_id']);
+            exit;
+        }
+    }
     die("Participant not found in this league.");
 }
 
