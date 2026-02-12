@@ -102,11 +102,12 @@ function getTeamLogo($teamName) {
     return 'nba-wins-platform/public/assets/team_logos/' . $filename;
 }
 
-// Fetch team data with over/under projections and logos from nba_teams
+// Fetch team data with over/under projections, logos, and losses from nba_teams
 $stmt = $pdo->query("
     SELECT t.*, 
            COALESCE(ou.over_under_number, 0) as projected_wins,
-           nt.logo_filename as logo
+           nt.logo_filename as logo,
+           t.loss as losses
     FROM 2025_2026 t
     LEFT JOIN over_under ou ON t.name = ou.team_name
     LEFT JOIN nba_teams nt ON t.name = nt.name
@@ -212,13 +213,14 @@ $stmt = $pdo->prepare("
 $stmt->execute([$todayDate, $currentLeagueId]);
 $todayLoggedWins = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
 
-// Process data (update to include projected wins and streak data)
+// Process data (update to include projected wins, streak data, and win percentage)
 $standings = [];
 foreach ($participants as $name => $participant_data) {
     $participant_teams = $participant_data['teams'];
     $user_id = $participant_data['user_id'];
     
     $total_wins = 0;
+    $total_losses = 0;
     $total_projected_wins = 0;
     $team_data = [];
     
@@ -239,6 +241,7 @@ foreach ($participants as $name => $participant_data) {
             $winstreak = $streakInfo['winstreak'] ?? 0;
             
             $total_wins += $team_info['win'];
+            $total_losses += $team_info['losses'] ?? 0;
             $total_projected_wins += $team_info['projected_wins'];
             $team_data[] = [
                 'name' => $normalizedTeam,  // Use normalized name consistently
@@ -257,10 +260,17 @@ foreach ($participants as $name => $participant_data) {
         $wins_change = $todayLoggedWins[$name] - $previousDayWins[$name];
     }
     
+    // Calculate win percentage
+    $total_games = $total_wins + $total_losses;
+    $win_percentage = $total_games > 0 ? round(($total_wins / $total_games) * 100, 1) : 0;
+    
     $standings[] = [
         'name' => $name,
         'user_id' => $user_id,
         'total_wins' => $total_wins,
+        'total_losses' => $total_losses,
+        'total_games' => $total_games,
+        'win_percentage' => $win_percentage,
         'total_projected_wins' => $total_projected_wins,
         'teams' => $team_data,
         'wins_change' => $wins_change
@@ -498,6 +508,16 @@ function getParticipantGameCounts($games, $participants) {
         color: white;
         font-weight: bold;
         text-transform: uppercase;
+    }
+    
+    #participantsTable th.clickable-header {
+        cursor: pointer;
+        user-select: none;
+        transition: background-color 0.2s;
+    }
+    
+    #participantsTable th.clickable-header:hover {
+        background-color: var(--secondary-color);
     }
     
     tr:nth-child(even) {
@@ -1508,7 +1528,9 @@ function getParticipantGameCounts($games, $participants) {
                 <tr>
                     <th>Rank</th>
                     <th>Participant</th>
-                    <th>Total Wins</th>
+                    <th class="clickable-header" onclick="toggleWinsDisplay()" title="Click to toggle between total wins and win percentage">
+                        <span id="wins-header-text">Total Wins</span>
+                    </th>
                 </tr>
             </thead>
             <tbody>
@@ -1531,8 +1553,11 @@ function getParticipantGameCounts($games, $participants) {
                     <td class="participant-name">
                         <?php echo htmlspecialchars($participant['name']); ?>
                     </td>
-                    <td class="total-wins">
-                        <?php echo $participant['total_wins']; ?>
+                    <td class="total-wins" 
+                        data-wins="<?php echo $participant['total_wins']; ?>" 
+                        data-win-percentage="<?php echo $participant['win_percentage']; ?>%" 
+                        data-wins-change="<?php echo $participant['wins_change']; ?>">
+                        <span class="wins-display"><?php echo $participant['total_wins']; ?></span>
                         <?php if ($participant['wins_change'] > 0): ?>
                             <span class="wins-change">
                                 <i class="fa-solid fa-angle-up"></i><?php echo $participant['wins_change']; ?>
@@ -1619,7 +1644,33 @@ function getParticipantGameCounts($games, $participants) {
                     <i class="fa-solid fa-arrows-rotate"></i>
                 </button>
             </div>
-            <?php if (empty($games)): ?>
+            <?php 
+            // All-Star Break detection
+            $allStarStart = '2026-02-13';
+            $allStarEnd = '2026-02-18';
+            $isAllStarBreak = ($selectedDate >= $allStarStart && $selectedDate <= $allStarEnd);
+            $todayStr = date('Y-m-d');
+            // ?preview=allstar overrides today's date check to show the recap button
+            if (isset($_GET['preview']) && $_GET['preview'] === 'allstar') {
+                $isAllStarBreakToday = true;
+            } else {
+                $isAllStarBreakToday = ($todayStr >= $allStarStart && $todayStr <= $allStarEnd);
+            }
+            ?>
+            <?php if ($isAllStarBreak && empty($games)): ?>
+                <div style="text-align: center; padding: 2rem 1rem;">
+                    <p style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.25rem;">All-Star Break</p>
+                    <p style="color: #9ca3af; font-size: 0.9rem;">The season resumes February 19th.</p>
+                    <?php if ($isAllStarBreakToday): ?>
+                    <a href="/nba-wins-platform/recap/all_star_recap.php" 
+                       style="display: inline-block; margin-top: 1.25rem; padding: 0.65rem 1.5rem; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; border-radius: 9999px; text-decoration: none; font-weight: 600; font-size: 0.95rem; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 4px 15px rgba(59,130,246,0.3);" 
+                       onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 6px 20px rgba(59,130,246,0.4)';" 
+                       onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 15px rgba(59,130,246,0.3)';">
+                        🎬 View All-Star Break Recap
+                    </a>
+                    <?php endif; ?>
+                </div>
+            <?php elseif (empty($games)): ?>
                 <p>No games scheduled for this date.</p>
             <?php else: ?>
                 <div class="games-grid">
@@ -1762,6 +1813,40 @@ function getParticipantGameCounts($games, $participants) {
         <?php endif; ?>
     </div>
     <script>
+        // Toggle between wins and win percentage display
+        function toggleWinsDisplay() {
+            const currentMode = localStorage.getItem('winsDisplayMode') || 'wins';
+            const newMode = currentMode === 'wins' ? 'percentage' : 'wins';
+            localStorage.setItem('winsDisplayMode', newMode);
+            
+            const headerText = document.getElementById('wins-header-text');
+            const winsCells = document.querySelectorAll('.total-wins');
+            
+            if (newMode === 'percentage') {
+                headerText.textContent = 'Win %';
+                winsCells.forEach(cell => {
+                    const winsDisplay = cell.querySelector('.wins-display');
+                    const winPercentage = cell.getAttribute('data-win-percentage');
+                    winsDisplay.textContent = winPercentage;
+                });
+            } else {
+                headerText.textContent = 'Total Wins';
+                winsCells.forEach(cell => {
+                    const winsDisplay = cell.querySelector('.wins-display');
+                    const totalWins = cell.getAttribute('data-wins');
+                    winsDisplay.textContent = totalWins;
+                });
+            }
+        }
+        
+        // Initialize display mode on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedMode = localStorage.getItem('winsDisplayMode');
+            if (savedMode === 'percentage') {
+                toggleWinsDisplay();
+            }
+        });
+        
         function toggleTeams(participantId, row) {
             var teamList = document.getElementById(participantId);
             var expandableRow = document.getElementById('row-' + participantId);

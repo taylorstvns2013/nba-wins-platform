@@ -115,23 +115,31 @@ function getQuarterScores($home_team, $away_team, $api_scores) {
         if ($api_home_team === $home_team && $api_away_team === $away_team) {
             $home_quarters = [];
             $away_quarters = [];
+            $home_overtimes = [];
+            $away_overtimes = [];
             
-            // Extract quarter scores
+            // Extract quarter and overtime scores
             foreach ($api_game['homeTeam']['periods'] as $period) {
                 if ($period['periodType'] === 'REGULAR') {
                     $home_quarters[] = $period['score'];
+                } elseif ($period['periodType'] === 'OVERTIME') {
+                    $home_overtimes[] = $period['score'];
                 }
             }
             
             foreach ($api_game['awayTeam']['periods'] as $period) {
                 if ($period['periodType'] === 'REGULAR') {
                     $away_quarters[] = $period['score'];
+                } elseif ($period['periodType'] === 'OVERTIME') {
+                    $away_overtimes[] = $period['score'];
                 }
             }
             
             return [
                 'home' => $home_quarters,
                 'away' => $away_quarters,
+                'home_overtimes' => $home_overtimes,
+                'away_overtimes' => $away_overtimes,
                 'home_total' => $api_game['homeTeam']['score'] ?? 0,
                 'away_total' => $api_game['awayTeam']['score'] ?? 0
             ];
@@ -234,12 +242,15 @@ $quarter_data = getQuarterScores($game['home_team'], $game['away_team'], $api_sc
 
 // Build quarter scores array for display
 $quarterScores = [];
+$numOvertimes = 0; // Track number of OT periods for display
+
 if (!empty($quarter_data)) {
     // Use API data
     $home_abbr = $home_team;
     $away_abbr = $away_team;
+    $numOvertimes = count($quarter_data['home_overtimes'] ?? []);
     
-    $quarterScores[] = [
+    $homeRow = [
         'team_abbrev' => $home_abbr,
         'q1_points' => $quarter_data['home'][0] ?? null,
         'q2_points' => $quarter_data['home'][1] ?? null,
@@ -248,7 +259,12 @@ if (!empty($quarter_data)) {
         'total_points' => $quarter_data['home_total']
     ];
     
-    $quarterScores[] = [
+    // Add overtime periods
+    for ($i = 0; $i < $numOvertimes; $i++) {
+        $homeRow['ot' . ($i + 1) . '_points'] = $quarter_data['home_overtimes'][$i] ?? null;
+    }
+    
+    $awayRow = [
         'team_abbrev' => $away_abbr,
         'q1_points' => $quarter_data['away'][0] ?? null,
         'q2_points' => $quarter_data['away'][1] ?? null,
@@ -257,7 +273,15 @@ if (!empty($quarter_data)) {
         'total_points' => $quarter_data['away_total']
     ];
     
-    error_log("Using API quarter scores for {$game['home_team']}");
+    // Add overtime periods
+    for ($i = 0; $i < $numOvertimes; $i++) {
+        $awayRow['ot' . ($i + 1) . '_points'] = $quarter_data['away_overtimes'][$i] ?? null;
+    }
+    
+    $quarterScores[] = $homeRow;
+    $quarterScores[] = $awayRow;
+    
+    error_log("Using API quarter scores for {$game['home_team']}" . ($numOvertimes > 0 ? " with {$numOvertimes} OT periods" : ""));
 } else {
     // Fall back to database quarter scores
     $stmt = $pdo->prepare("
@@ -270,7 +294,20 @@ if (!empty($quarter_data)) {
     $stmt->execute([$date, $home_team, $away_team, $home_team]);
     $quarterScores = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    error_log("Using database quarter scores (API had no data)");
+    // Check for OT columns in database results
+    if (!empty($quarterScores)) {
+        $firstRow = $quarterScores[0];
+        for ($i = 1; $i <= 10; $i++) {
+            $otKey = 'ot' . $i . '_points';
+            if (isset($firstRow[$otKey]) && $firstRow[$otKey] !== null && $firstRow[$otKey] !== '') {
+                $numOvertimes = $i;
+            } else {
+                break;
+            }
+        }
+    }
+    
+    error_log("Using database quarter scores (API had no data)" . ($numOvertimes > 0 ? " with {$numOvertimes} OT periods" : ""));
 }
 
 // Fetch player stats - handle LA Clippers / Los Angeles Clippers naming variation
@@ -1044,6 +1081,9 @@ function normalizeTeamName($teamName) {
                         <th>Q2</th>
                         <th>Q3</th>
                         <th>Q4</th>
+                        <?php for ($ot = 1; $ot <= $numOvertimes; $ot++): ?>
+                            <th><?php echo $numOvertimes === 1 ? 'OT' : 'OT' . $ot; ?></th>
+                        <?php endfor; ?>
                         <th>Total</th>
                     </tr>
                 </thead>
@@ -1055,6 +1095,9 @@ function normalizeTeamName($teamName) {
                         <td><?php echo $score['q2_points'] ?? '-'; ?></td>
                         <td><?php echo $score['q3_points'] ?? '-'; ?></td>
                         <td><?php echo $score['q4_points'] ?? '-'; ?></td>
+                        <?php for ($ot = 1; $ot <= $numOvertimes; $ot++): ?>
+                            <td><?php echo $score['ot' . $ot . '_points'] ?? '-'; ?></td>
+                        <?php endfor; ?>
                         <td class="font-bold"><?php echo $score['total_points']; ?></td>
                     </tr>
                     <?php endforeach; ?>

@@ -267,9 +267,9 @@ try {
         $base_steal_score = $team['actual_wins'] - $round_avg;
         
         // Pick Position Bonus: LATER picks in a round get HIGHER value
-        // Picking 76ers at #17 is better value than at #11 if they perform the same
-        // Use pick_number directly as bonus (higher number = better value)
-        $pick_position_bonus = $team['pick_number'] / 100;
+        // Using /4 for very strong late-round reward (max swing: ~7.5 points)
+        // This ensures later picks of same team always rank higher
+        $pick_position_bonus = $team['pick_number'] / 4;
         
         // Final Steal Score = Base Score + Pick Position Bonus
         $steal_score = $base_steal_score + $pick_position_bonus;
@@ -346,6 +346,90 @@ try {
         $prev_steal_score = $team['steal_score'];
         $items_at_current_rank++;
         $bestDraftSteals[] = $team;
+    }
+
+    // =====================================================================
+    // WORST DRAFT PICKS - PLATFORM WIDE
+    // Shows individual teams underperforming their draft round average
+    // Compares each team's actual wins vs average wins for their draft round
+    // REVERSE LOGIC of Best Draft Steals: Earlier picks get penalized more
+    // =====================================================================
+    $worstDraftPicks = [];
+    
+    // Reuse $roundAverages and $allDraftedTeams from Best Draft Steals above
+    
+    // Calculate bust score for each team (opposite of steal score)
+    foreach ($allDraftedTeams as $team) {
+        $round = $team['round_number'];
+        $round_avg = isset($roundAverages[$round]) ? $roundAverages[$round] : 0;
+        
+        // Base Bust Score = Round Average Wins - Actual Wins (opposite of steal score)
+        $base_bust_score = $round_avg - $team['actual_wins'];
+        
+        // Pick Position Penalty: EARLIER picks in a round get HIGHER penalty
+        // Using /10 for moderate penalty - early busts hurt more
+        // This ensures early picks of bad teams always rank higher as busts
+        $pick_position_penalty = (31 - $team['pick_number']) / 10;
+        
+        // Final Bust Score = Base Score + Pick Position Penalty
+        $bust_score = $base_bust_score + $pick_position_penalty;
+        
+        $team['round_avg_wins'] = round($round_avg, 1);
+        $team['bust_score'] = round($bust_score, 2);
+        $team['base_bust_score'] = round($base_bust_score, 1);
+        
+        // Assign grade based on BASE bust score (not adjusted)
+        if ($base_bust_score >= 3.0) {
+            $team['bust_grade'] = 'MASSIVE BUST';
+            $team['grade_color'] = '#ef4444';
+        } elseif ($base_bust_score >= 2.0) {
+            $team['bust_grade'] = 'BUST';
+            $team['grade_color'] = '#f87171';
+        } elseif ($base_bust_score >= 1.0) {
+            $team['bust_grade'] = 'Underperforming';
+            $team['grade_color'] = '#fbbf24';
+        } elseif ($base_bust_score >= 0) {
+            $team['bust_grade'] = 'Below Avg';
+            $team['grade_color'] = '#9ca3af';
+        } else {
+            $team['bust_grade'] = 'Fair';
+            $team['grade_color'] = '#6b7280';
+        }
+        
+        $worstDraftPicks[] = $team;
+    }
+    
+    // Sort by adjusted bust score (highest first), then by earlier pick number as tiebreaker
+    usort($worstDraftPicks, function($a, $b) {
+        if (abs($a['bust_score'] - $b['bust_score']) > 0.001) {
+            return $b['bust_score'] <=> $a['bust_score'];
+        }
+        return $a['pick_number'] <=> $b['pick_number'];
+    });
+    
+    // Take top 5 worst
+    $topBusts = array_slice($worstDraftPicks, 0, 5);
+    
+    // Assign rankings with ties - teams with identical bust scores get the same rank
+    $worstDraftPicks = [];
+    $current_rank = 1;
+    $prev_bust_score = null;
+    $items_at_current_rank = 0;
+    
+    foreach ($topBusts as $team) {
+        if ($prev_bust_score !== null && abs($team['bust_score'] - $prev_bust_score) < 0.005) {
+            $team['rank'] = $current_rank;
+        } else {
+            if ($items_at_current_rank > 0) {
+                $current_rank += $items_at_current_rank;
+            }
+            $team['rank'] = $current_rank;
+            $items_at_current_rank = 0;
+        }
+        
+        $prev_bust_score = $team['bust_score'];
+        $items_at_current_rank++;
+        $worstDraftPicks[] = $team;
     }
 
     // =====================================================================
@@ -504,12 +588,27 @@ try {
     // =====================================================================
     // TRACKING GRAPH - LEAGUE SPECIFIC
     // Shows win progression over time for current league participants
-    // Only counts games from 2025-10-21 onwards
+    // Supports flexible time windows: 7, 21, 30 days, or full season
     // =====================================================================
     
     $trackingData = [];
     $trackingDates = [];
     $trackingParticipants = [];
+    
+    // Get time window parameter (defaults to 7 days)
+    $timeWindow = isset($_GET['time_window']) ? intval($_GET['time_window']) : 7;
+    
+    // Calculate start date based on time window
+    // 0 = full season (from 2025-10-21)
+    if ($timeWindow === 0) {
+        $startDate = '2025-10-21';
+    } else {
+        $startDate = date('Y-m-d', strtotime("-{$timeWindow} days"));
+        // Don't go earlier than season start
+        if ($startDate < '2025-10-21') {
+            $startDate = '2025-10-21';
+        }
+    }
     
     if (!empty($league_id)) {
         // Fetch participant daily wins history for current league only
@@ -540,10 +639,10 @@ try {
         $participantInfo = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
         
         // Process daily wins into chart format
-        // FILTER: Only include dates from 2025-10-21 onwards
+        // FILTER: Only include dates from calculated start date onwards
         foreach ($dailyWinsData as $record) {
-            // Skip dates before October 21, 2025
-            if ($record['date'] < '2025-10-21') {
+            // Skip dates before the calculated start date
+            if ($record['date'] < $startDate) {
                 continue;
             }
             
@@ -865,6 +964,8 @@ function getTeamLogo($teamName) {
         --success-color: #28a745;
         --info-color: #17a2b8;
         --warning-color: #ffc107;
+        --tab-active: #667eea;
+        --tab-hover: #764ba2;
     }
     
     body {
@@ -909,6 +1010,175 @@ function getTeamLogo($teamName) {
         color: var(--primary-color);
     }
 
+    /* Tab Navigation Styles */
+    .tab-navigation {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        margin: 30px 0;
+        border-bottom: 2px solid var(--border-color);
+        padding-bottom: 10px;
+    }
+
+    .tab-button {
+        padding: 12px 30px;
+        background: white;
+        border: 2px solid var(--border-color);
+        border-bottom: none;
+        border-radius: 8px 8px 0 0;
+        cursor: pointer;
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--secondary-color);
+        transition: all 0.3s ease;
+        position: relative;
+        bottom: -2px;
+    }
+
+    .tab-button:hover {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        border-color: var(--tab-hover);
+    }
+
+    .tab-button.active {
+        background: linear-gradient(135deg, var(--tab-active) 0%, var(--tab-hover) 100%);
+        color: white;
+        border-color: var(--tab-active);
+    }
+
+    .tab-button i {
+        margin-right: 8px;
+    }
+
+    .tab-content {
+        display: none;
+    }
+
+    .tab-content.active {
+        display: block;
+        animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(-10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Section Styles */
+    .section {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
+        position: relative;
+    }
+
+    .section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 15px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid var(--border-color);
+    }
+
+    .section-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex: 1;
+    }
+
+    .section-title h2 {
+        margin: 0;
+        color: var(--primary-color);
+        font-size: 1.4rem;
+    }
+
+    .info-icon {
+        cursor: help;
+        color: var(--info-color);
+        font-size: 1rem;
+        transition: color 0.2s;
+        position: relative;
+    }
+
+    .info-icon:hover {
+        color: var(--tab-active);
+    }
+
+    .info-tooltip {
+        position: absolute;
+        bottom: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 12px 16px;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        line-height: 1.4;
+        width: 300px;
+        max-width: 90vw;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        z-index: 1000;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.2s;
+        margin-bottom: 10px;
+    }
+
+    @media (max-width: 768px) {
+        .info-tooltip {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            bottom: auto;
+            transform: translate(-50%, -50%);
+            width: 280px;
+            max-width: 85vw;
+            margin: 0;
+            pointer-events: auto;
+            display: none;
+        }
+        
+        .info-icon.active .info-tooltip {
+            display: block;
+        }
+        
+        .info-tooltip::after {
+            display: none;
+        }
+    }
+
+    .info-tooltip::after {
+        content: '';
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        border: 8px solid transparent;
+        border-top-color: #764ba2;
+    }
+
+    .info-icon:hover .info-tooltip {
+        opacity: 1;
+    }
+
+    /* Desktop tooltip hover support */
+    @media (min-width: 769px) {
+        .info-icon.active .info-tooltip {
+            opacity: 1;
+        }
+    }
+
+
+
+    .section-content {
+        overflow: hidden;
+    }
+
     .stats-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -936,22 +1206,6 @@ function getTeamLogo($teamName) {
         font-size: 0.9em;
         text-transform: uppercase;
         letter-spacing: 1px;
-    }
-
-    .section {
-        background: white;
-        padding: 20px;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        margin-bottom: 20px;
-    }
-
-    .section h2 {
-        color: var(--primary-color);
-        margin-top: 0;
-        margin-bottom: 20px;
-        border-bottom: 2px solid var(--border-color);
-        padding-bottom: 10px;
     }
 
     .team-list {
@@ -1217,6 +1471,16 @@ function getTeamLogo($teamName) {
             border-radius: 0;
         }
 
+        .tab-navigation {
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+
+        .tab-button {
+            padding: 10px 20px;
+            font-size: 0.9rem;
+        }
+
         .stats-grid {
             grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
             gap: 15px;
@@ -1294,6 +1558,11 @@ function getTeamLogo($teamName) {
             font-size: 13px;
             padding: 8px 4px;
         }
+
+        .info-tooltip {
+            width: 250px;
+            font-size: 0.8rem;
+        }
     }
 
     /* Tracking Graph Styles */
@@ -1306,18 +1575,6 @@ function getTeamLogo($teamName) {
         padding: 25px;
         border-radius: 8px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-
-    .league-specific-badge {
-        display: inline-block;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 4px 12px;
-        border-radius: 12px;
-        font-size: 0.75em;
-        font-weight: bold;
-        margin-left: 10px;
-        vertical-align: middle;
     }
 
     @media (max-width: 768px) {
@@ -1496,28 +1753,39 @@ function getTeamLogo($teamName) {
         grid-template-columns: 50px 1fr auto;
         align-items: center;
         padding: 15px;
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        border-radius: 6px;
+        border-radius: 8px;
         transition: transform 0.2s;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
 
     .weekly-rankings-item:hover {
         transform: translateX(5px);
     }
 
-    .weekly-rankings-item:nth-child(1) {
-        background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+    /* Gold - 1st place */
+    .weekly-rankings-item.rank-1 {
+        background: linear-gradient(135deg, rgba(255, 215, 0, 0.15) 0%, rgba(255, 193, 7, 0.25) 100%);
         font-weight: bold;
+        border-left: 4px solid rgba(218, 165, 32, 0.6);
     }
 
-    .weekly-rankings-item:nth-child(2) {
-        background: linear-gradient(135deg, #c0c0c0 0%, #e8e8e8 100%);
+    /* Silver - 2nd place */
+    .weekly-rankings-item.rank-2 {
+        background: linear-gradient(135deg, rgba(192, 192, 192, 0.15) 0%, rgba(169, 169, 169, 0.25) 100%);
         font-weight: bold;
+        border-left: 4px solid rgba(169, 169, 169, 0.6);
     }
 
-    .weekly-rankings-item:nth-child(3) {
-        background: linear-gradient(135deg, #cd7f32 0%, #d4a76a 100%);
+    /* Bronze - 3rd place */
+    .weekly-rankings-item.rank-3 {
+        background: linear-gradient(135deg, rgba(205, 127, 50, 0.15) 0%, rgba(184, 115, 51, 0.25) 100%);
         font-weight: bold;
+        border-left: 4px solid rgba(205, 127, 50, 0.6);
+    }
+
+    /* 4th place and below */
+    .weekly-rankings-item:not(.rank-1):not(.rank-2):not(.rank-3) {
+        background: linear-gradient(135deg, #FAFAFA 0%, #F0F0F0 100%);
     }
 
     .weekly-rankings-rank {
@@ -1810,8 +2078,9 @@ function getTeamLogo($teamName) {
             font-size: 12px;
         }
     }
-        .leaderboard-table .inner-table th,
-        .leaderboard-table .inner-table td {
+
+    .leaderboard-table .inner-table th,
+    .leaderboard-table .inner-table td {
         border-bottom: none !important;
     }
     
@@ -1825,39 +2094,6 @@ function getTeamLogo($teamName) {
     /* Games Played table header alignment - target 3rd column in Games Played section */
     .section:has(.games-played-record) .leaderboard-table thead th:nth-child(3) {
         text-align: center !important;
-    }
-    
-    /* Sort buttons for Strength of Schedule */
-    .sos-sort-btn {
-        padding: 10px 20px;
-        background-color: #f8f9fa;
-        border: 2px solid var(--border-color);
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 0.95rem;
-        font-weight: 500;
-        color: var(--text-color);
-        transition: all 0.2s ease;
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-    }
-    
-    .sos-sort-btn:hover {
-        background-color: #e9ecef;
-        border-color: var(--secondary-color);
-        transform: translateY(-1px);
-    }
-    
-    .sos-sort-btn.active {
-        background-color: var(--primary-color);
-        color: white;
-        border-color: var(--primary-color);
-    }
-    
-    .sos-sort-btn.active:hover {
-        background-color: var(--secondary-color);
-        border-color: var(--secondary-color);
     }
     
     @media (max-width: 768px) {
@@ -1978,6 +2214,94 @@ function getTeamLogo($teamName) {
         opacity: 1;
         background: rgba(40, 167, 69, 0.08);
     }
+    
+    /* Time Window Button Styles */
+    .time-window-btn {
+        padding: 10px 20px;
+        background-color: #f8f9fa;
+        border: 2px solid var(--border-color);
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.95rem;
+        font-weight: 500;
+        color: var(--text-color);
+        transition: all 0.2s ease;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .time-window-btn:hover {
+        background-color: #e9ecef;
+        border-color: var(--secondary-color);
+        transform: translateY(-1px);
+    }
+    
+    .time-window-btn.active {
+        background-color: var(--primary-color);
+        color: white;
+        border-color: var(--primary-color);
+    }
+    
+    .time-window-btn.active:hover {
+        background-color: var(--secondary-color);
+        border-color: var(--secondary-color);
+    }
+    
+    /* Vegas Zone Tab Styles */
+    .vegas-tabs {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+
+    .vegas-tab {
+        padding: 10px 25px;
+        background: white;
+        border: 2px solid var(--border-color);
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.95rem;
+        font-weight: 500;
+        color: var(--secondary-color);
+        transition: all 0.2s ease;
+    }
+
+    .vegas-tab:hover {
+        background: rgba(102, 126, 234, 0.1);
+        border-color: var(--tab-active);
+    }
+
+    .vegas-tab.active {
+        background: linear-gradient(135deg, var(--tab-active) 0%, var(--tab-hover) 100%);
+        color: white;
+        border-color: var(--tab-active);
+    }
+
+    .vegas-content {
+        display: none;
+    }
+
+    .vegas-content.active {
+        display: block;
+    }
+    
+    @media (max-width: 768px) {
+        .time-window-btn {
+            padding: 8px 16px;
+            font-size: 0.85rem;
+        }
+
+        .vegas-tabs {
+            flex-wrap: wrap;
+        }
+
+        .vegas-tab {
+            padding: 8px 18px;
+            font-size: 0.9rem;
+        }
+    }
 </style>
 </head>
 <body>
@@ -1992,607 +2316,780 @@ function getTeamLogo($teamName) {
             <p>Platform Overview & Statistics</p>
         </header>
 
-        <!-- Key Statistics -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-number"><?php echo $stats['total_leagues']; ?></div>
-                <div class="stat-label">Total Leagues</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number"><?php echo $stats['total_participants']; ?></div>
-                <div class="stat-label">Active Participants</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number"><?php echo $stats['total_users']; ?></div>
-                <div class="stat-label">Registered Users</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number"><?php echo $stats['completed_drafts']; ?></div>
-                <div class="stat-label">Completed Drafts</div>
-            </div>
+        <!-- Tab Navigation -->
+        <div class="tab-navigation">
+            <?php if (!empty($league_id)): ?>
+            <button class="tab-button active" onclick="switchTab('league')" id="tab-league">
+                <i class="fas fa-users"></i> Your League
+            </button>
+            <?php endif; ?>
+            <button class="tab-button <?php echo empty($league_id) ? 'active' : ''; ?>" onclick="switchTab('platform')" id="tab-platform">
+                <i class="fas fa-globe"></i> Platform Wide
+            </button>
         </div>
-        
-        <!-- Wins Tracking Graph - LEAGUE SPECIFIC -->
-        <?php if (!empty($league_id) && !empty($trackingParticipants)): ?>
-        <div class="section" style="position: relative;">
-            <h2>
-                <i class="fas fa-chart-line"></i> 
-                <?php echo htmlspecialchars($user_name); ?>'s Wins Progression Tracker
-                <span class="league-specific-badge">LEAGUE SPECIFIC</span>
-            </h2>
-            <p style="text-align: center; color: var(--secondary-color); margin-bottom: 20px; font-style: italic;">
-                Tracking wins from October 21, 2025 onwards for your league
-            </p>
-            <div class="chart-container">
-                <canvas id="winsProgressChart"></canvas>
-            </div>
-        </div>
-        <?php elseif (!empty($league_id) && empty($trackingParticipants)): ?>
-        <div class="section">
-            <h2>
-                <i class="fas fa-chart-line"></i> Wins Progression Tracker
-                <span class="league-specific-badge">LEAGUE SPECIFIC</span>
-            </h2>
-            <p style="text-align: center; color: var(--secondary-color); font-style: italic;">
-                No tracking data available yet for your league. Data will appear once games begin being recorded.
-            </p>
-        </div>
-        <?php endif; ?>
 
-        <!-- Head-to-Head Comparison - LEAGUE SPECIFIC -->
-        <?php if (!empty($league_id) && count($leagueParticipantsForH2H) >= 2): ?>
-        <div class="section" style="position: relative;">
-            <h2>
-                <i class="fas fa-users"></i> 
-                Head-to-Head Comparison
-                <span class="league-specific-badge">LEAGUE SPECIFIC</span>
-            </h2>
-            <p style="text-align: center; color: var(--secondary-color); margin-bottom: 20px; font-style: italic;">
-                Compare matchup records between participants in your league
-            </p>
+        <!-- LEAGUE SPECIFIC CONTENT -->
+        <?php if (!empty($league_id)): ?>
+        <div id="league-content" class="tab-content active">
             
-            <div class="h2h-selector">
-                <div class="h2h-select-container">
-                    <label for="participant1">Select Participant 1:</label>
-                    <select id="participant1" name="participant1">
-                        <option value="">-- Select --</option>
-                        <?php foreach ($leagueParticipantsForH2H as $p): ?>
-                            <option value="<?php echo $p['id']; ?>"><?php echo htmlspecialchars($p['display_name']); ?></option>
-                        <?php endforeach; ?>
-                    </select>
+            <!-- Wins Tracking Graph - LEAGUE SPECIFIC -->
+            <?php if (!empty($trackingParticipants)): ?>
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-title">
+                        <h2>
+                            <i class="fas fa-chart-line"></i> 
+                            Wins Progression Tracker
+                        </h2>
+                        <div class="info-icon">
+                            <i class="fas fa-question-circle"></i>
+                            <div class="info-tooltip">
+                                Track how each participant's total wins have progressed throughout the season. Select different time windows to view short-term trends or full season performance.
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                
-                <div class="h2h-vs">VS</div>
-                
-                <div class="h2h-select-container">
-                    <label for="participant2">Select Participant 2:</label>
-                    <select id="participant2" name="participant2">
-                        <option value="">-- Select --</option>
-                        <?php foreach ($leagueParticipantsForH2H as $p): ?>
-                            <option value="<?php echo $p['id']; ?>"><?php echo htmlspecialchars($p['display_name']); ?></option>
-                        <?php endforeach; ?>
-                    </select>
+                <div class="section-content">
+                    <!-- Time Window Selector -->
+                    <div style="display: flex; justify-content: center; margin-bottom: 20px; gap: 10px; flex-wrap: wrap;">
+                        <button onclick="changeTimeWindow(7)" class="time-window-btn <?php echo $timeWindow === 7 ? 'active' : ''; ?>">
+                            <i class="fas fa-calendar-week"></i> Last 7 Days
+                        </button>
+                        <button onclick="changeTimeWindow(21)" class="time-window-btn <?php echo $timeWindow === 21 ? 'active' : ''; ?>">
+                            <i class="fas fa-calendar-alt"></i> Last 21 Days
+                        </button>
+                        <button onclick="changeTimeWindow(30)" class="time-window-btn <?php echo $timeWindow === 30 ? 'active' : ''; ?>">
+                            <i class="fas fa-calendar"></i> Last 30 Days
+                        </button>
+                        <button onclick="changeTimeWindow(0)" class="time-window-btn <?php echo $timeWindow === 0 ? 'active' : ''; ?>">
+                            <i class="fas fa-calendar-check"></i> Full Season
+                        </button>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <canvas id="winsProgressChart"></canvas>
+                    </div>
                 </div>
             </div>
-            
-            <div class="h2h-result" id="h2hResult">
-                <div class="h2h-result-text">Select two participants to see their head-to-head record</div>
-            </div>
-        </div>
-        <?php endif; ?>
-        
-        <!-- Weekly Win Tracker - LEAGUE SPECIFIC -->
-        <?php if (!empty($league_id) && !empty($weeklyRankingsData)): ?>
-        <div class="section" style="position: relative;">
-            <button class="widget-pin-icon <?php echo in_array('weekly_rankings', $pinned_widgets) ? 'pinned' : ''; ?>" 
-                    onclick="toggleWidgetPin('weekly_rankings', this)"
-                    title="<?php echo in_array('weekly_rankings', $pinned_widgets) ? 'Unpin from homepage' : 'Pin to homepage'; ?>">
-                <i class="fas fa-<?php echo in_array('weekly_rankings', $pinned_widgets) ? 'check' : 'thumbtack'; ?>"></i>
-            </button>
-            <h2>
-                <i class="fas fa-trophy"></i> 
-                Weekly Win Rankings
-                <span class="league-specific-badge">LEAGUE SPECIFIC</span>
-            </h2>
-            <p style="text-align: center; color: var(--secondary-color); margin-bottom: 20px; font-style: italic;">
-                Week-by-week win leaders (Monday-Sunday)
-            </p>
-            <div id="weekly-tracker-root"></div>
-        </div>
-        <?php endif; ?>
-
-        <!-- Strength of Schedule - LEAGUE SPECIFIC -->
-        <?php if (!empty($league_id) && !empty($strengthOfSchedule)): ?>
-        <div class="section" style="position: relative;">
-            <button class="widget-pin-icon <?php echo in_array('strength_of_schedule', $pinned_widgets) ? 'pinned' : ''; ?>" 
-                    onclick="toggleWidgetPin('strength_of_schedule', this)"
-                    title="<?php echo in_array('strength_of_schedule', $pinned_widgets) ? 'Unpin from homepage' : 'Pin to homepage'; ?>">
-                <i class="fas fa-<?php echo in_array('strength_of_schedule', $pinned_widgets) ? 'check' : 'thumbtack'; ?>"></i>
-            </button>
-            <h2>
-                <i class="fas fa-calendar-check"></i> 
-                Strength of Schedule
-                <span class="league-specific-badge">LEAGUE SPECIFIC</span>
-            </h2>
-            <p style="text-align: center; color: var(--secondary-color); margin-bottom: 20px; font-style: italic;">
-                Based on the combined win percentage of opponents faced
-            </p>
-            
-            <!-- Sort Controls -->
-            <div style="display: flex; justify-content: center; margin-bottom: 20px; gap: 10px; flex-wrap: wrap;">
-                <button onclick="sortSOSTable('opponent_win_pct')" id="sos-sort-pct" class="sos-sort-btn active">
-                    <i class="fas fa-percentage"></i> Sort by Opp Win %
-                </button>
-                <button onclick="sortSOSTable('total_games')" id="sos-sort-games" class="sos-sort-btn">
-                    <i class="fas fa-hashtag"></i> Sort by Games Played
-                </button>
-            </div>
-            
-            <div class="table-responsive">
-            <table class="leaderboard-table" id="sos-table">
-                <thead>
-                    <tr>
-                        <th>Participant</th>
-                        <th style="text-align: center;">Games</th>
-                        <th style="text-align: center;">Opp Win %</th>
-                    </tr>
-                </thead>
-                <tbody id="sos-table-body">
-                    <?php foreach ($strengthOfSchedule as $entry): ?>
-                    <tr data-games="<?php echo $entry['total_games']; ?>" data-pct="<?php echo $entry['opponent_win_pct']; ?>" data-name="<?php echo htmlspecialchars($entry['display_name']); ?>">
-                        <td class="participant-name">
-                            <a href="/nba-wins-platform/profiles/participant_profile.php?league_id=<?php echo $league_id; ?>&user_id=<?php echo $entry['user_id']; ?>" 
-                               style="text-decoration: none; color: inherit;">
-                                <?php echo htmlspecialchars($entry['display_name']); ?>
-                            </a>
-                        </td>
-                        <td class="total-wins">
-                            <strong><?php echo $entry['total_games']; ?></strong>
-                        </td>
-                        <td class="games-played-record">
-                            <strong style="color: <?php echo $entry['opponent_win_pct'] >= 50 ? '#dc3545' : '#28a745'; ?>;">
-                                <?php echo number_format($entry['opponent_win_pct'], 1); ?>%
-                            </strong>
-                            <div style="font-size: 0.85rem; color: #666; margin-top: 2px;">
-                                <?php echo $entry['opponent_win_pct'] >= 50 ? 'Tough' : 'Easy'; ?>
+            <?php elseif (!empty($league_id)): ?>
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-title">
+                        <h2>
+                            <i class="fas fa-chart-line"></i> 
+                            Wins Progression Tracker
+                        </h2>
+                        <div class="info-icon">
+                            <i class="fas fa-question-circle"></i>
+                            <div class="info-tooltip">
+                                Track how each participant's total wins have progressed throughout the season.
                             </div>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="section-content">
+                    <p style="text-align: center; color: var(--secondary-color); font-style: italic;">
+                        No tracking data available yet for your league. Data will appear once games begin being recorded.
+                    </p>
+                </div>
             </div>
-        </div>
-        
-        <script>
-        function sortSOSTable(sortBy) {
-            const tbody = document.getElementById('sos-table-body');
-            const rows = Array.from(tbody.getElementsByTagName('tr'));
-            
-            // Remove active class from all buttons
-            document.querySelectorAll('.sos-sort-btn').forEach(btn => btn.classList.remove('active'));
-            
-            // Add active class to clicked button
-            if (sortBy === 'opponent_win_pct') {
-                document.getElementById('sos-sort-pct').classList.add('active');
-            } else {
-                document.getElementById('sos-sort-games').classList.add('active');
-            }
-            
-            // Sort rows
-            rows.sort((a, b) => {
-                if (sortBy === 'opponent_win_pct') {
-                    const aVal = parseFloat(a.dataset.pct);
-                    const bVal = parseFloat(b.dataset.pct);
-                    if (bVal !== aVal) {
-                        return bVal - aVal; // Descending order
-                    }
-                    return a.dataset.name.localeCompare(b.dataset.name);
-                } else {
-                    const aVal = parseInt(a.dataset.games);
-                    const bVal = parseInt(b.dataset.games);
-                    if (bVal !== aVal) {
-                        return bVal - aVal; // Descending order
-                    }
-                    return a.dataset.name.localeCompare(b.dataset.name);
-                }
-            });
-            
-            // Reorder rows in the table
-            rows.forEach(row => tbody.appendChild(row));
-        }
-        </script>
-        <?php endif; ?>
+            <?php endif; ?>
 
-    <!-- Platform-Wide Leaderboard - ALL LEAGUES -->
-    <div class="section" style="position: relative;">
-        <button class="widget-pin-icon <?php echo in_array('platform_leaderboard', $pinned_widgets) ? 'pinned' : ''; ?>" 
-                onclick="toggleWidgetPin('platform_leaderboard', this)"
-                title="<?php echo in_array('platform_leaderboard', $pinned_widgets) ? 'Unpin from homepage' : 'Pin to homepage'; ?>">
-            <i class="fas fa-<?php echo in_array('platform_leaderboard', $pinned_widgets) ? 'check' : 'thumbtack'; ?>"></i>
-        </button>
-        <h2>
-            <i class="fas fa-globe"></i> 
-            Platform-Wide Top 5 Leaderboard
-            <span class="league-specific-badge">PLATFORM WIDE</span>
-        </h2>
-            <div class="table-responsive">
-            <table class="leaderboard-table platform-leaderboard">
-                <thead>
-                    <tr>
-                        <th>Rank</th>
-                        <th>Participant</th>
-                        <th>League</th>
-                        <th>Total Wins</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php 
-                    $rank = 1;
-                    $prevWins = null;
-                    $nextRank = 1;
-                    foreach ($platform_leaderboard as $index => $entry): 
-                        // Proper tie handling: if wins are different from previous, use nextRank
-                        if ($prevWins !== null && $entry['total_wins'] < $prevWins) {
-                            $rank = $nextRank;
-                        }
-                        $prevWins = $entry['total_wins'];
-                        $nextRank = $index + 2; // Next possible rank
-                        
-                        $rowId = 'platform-row-' . $entry['participant_id'];
-                        $teamListId = 'platform-teams-' . $entry['participant_id'];
-                    ?>
-                    <tr class="expandable-row" onclick="togglePlatformTeams('<?php echo $teamListId; ?>', this)" id="<?php echo $rowId; ?>">
-                        <td class="rank-cell">
-                            <div class="rank-container">
-                                <?php echo $rank; ?>
-                                <i class="fas fa-chevron-down expand-indicator"></i>
-                                <?php if ($rank === 1 && $entry['total_wins'] > 0): ?>
-                                    <i class="fa-solid fa-trophy" style="color: gold; margin-left: 5px;" title="1st Place"></i>
-                                <?php elseif ($rank === 2): ?>
-                                    <i class="fa-solid fa-trophy" style="color: silver; margin-left: 5px;" title="2nd Place"></i>
-                                <?php elseif ($rank === 3): ?>
-                                    <i class="fa-solid fa-trophy" style="color: #CD7F32; margin-left: 5px;" title="3rd Place"></i>
-                                <?php endif; ?>
+            <!-- Weekly Win Tracker - LEAGUE SPECIFIC (MOVED UP) -->
+            <?php if (!empty($weeklyRankingsData)): ?>
+            <div class="section" style="position: relative;">
+                <button class="widget-pin-icon <?php echo in_array('weekly_rankings', $pinned_widgets) ? 'pinned' : ''; ?>" 
+                        onclick="toggleWidgetPin('weekly_rankings', this)"
+                        title="<?php echo in_array('weekly_rankings', $pinned_widgets) ? 'Unpin from homepage' : 'Pin to homepage'; ?>">
+                    <i class="fas fa-<?php echo in_array('weekly_rankings', $pinned_widgets) ? 'check' : 'thumbtack'; ?>"></i>
+                </button>
+                <div class="section-header">
+                    <div class="section-title">
+                        <h2>
+                            <i class="fas fa-trophy"></i> 
+                            Weekly Win Rankings
+                        </h2>
+                        <div class="info-icon">
+                            <i class="fas fa-question-circle"></i>
+                            <div class="info-tooltip">
+                                See who dominated each week. Weeks run Monday through Sunday. Great for tracking momentum swings!
                             </div>
-                        </td>
-                        <td class="participant-name">
-                            <?php echo htmlspecialchars($entry['display_name']); ?>
-                            <span class="league-suffix">(<?php echo htmlspecialchars($entry['league_name']); ?>)</span>
-                        </td>
-                        <td class="league-name">
-                            <?php echo htmlspecialchars($entry['league_name']); ?>
-                        </td>
-                        <td class="total-wins">
-                            <strong><?php echo $entry['total_wins']; ?></strong>
-                        </td>
-                    </tr>
-                    <tr class="team-list" id="<?php echo $teamListId; ?>">
-                        <td colspan="4" class="expanded-content">
-                            <table class="inner-table">
+                        </div>
+                    </div>
+                </div>
+                <div class="section-content">
+                    <div id="weekly-tracker-root"></div>
+                </div>
+            </div>
+            <?php endif; ?>
+            
+            <!-- The Vegas Zone - LEAGUE SPECIFIC -->
+            <?php if ((!empty($overperformers) || !empty($underperformers))): ?>
+            <div class="section" style="position: relative;">
+                <button class="widget-pin-icon <?php echo in_array('vegas_zone', $pinned_widgets) ? 'pinned' : ''; ?>" 
+                        onclick="toggleWidgetPin('vegas_zone', this)"
+                        title="<?php echo in_array('vegas_zone', $pinned_widgets) ? 'Unpin from homepage' : 'Pin to homepage'; ?>">
+                    <i class="fas fa-<?php echo in_array('vegas_zone', $pinned_widgets) ? 'check' : 'thumbtack'; ?>"></i>
+                </button>
+                <div class="section-header">
+                    <div class="section-title">
+                        <h2>
+                            <i class="fa-solid fa-dice"></i> 
+                            The Vegas Zone
+                        </h2>
+                        <div class="info-icon">
+                            <i class="fas fa-question-circle"></i>
+                            <div class="info-tooltip">
+                                Compare current team performance vs Vegas preseason win total projections. See which teams are beating or falling short of expectations.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="section-content">
+                    <!-- Vegas Tabs -->
+                    <div class="vegas-tabs">
+                        <button class="vegas-tab active" onclick="switchVegasTab('over')">
+                            <i class="fas fa-arrow-trend-up"></i> Exceeding Expectations
+                        </button>
+                        <button class="vegas-tab" onclick="switchVegasTab('under')">
+                            <i class="fas fa-arrow-trend-down"></i> Falling Short
+                        </button>
+                    </div>
+
+                    <!-- Exceeding Expectations -->
+                    <div id="vegas-over" class="vegas-content active">
+                        <?php if (!empty($overperformers)): ?>
+                        <div class="table-responsive">
+                            <table class="leaderboard-table">
                                 <thead>
                                     <tr>
+                                        <th>Rank</th>
                                         <th>Team</th>
-                                        <th>Wins</th>
+                                        <th>Owner</th>
+                                        <th style="text-align: center;">Line</th>
+                                        <th style="text-align: center;">Pace</th>
+                                        <th style="text-align: center;">Diff</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <?php foreach ($entry['teams'] as $team): ?>
+                                    <?php foreach ($overperformers as $index => $team): ?>
                                     <tr>
-                                        <td class="team-name">
+                                        <td class="rank-cell">
+                                            <?php echo $index + 1; ?>
+                                        </td>
+                                        <td class="participant-name">
                                             <a href="/nba-wins-platform/stats/team_data.php?team=<?php echo urlencode($team['team_name']); ?>" 
-                                               style="text-decoration: none; color: inherit; display: flex; align-items: center;">
+                                               style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 8px;">
                                                 <img src="<?php echo htmlspecialchars(getTeamLogo($team['team_name'])); ?>" 
                                                      alt="<?php echo htmlspecialchars($team['team_name']); ?>" 
                                                      class="team-logo"
+                                                     style="width: 24px; height: 24px;"
                                                      onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMTAiIHN0cm9rZT0iIzMzMzMzMyIgc3Ryb2tlLXdpZHRoPSIyIi8+Cjx0ZXh0IHg9IjEyIiB5PSIxNiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzMzMzMzMyI+Pz88L3RleHQ+Cjwvc3ZnPgo='">
                                                 <span><?php echo htmlspecialchars($team['team_name']); ?></span>
                                             </a>
+                                            <div style="font-size: 0.85rem; color: #666; margin-top: 2px;">
+                                                <?php echo $team['current_record']; ?>
+                                            </div>
                                         </td>
-                                        <td class="team-wins"><?php echo $team['wins']; ?></td>
+                                        <td class="participant-name">
+                                            <a href="/nba-wins-platform/profiles/participant_profile.php?league_id=<?php echo $league_id; ?>&user_id=<?php echo $team['user_id']; ?>" 
+                                               style="text-decoration: none; color: inherit;">
+                                                <?php echo htmlspecialchars($team['owner']); ?>
+                                            </a>
+                                        </td>
+                                        <td class="total-wins" style="text-align: center;">
+                                            <strong><?php echo number_format($team['vegas_projection'], 1); ?></strong>
+                                        </td>
+                                        <td class="total-wins" style="text-align: center;">
+                                            <strong style="color: var(--success-color);"><?php echo number_format($team['current_pace'], 1); ?></strong>
+                                        </td>
+                                        <td class="total-wins" style="text-align: center;">
+                                            <strong style="color: var(--success-color);">+<?php echo number_format($team['variance'], 1); ?></strong>
+                                        </td>
                                     </tr>
                                     <?php endforeach; ?>
                                 </tbody>
                             </table>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-            </div>
-        </div>
+                        </div>
+                        <?php else: ?>
+                        <p style="text-align: center; color: #666; font-style: italic;">No teams currently exceeding Vegas expectations in your league</p>
+                        <?php endif; ?>
+                    </div>
 
-        <script>
-        // Toggle function for platform leaderboard teams
-        function togglePlatformTeams(teamListId, rowElement) {
-            const teamList = document.getElementById(teamListId);
-            const isExpanded = rowElement.classList.contains('expanded');
-            
-            if (isExpanded) {
-                teamList.style.display = 'none';
-                rowElement.classList.remove('expanded');
-            } else {
-                teamList.style.display = 'table-row';
-                rowElement.classList.add('expanded');
-            }
-        }
-        </script>
-
-        <!-- Best Draft Steals - PLATFORM WIDE -->
-        <?php if (!empty($bestDraftSteals)): ?>
-        <div class="section" style="position: relative;">
-            <button class="widget-pin-icon <?php echo in_array('draft_steals', $pinned_widgets) ? 'pinned' : ''; ?>" 
-                    onclick="toggleWidgetPin('draft_steals', this)"
-                    title="<?php echo in_array('draft_steals', $pinned_widgets) ? 'Unpin from homepage' : 'Pin to homepage'; ?>">
-                <i class="fas fa-<?php echo in_array('draft_steals', $pinned_widgets) ? 'check' : 'thumbtack'; ?>"></i>
-            </button>
-            <h2>
-                <i class="fas fa-gem"></i> Draft Steals
-                <span class="league-specific-badge">PLATFORM WIDE</span>
-            </h2>
-            <p style="text-align: center; color: var(--secondary-color); margin-bottom: 20px; font-style: italic;">
-                Top 5 teams outperforming their draft round average across all leagues (adjusted for pick position)
-            </p>
-            
-            <div class="table-responsive">
-                <table class="leaderboard-table draft-steals-table">
-                    <thead>
-                        <tr>
-                            <th>Rank</th>
-                            <th>Team</th>
-                            <th class="hide-mobile">Owner / League</th>
-                            <th style="text-align: center;">Rnd</th>
-                            <th style="text-align: center;">Wins</th>
-                            <th class="hide-mobile" style="text-align: center;">Avg</th>
-                            <th style="text-align: center;">Value</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($bestDraftSteals as $steal): 
-                            $rank = $steal['rank'];
-                        ?>
-                        <tr>
-                            <td class="rank-cell">
-                                <div class="rank-container">
-                                    <?php echo $rank; ?>
-                                    <?php if ($rank === 1): ?>
-                                        <i class="fa-solid fa-trophy" style="color: gold; margin-left: 5px;" title="Best Draft Steal"></i>
-                                    <?php elseif ($rank === 2): ?>
-                                        <i class="fa-solid fa-trophy" style="color: silver; margin-left: 5px;" title="2nd Best Steal"></i>
-                                    <?php elseif ($rank === 3): ?>
-                                        <i class="fa-solid fa-trophy" style="color: #CD7F32; margin-left: 5px;" title="3rd Best Steal"></i>
-                                    <?php endif; ?>
-                                </div>
-                            </td>
-                            <td class="participant-name">
-                                <a href="/nba-wins-platform/stats/team_data.php?team=<?php echo urlencode($steal['team_name']); ?>" 
-                                   style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 8px;">
-                                    <img src="<?php echo htmlspecialchars(getTeamLogo($steal['team_name'])); ?>" 
-                                         alt="<?php echo htmlspecialchars($steal['team_name']); ?>" 
-                                         class="team-logo"
-                                         style="width: 24px; height: 24px;"
-                                         onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMTAiIHN0cm9rZT0iIzMzMzMzMyIgc3Ryb2tlLXdpZHRoPSIyIi8+Cjx0ZXh0IHg9IjEyIiB5PSIxNiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzMzMzMzMyI+Pz88L3RleHQ+Cjwvc3ZnPgo='">
-                                    <span class="team-name-text"><?php echo htmlspecialchars($steal['team_name']); ?></span>
-                                </a>
-                                <div style="font-size: 0.75rem; color: #666; margin-top: 2px;">
-                                    Pick #<?php echo $steal['pick_number']; ?>
-                                    <span class="mobile-owner"> • <?php echo htmlspecialchars($steal['owner_name']); ?></span>
-                                </div>
-                            </td>
-                            <td class="participant-name hide-mobile">
-                                <a href="/nba-wins-platform/profiles/participant_profile.php?league_id=<?php echo $steal['league_id']; ?>&user_id=<?php echo $steal['user_id']; ?>" 
-                                   style="text-decoration: none; color: inherit;">
-                                    <?php echo htmlspecialchars($steal['owner_name']); ?>
-                                </a>
-                                <div style="font-size: 0.85rem; color: #999; margin-top: 2px;">
-                                    <?php echo htmlspecialchars($steal['league_name']); ?>
-                                </div>
-                            </td>
-                            <td class="total-wins" style="text-align: center;">
-                                <strong><?php echo $steal['round_number']; ?></strong>
-                            </td>
-                            <td class="total-wins" style="text-align: center;">
-                                <strong style="color: var(--success-color);"><?php echo $steal['actual_wins']; ?></strong>
-                            </td>
-                            <td class="total-wins hide-mobile" style="text-align: center;">
-                                <strong><?php echo $steal['round_avg_wins']; ?></strong>
-                            </td>
-                            <td class="total-wins" style="text-align: center;">
-                                <strong style="color: <?php echo $steal['grade_color']; ?>; font-size: 1.1em;">
-                                    +<?php echo number_format($steal['steal_score'], 2); ?>
-                                </strong>
-                                <div style="font-size: 0.7rem; color: <?php echo $steal['grade_color']; ?>; margin-top: 2px; font-weight: bold;">
-                                    <?php echo $steal['steal_grade']; ?>
-                                </div>
-                                <div style="font-size: 0.65rem; color: #999; margin-top: 1px;">
-                                    (<?php echo $steal['base_steal_score'] > 0 ? '+' : ''; ?><?php echo $steal['base_steal_score']; ?> 
-                                    + <?php echo number_format($steal['pick_number'] / 100, 2); ?>)
-                                </div>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-            
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                        border-radius: 12px; 
-                        padding: 20px; 
-                        margin-top: 20px;
-                        color: white;">
-                <h3 style="margin: 0 0 10px 0; display: flex; align-items: center; gap: 8px;">
-                    <i class="fas fa-info-circle"></i> How Draft Steals Work
-                </h3>
-                <div style="font-size: 0.95rem; line-height: 1.6;">
-                    <p style="margin: 8px 0;">
-                        <strong>Round Average</strong> = Average current wins for all teams drafted in that round
-                    </p>
-                    <p style="margin: 8px 0;">
-                        <strong>Base Value</strong> = Team's actual wins - Round average
-                    </p>
-                    <p style="margin: 8px 0;">
-                        <strong>Pick Position Bonus</strong> = Pick number ÷ 100 (later picks get more credit)
-                    </p>
-                    <p style="margin: 8px 0;">
-                        <strong>Final Value Score</strong> = Base Value + Pick Position Bonus
-                    </p>
-                    <p style="margin: 12px 0 0 0; font-style: italic; opacity: 0.9;">
-                        💡 Example: Getting the 76ers at pick #17 is better value than at pick #11 if they perform the same!
-                    </p>
+                    <!-- Falling Short -->
+                    <div id="vegas-under" class="vegas-content">
+                        <?php if (!empty($underperformers)): ?>
+                        <div class="table-responsive">
+                            <table class="leaderboard-table">
+                                <thead>
+                                    <tr>
+                                        <th>Rank</th>
+                                        <th>Team</th>
+                                        <th>Owner</th>
+                                        <th style="text-align: center;">Line</th>
+                                        <th style="text-align: center;">Pace</th>
+                                        <th style="text-align: center;">Diff</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($underperformers as $index => $team): ?>
+                                    <tr>
+                                        <td class="rank-cell">
+                                            <?php echo $index + 1; ?>
+                                        </td>
+                                        <td class="participant-name">
+                                            <a href="/nba-wins-platform/stats/team_data.php?team=<?php echo urlencode($team['team_name']); ?>" 
+                                               style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 8px;">
+                                                <img src="<?php echo htmlspecialchars(getTeamLogo($team['team_name'])); ?>" 
+                                                     alt="<?php echo htmlspecialchars($team['team_name']); ?>" 
+                                                     class="team-logo"
+                                                     style="width: 24px; height: 24px;"
+                                                     onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMTAiIHN0cm9rZT0iIzMzMzMzMyIgc3Ryb2tlLXdpZHRoPSIyIi8+Cjx0ZXh0IHg9IjEyIiB5PSIxNiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzMzMzMzMyI+Pz88L3RleHQ+Cjwvc3ZnPgo='">
+                                                <span><?php echo htmlspecialchars($team['team_name']); ?></span>
+                                            </a>
+                                            <div style="font-size: 0.85rem; color: #666; margin-top: 2px;">
+                                                <?php echo $team['current_record']; ?>
+                                            </div>
+                                        </td>
+                                        <td class="participant-name">
+                                            <a href="/nba-wins-platform/profiles/participant_profile.php?league_id=<?php echo $league_id; ?>&user_id=<?php echo $team['user_id']; ?>" 
+                                               style="text-decoration: none; color: inherit;">
+                                                <?php echo htmlspecialchars($team['owner']); ?>
+                                            </a>
+                                        </td>
+                                        <td class="total-wins" style="text-align: center;">
+                                            <strong><?php echo number_format($team['vegas_projection'], 1); ?></strong>
+                                        </td>
+                                        <td class="total-wins" style="text-align: center;">
+                                            <strong style="color: #dc3545;"><?php echo number_format($team['current_pace'], 1); ?></strong>
+                                        </td>
+                                        <td class="total-wins" style="text-align: center;">
+                                            <strong style="color: #dc3545;"><?php echo number_format($team['variance'], 1); ?></strong>
+                                        </td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                        <?php else: ?>
+                        <p style="text-align: center; color: #666; font-style: italic;">No teams currently falling short of Vegas expectations in your league</p>
+                        <?php endif; ?>
+                    </div>
                 </div>
             </div>
+            <?php endif; ?>
+
+            <!-- Head-to-Head Comparison - LEAGUE SPECIFIC (SECOND LAST) -->
+            <?php if (count($leagueParticipantsForH2H) >= 2): ?>
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-title">
+                        <h2>
+                            <i class="fas fa-users"></i> 
+                            Head-to-Head Comparison
+                        </h2>
+                        <div class="info-icon">
+                            <i class="fas fa-question-circle"></i>
+                            <div class="info-tooltip">
+                                Compare matchup records between participants. When your teams play against an opponent's teams, who comes out ahead?
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="section-content">
+                    <div class="h2h-selector">
+                        <div class="h2h-select-container">
+                            <label for="participant1">Select Participant 1:</label>
+                            <select id="participant1" name="participant1">
+                                <option value="">-- Select --</option>
+                                <?php foreach ($leagueParticipantsForH2H as $p): ?>
+                                    <option value="<?php echo $p['id']; ?>"><?php echo htmlspecialchars($p['display_name']); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        
+                        <div class="h2h-vs">VS</div>
+                        
+                        <div class="h2h-select-container">
+                            <label for="participant2">Select Participant 2:</label>
+                            <select id="participant2" name="participant2">
+                                <option value="">-- Select --</option>
+                                <?php foreach ($leagueParticipantsForH2H as $p): ?>
+                                    <option value="<?php echo $p['id']; ?>"><?php echo htmlspecialchars($p['display_name']); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="h2h-result" id="h2hResult">
+                        <div class="h2h-result-text">Select two participants to see their head-to-head record</div>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- Strength of Schedule - LEAGUE SPECIFIC (LAST) -->
+            <?php if (!empty($strengthOfSchedule)): ?>
+            <div class="section" style="position: relative;">
+                <div class="section-header">
+                    <div class="section-title">
+                        <h2>
+                            <i class="fas fa-calendar-check"></i> 
+                            Strength of Schedule
+                        </h2>
+                        <div class="info-icon">
+                            <i class="fas fa-question-circle"></i>
+                            <div class="info-tooltip">
+                                Shows how tough each participant's schedule has been based on the average win percentage of opponents faced. Higher percentage = tougher schedule.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="section-content">
+                    <div class="table-responsive">
+                    <table class="leaderboard-table" id="sos-table">
+                        <thead>
+                            <tr>
+                                <th>Participant</th>
+                                <th style="text-align: center;">Games</th>
+                                <th style="text-align: center;">Opp Win %</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sos-table-body">
+                            <?php foreach ($strengthOfSchedule as $entry): ?>
+                            <tr>
+                                <td class="participant-name">
+                                    <a href="/nba-wins-platform/profiles/participant_profile.php?league_id=<?php echo $league_id; ?>&user_id=<?php echo $entry['user_id']; ?>" 
+                                       style="text-decoration: none; color: inherit;">
+                                        <?php echo htmlspecialchars($entry['display_name']); ?>
+                                    </a>
+                                </td>
+                                <td class="total-wins">
+                                    <strong><?php echo $entry['total_games']; ?></strong>
+                                </td>
+                                <td class="games-played-record">
+                                    <strong style="color: <?php echo $entry['opponent_win_pct'] >= 50 ? '#dc3545' : '#28a745'; ?>;">
+                                        <?php echo number_format($entry['opponent_win_pct'], 1); ?>%
+                                    </strong>
+                                    <div style="font-size: 0.85rem; color: #666; margin-top: 2px;">
+                                        <?php echo $entry['opponent_win_pct'] >= 50 ? 'Tough' : 'Easy'; ?>
+                                    </div>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
         </div>
         <?php endif; ?>
 
-        <!-- Vegas Over/Under Performance - LEAGUE SPECIFIC -->
-        <?php if (!empty($league_id) && (!empty($overperformers) || !empty($underperformers))): ?>
-        <div class="section" style="position: relative;">
-            <button class="widget-pin-icon <?php echo in_array('exceeding_expectations', $pinned_widgets) ? 'pinned' : ''; ?>" 
-                    onclick="toggleWidgetPin('exceeding_expectations', this)"
-                    title="<?php echo in_array('exceeding_expectations', $pinned_widgets) ? 'Unpin from homepage' : 'Pin to homepage'; ?>">
-                <i class="fas fa-<?php echo in_array('exceeding_expectations', $pinned_widgets) ? 'check' : 'thumbtack'; ?>"></i>
-            </button>
-            <h2>
-                <i class="fa-solid fa-dice"></i> Exceeding Expectations
-                <span class="league-specific-badge">LEAGUE SPECIFIC</span>
-            </h2>
-            <p style="text-align: center; color: var(--secondary-color); margin-bottom: 20px; font-style: italic;">
-                Teams currently on pace to exceed their preseason win total projections
-            </p>
+        <!-- PLATFORM WIDE CONTENT -->
+        <div id="platform-content" class="tab-content <?php echo empty($league_id) ? 'active' : ''; ?>">
             
-            <?php if (!empty($overperformers)): ?>
-            <div class="table-responsive">
-                <table class="leaderboard-table">
-                    <thead>
-                        <tr>
-                            <th>Rank</th>
-                            <th>Team</th>
-                            <th>Owner</th>
-                            <th style="text-align: center;">Line</th>
-                            <th style="text-align: center;">Pace</th>
-                            <th style="text-align: center;">Diff</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($overperformers as $index => $team): ?>
-                        <tr>
-                            <td class="rank-cell">
-                                <?php echo $index + 1; ?>
-                            </td>
-                            <td class="participant-name">
-                                <a href="/nba-wins-platform/stats/team_data.php?team=<?php echo urlencode($team['team_name']); ?>" 
-                                   style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 8px;">
-                                    <img src="<?php echo htmlspecialchars(getTeamLogo($team['team_name'])); ?>" 
-                                         alt="<?php echo htmlspecialchars($team['team_name']); ?>" 
-                                         class="team-logo"
-                                         style="width: 24px; height: 24px;"
-                                         onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMTAiIHN0cm9rZT0iIzMzMzMzMyIgc3Ryb2tlLXdpZHRoPSIyIi8+Cjx0ZXh0IHg9IjEyIiB5PSIxNiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzMzMzMzMyI+Pz88L3RleHQ+Cjwvc3ZnPgo='">
-                                    <span><?php echo htmlspecialchars($team['team_name']); ?></span>
-                                </a>
-                                <div style="font-size: 0.85rem; color: #666; margin-top: 2px;">
-                                    <?php echo $team['current_record']; ?>
-                                </div>
-                            </td>
-                            <td class="participant-name">
-                                <a href="/nba-wins-platform/profiles/participant_profile.php?league_id=<?php echo $league_id; ?>&user_id=<?php echo $team['user_id']; ?>" 
-                                   style="text-decoration: none; color: inherit;">
-                                    <?php echo htmlspecialchars($team['owner']); ?>
-                                </a>
-                            </td>
-                            <td class="total-wins" style="text-align: center;">
-                                <strong><?php echo number_format($team['vegas_projection'], 1); ?></strong>
-                            </td>
-                            <td class="total-wins" style="text-align: center;">
-                                <strong style="color: var(--success-color);"><?php echo number_format($team['current_pace'], 1); ?></strong>
-                            </td>
-                            <td class="total-wins" style="text-align: center;">
-                                <strong style="color: var(--success-color);">+<?php echo number_format($team['variance'], 1); ?></strong>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+            <!-- Platform-Wide Leaderboard - ALL LEAGUES -->
+            <div class="section" style="position: relative;">
+                <button class="widget-pin-icon <?php echo in_array('platform_leaderboard', $pinned_widgets) ? 'pinned' : ''; ?>" 
+                        onclick="toggleWidgetPin('platform_leaderboard', this)"
+                        title="<?php echo in_array('platform_leaderboard', $pinned_widgets) ? 'Unpin from homepage' : 'Pin to homepage'; ?>">
+                    <i class="fas fa-<?php echo in_array('platform_leaderboard', $pinned_widgets) ? 'check' : 'thumbtack'; ?>"></i>
+                </button>
+                <div class="section-header">
+                    <div class="section-title">
+                        <h2>
+                            <i class="fas fa-globe"></i> 
+                            Top 5 Leaderboard
+                        </h2>
+                        <div class="info-icon">
+                            <i class="fas fa-question-circle"></i>
+                            <div class="info-tooltip">
+                                The top 5 participants across all leagues on the platform, ranked by total wins. Click to expand and see their rosters.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="section-content">
+                    <div class="table-responsive">
+                    <table class="leaderboard-table platform-leaderboard">
+                        <thead>
+                            <tr>
+                                <th>Rank</th>
+                                <th>Participant</th>
+                                <th>League</th>
+                                <th>Total Wins</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php 
+                            $rank = 1;
+                            $prevWins = null;
+                            $nextRank = 1;
+                            foreach ($platform_leaderboard as $index => $entry): 
+                                // Proper tie handling: if wins are different from previous, use nextRank
+                                if ($prevWins !== null && $entry['total_wins'] < $prevWins) {
+                                    $rank = $nextRank;
+                                }
+                                $prevWins = $entry['total_wins'];
+                                $nextRank = $index + 2; // Next possible rank
+                                
+                                $rowId = 'platform-row-' . $entry['participant_id'];
+                                $teamListId = 'platform-teams-' . $entry['participant_id'];
+                            ?>
+                            <tr class="expandable-row" onclick="togglePlatformTeams('<?php echo $teamListId; ?>', this)" id="<?php echo $rowId; ?>">
+                                <td class="rank-cell">
+                                    <div class="rank-container">
+                                        <?php echo $rank; ?>
+                                        <i class="fas fa-chevron-down expand-indicator"></i>
+                                        <?php if ($rank === 1 && $entry['total_wins'] > 0): ?>
+                                            <i class="fa-solid fa-trophy" style="color: gold; margin-left: 5px;" title="1st Place"></i>
+                                        <?php elseif ($rank === 2): ?>
+                                            <i class="fa-solid fa-trophy" style="color: silver; margin-left: 5px;" title="2nd Place"></i>
+                                        <?php elseif ($rank === 3): ?>
+                                            <i class="fa-solid fa-trophy" style="color: #CD7F32; margin-left: 5px;" title="3rd Place"></i>
+                                        <?php endif; ?>
+                                    </div>
+                                </td>
+                                <td class="participant-name">
+                                    <?php echo htmlspecialchars($entry['display_name']); ?>
+                                    <span class="league-suffix">(<?php echo htmlspecialchars($entry['league_name']); ?>)</span>
+                                </td>
+                                <td class="league-name">
+                                    <?php echo htmlspecialchars($entry['league_name']); ?>
+                                </td>
+                                <td class="total-wins">
+                                    <strong><?php echo $entry['total_wins']; ?></strong>
+                                </td>
+                            </tr>
+                            <tr class="team-list" id="<?php echo $teamListId; ?>">
+                                <td colspan="4" class="expanded-content">
+                                    <table class="inner-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Team</th>
+                                                <th>Wins</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($entry['teams'] as $team): ?>
+                                            <tr>
+                                                <td class="team-name">
+                                                    <a href="/nba-wins-platform/stats/team_data.php?team=<?php echo urlencode($team['team_name']); ?>" 
+                                                       style="text-decoration: none; color: inherit; display: flex; align-items: center;">
+                                                        <img src="<?php echo htmlspecialchars(getTeamLogo($team['team_name'])); ?>" 
+                                                             alt="<?php echo htmlspecialchars($team['team_name']); ?>" 
+                                                             class="team-logo"
+                                                             onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMTAiIHN0cm9rZT0iIzMzMzMzMyIgc3Ryb2tlLXdpZHRoPSIyIi8+Cjx0ZXh0IHg9IjEyIiB5PSIxNiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzMzMzMzMyI+Pz88L3RleHQ+Cjwvc3ZnPgo='">
+                                                        <span><?php echo htmlspecialchars($team['team_name']); ?></span>
+                                                    </a>
+                                                </td>
+                                                <td class="team-wins"><?php echo $team['wins']; ?></td>
+                                            </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                    </div>
+                </div>
             </div>
-            <?php else: ?>
-            <p style="text-align: center; color: #666; font-style: italic;">No teams currently exceeding Vegas expectations in your league</p>
+
+            <!-- Draft Value Analysis - PLATFORM WIDE (Steals & Busts) -->
+            <?php if (!empty($bestDraftSteals) || !empty($worstDraftPicks)): ?>
+            <div class="section" style="position: relative;">
+                <button class="widget-pin-icon <?php echo in_array('draft_steals', $pinned_widgets) ? 'pinned' : ''; ?>" 
+                        onclick="toggleWidgetPin('draft_steals', this)"
+                        title="<?php echo in_array('draft_steals', $pinned_widgets) ? 'Unpin from homepage' : 'Pin to homepage'; ?>">
+                    <i class="fas fa-<?php echo in_array('draft_steals', $pinned_widgets) ? 'check' : 'thumbtack'; ?>"></i>
+                </button>
+                <div class="section-header">
+                    <div class="section-title">
+                        <h2>
+                            <i class="fas fa-chart-line"></i> 
+                            Draft Value Analysis
+                        </h2>
+                        <div class="info-icon">
+                            <i class="fas fa-question-circle"></i>
+                            <div class="info-tooltip">
+                                Compare teams to their draft round averages. Steals = outperformers (later picks score higher). Busts = underperformers (earlier picks penalized more).
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Toggle Tabs -->
+                <div class="vegas-tabs draft-tabs" style="margin: 1rem 1.5rem 1.5rem;">
+                    <button class="vegas-tab active" onclick="switchDraftTab('steals')">
+                        <i class="fas fa-gem"></i> Steals
+                    </button>
+                    <button class="vegas-tab" onclick="switchDraftTab('busts')">
+                        <i class="fas fa-arrow-trend-down"></i> Busts
+                    </button>
+                </div>
+                <!-- STEALS CONTENT -->
+                <div class="section-content vegas-content active" id="draft-steals" style="display: block;">
+                    <?php if (!empty($bestDraftSteals)): ?>
+                    <div class="table-responsive">
+                        <table class="leaderboard-table draft-steals-table">
+                            <thead>
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>Team</th>
+                                    <th class="hide-mobile">Owner / League</th>
+                                    <th style="text-align: center;">Rnd</th>
+                                    <th style="text-align: center;">Wins</th>
+                                    <th class="hide-mobile" style="text-align: center;">Avg</th>
+                                    <th style="text-align: center;">Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($bestDraftSteals as $steal): 
+                                    $rank = $steal['rank'];
+                                ?>
+                                <tr>
+                                    <td class="rank-cell">
+                                        <?php echo $rank; ?>
+                                    </td>
+                                    <td class="participant-name">
+                                        <a href="/nba-wins-platform/stats/team_data.php?team=<?php echo urlencode($steal['team_name']); ?>" 
+                                           style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 8px;">
+                                            <img src="<?php echo htmlspecialchars(getTeamLogo($steal['team_name'])); ?>" 
+                                                 alt="<?php echo htmlspecialchars($steal['team_name']); ?>" 
+                                                 class="team-logo"
+                                                 style="width: 24px; height: 24px;"
+                                                 onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMTAiIHN0cm9rZT0iIzMzMzMzMyIgc3Ryb2tlLXdpZHRoPSIyIi8+Cjx0ZXh0IHg9IjEyIiB5PSIxNiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzMzMzMzMyI+Pz88L3RleHQ+Cjwvc3ZnPgo='">
+                                            <span class="team-name-text"><?php echo htmlspecialchars($steal['team_name']); ?></span>
+                                        </a>
+                                        <div style="font-size: 0.75rem; color: #666; margin-top: 2px;">
+                                            Pick #<?php echo $steal['pick_number']; ?>
+                                            <span class="mobile-owner"> • <?php echo htmlspecialchars($steal['owner_name']); ?></span>
+                                        </div>
+                                    </td>
+                                    <td class="participant-name hide-mobile">
+                                        <a href="/nba-wins-platform/profiles/participant_profile.php?league_id=<?php echo $steal['league_id']; ?>&user_id=<?php echo $steal['user_id']; ?>" 
+                                           style="text-decoration: none; color: inherit;">
+                                            <?php echo htmlspecialchars($steal['owner_name']); ?>
+                                        </a>
+                                        <div style="font-size: 0.85rem; color: #999; margin-top: 2px;">
+                                            <?php echo htmlspecialchars($steal['league_name']); ?>
+                                        </div>
+                                    </td>
+                                    <td class="total-wins" style="text-align: center;">
+                                        <strong><?php echo $steal['round_number']; ?></strong>
+                                    </td>
+                                    <td class="total-wins" style="text-align: center;">
+                                        <strong style="color: var(--success-color);"><?php echo $steal['actual_wins']; ?></strong>
+                                    </td>
+                                    <td class="total-wins hide-mobile" style="text-align: center;">
+                                        <strong><?php echo $steal['round_avg_wins']; ?></strong>
+                                    </td>
+                                    <td class="total-wins" style="text-align: center;">
+                                        <strong style="color: <?php echo $steal['grade_color']; ?>; font-size: 1.1em;">
+                                            +<?php echo number_format($steal['steal_score'], 2); ?>
+                                        </strong>
+                                        <div style="font-size: 0.7rem; color: <?php echo $steal['grade_color']; ?>; margin-top: 2px; font-weight: bold;">
+                                            <?php echo $steal['steal_grade']; ?>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    <?php else: ?>
+                    <div style="padding: 2rem; text-align: center; color: #666;">
+                        No draft steals data available
+                    </div>
+                    <?php endif; ?>
+                </div>
+                
+                <!-- BUSTS CONTENT -->
+                <div class="section-content vegas-content" id="draft-busts" style="display: none;">
+                    <?php if (!empty($worstDraftPicks)): ?>
+                    <div class="table-responsive">
+                        <table class="leaderboard-table draft-busts-table">
+                            <thead>
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>Team</th>
+                                    <th class="hide-mobile">Owner / League</th>
+                                    <th style="text-align: center;">Rnd</th>
+                                    <th style="text-align: center;">Wins</th>
+                                    <th class="hide-mobile" style="text-align: center;">Avg</th>
+                                    <th style="text-align: center;">Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($worstDraftPicks as $bust): 
+                                    $rank = $bust['rank'];
+                                ?>
+                                <tr>
+                                    <td class="rank-cell">
+                                        <?php echo $rank; ?>
+                                    </td>
+                                    <td class="participant-name">
+                                        <a href="/nba-wins-platform/stats/team_data.php?team=<?php echo urlencode($bust['team_name']); ?>" 
+                                           style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 8px;">
+                                            <img src="<?php echo htmlspecialchars(getTeamLogo($bust['team_name'])); ?>" 
+                                                 alt="<?php echo htmlspecialchars($bust['team_name']); ?>" 
+                                                 class="team-logo"
+                                                 style="width: 24px; height: 24px;"
+                                                 onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMTAiIHN0cm9rZT0iIzMzMzMzMyIgc3Ryb2tlLXdpZHRoPSIyIi8+Cjx0ZXh0IHg9IjEyIiB5PSIxNiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzMzMzMzMyI+Pz88L3RleHQ+Cjwvc3ZnPgo='">
+                                            <span class="team-name-text"><?php echo htmlspecialchars($bust['team_name']); ?></span>
+                                        </a>
+                                        <div style="font-size: 0.75rem; color: #666; margin-top: 2px;">
+                                            Pick #<?php echo $bust['pick_number']; ?>
+                                            <span class="mobile-owner"> • <?php echo htmlspecialchars($bust['owner_name']); ?></span>
+                                        </div>
+                                    </td>
+                                    <td class="participant-name hide-mobile">
+                                        <a href="/nba-wins-platform/profiles/participant_profile.php?league_id=<?php echo $bust['league_id']; ?>&user_id=<?php echo $bust['user_id']; ?>" 
+                                           style="text-decoration: none; color: inherit;">
+                                            <?php echo htmlspecialchars($bust['owner_name']); ?>
+                                        </a>
+                                        <div style="font-size: 0.85rem; color: #999; margin-top: 2px;">
+                                            <?php echo htmlspecialchars($bust['league_name']); ?>
+                                        </div>
+                                    </td>
+                                    <td class="total-wins" style="text-align: center;">
+                                        <strong><?php echo $bust['round_number']; ?></strong>
+                                    </td>
+                                    <td class="total-wins" style="text-align: center;">
+                                        <strong style="color: #ef4444;"><?php echo $bust['actual_wins']; ?></strong>
+                                    </td>
+                                    <td class="total-wins hide-mobile" style="text-align: center;">
+                                        <strong><?php echo $bust['round_avg_wins']; ?></strong>
+                                    </td>
+                                    <td class="total-wins" style="text-align: center;">
+                                        <strong style="color: <?php echo $bust['grade_color']; ?>; font-size: 1.1em;">
+                                            <?php echo number_format($bust['bust_score'], 2); ?>
+                                        </strong>
+                                        <div style="font-size: 0.7rem; color: <?php echo $bust['grade_color']; ?>; margin-top: 2px; font-weight: bold;">
+                                            <?php echo $bust['bust_grade']; ?>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    <?php else: ?>
+                    <div style="padding: 2rem; text-align: center; color: #666;">
+                        No draft busts data available
+                    </div>
+                    <?php endif; ?>
+                </div>
+            </div>
             <?php endif; ?>
         </div>
-        
-        <div class="section" style="position: relative;">
-            <button class="widget-pin-icon <?php echo in_array('falling_short', $pinned_widgets) ? 'pinned' : ''; ?>" 
-                    onclick="toggleWidgetPin('falling_short', this)"
-                    title="<?php echo in_array('falling_short', $pinned_widgets) ? 'Unpin from homepage' : 'Pin to homepage'; ?>">
-                <i class="fas fa-<?php echo in_array('falling_short', $pinned_widgets) ? 'check' : 'thumbtack'; ?>"></i>
-            </button>
-            <h2>
-                <i class="fa-solid fa-dice"></i> Falling Short of Expectations
-                <span class="league-specific-badge">LEAGUE SPECIFIC</span>
-            </h2>
-            <p style="text-align: center; color: var(--secondary-color); margin-bottom: 20px; font-style: italic;">
-                Teams currently on pace to fall short of their preseason win total projections
-            </p>
-            
-            <?php if (!empty($underperformers)): ?>
-            <div class="table-responsive">
-                <table class="leaderboard-table">
-                    <thead>
-                        <tr>
-                            <th>Rank</th>
-                            <th>Team</th>
-                            <th>Owner</th>
-                            <th style="text-align: center;">Line</th>
-                            <th style="text-align: center;">Pace</th>
-                            <th style="text-align: center;">Diff</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($underperformers as $index => $team): ?>
-                        <tr>
-                            <td class="rank-cell">
-                                <?php echo $index + 1; ?>
-                            </td>
-                            <td class="participant-name">
-                                <a href="/nba-wins-platform/stats/team_data.php?team=<?php echo urlencode($team['team_name']); ?>" 
-                                   style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 8px;">
-                                    <img src="<?php echo htmlspecialchars(getTeamLogo($team['team_name'])); ?>" 
-                                         alt="<?php echo htmlspecialchars($team['team_name']); ?>" 
-                                         class="team-logo"
-                                         style="width: 24px; height: 24px;"
-                                         onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMTAiIHN0cm9rZT0iIzMzMzMzMyIgc3Ryb2tlLXdpZHRoPSIyIi8+Cjx0ZXh0IHg9IjEyIiB5PSIxNiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzMzMzMzMyI+Pz88L3RleHQ+Cjwvc3ZnPgo='">
-                                    <span><?php echo htmlspecialchars($team['team_name']); ?></span>
-                                </a>
-                                <div style="font-size: 0.85rem; color: #666; margin-top: 2px;">
-                                    <?php echo $team['current_record']; ?>
-                                </div>
-                            </td>
-                            <td class="participant-name">
-                                <a href="/nba-wins-platform/profiles/participant_profile.php?league_id=<?php echo $league_id; ?>&user_id=<?php echo $team['user_id']; ?>" 
-                                   style="text-decoration: none; color: inherit;">
-                                    <?php echo htmlspecialchars($team['owner']); ?>
-                                </a>
-                            </td>
-                            <td class="total-wins" style="text-align: center;">
-                                <strong><?php echo number_format($team['vegas_projection'], 1); ?></strong>
-                            </td>
-                            <td class="total-wins" style="text-align: center;">
-                                <strong style="color: #dc3545;"><?php echo number_format($team['current_pace'], 1); ?></strong>
-                            </td>
-                            <td class="total-wins" style="text-align: center;">
-                                <strong style="color: #dc3545;"><?php echo number_format($team['variance'], 1); ?></strong>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-            <?php else: ?>
-            <p style="text-align: center; color: #666; font-style: italic;">No teams currently falling short of Vegas expectations in your league</p>
-            <?php endif; ?>
-        </div>
-        <?php endif; ?>
     </div>
 
     <script>
+    // =====================================================================
+    // MOBILE TOOLTIP CLICK SUPPORT
+    // =====================================================================
+    document.addEventListener('DOMContentLoaded', function() {
+        // Add click handlers to info icons for mobile
+        const infoIcons = document.querySelectorAll('.info-icon');
+        
+        infoIcons.forEach(icon => {
+            icon.addEventListener('click', function(e) {
+                e.stopPropagation();
+                
+                // Close all other tooltips
+                infoIcons.forEach(other => {
+                    if (other !== icon) {
+                        other.classList.remove('active');
+                    }
+                });
+                
+                // Toggle this tooltip
+                const wasActive = this.classList.contains('active');
+                this.classList.toggle('active');
+                
+
+            });
+        });
+        
+        // Close tooltips when clicking outside
+        document.addEventListener('click', function() {
+            infoIcons.forEach(icon => {
+                icon.classList.remove('active');
+            });
+        });
+    });
+
+    // =====================================================================
+    // TAB SWITCHING FUNCTIONALITY
+    // =====================================================================
+    function switchTab(tab) {
+        // Remove active class from all tabs
+        document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+        
+        // Add active class to selected tab
+        if (tab === 'league') {
+            document.getElementById('tab-league').classList.add('active');
+            document.getElementById('league-content').classList.add('active');
+        } else {
+            document.getElementById('tab-platform').classList.add('active');
+            document.getElementById('platform-content').classList.add('active');
+        }
+        
+        // Save preference to localStorage
+        localStorage.setItem('analytics_active_tab', tab);
+    }
+    
+    // Restore tab preference on load
+    window.addEventListener('DOMContentLoaded', () => {
+        const savedTab = localStorage.getItem('analytics_active_tab');
+        if (savedTab && document.getElementById('tab-' + savedTab)) {
+            switchTab(savedTab);
+        }
+    });
+
+    // =====================================================================
+    // VEGAS ZONE TAB SWITCHING
+    // =====================================================================
+    function switchVegasTab(tab) {
+        // Remove active class from all vegas tabs
+        document.querySelectorAll('.vegas-tab').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.vegas-content').forEach(content => content.classList.remove('active'));
+        
+        // Add active class to selected tab
+        document.querySelectorAll('.vegas-tab')[tab === 'over' ? 0 : 1].classList.add('active');
+        document.getElementById('vegas-' + tab).classList.add('active');
+    }
+
+    // =====================================================================
+    // DRAFT VALUE TAB SWITCHING
+    // =====================================================================
+    function switchDraftTab(tab) {
+        // Remove active class from draft tabs only
+        const allTabs = document.querySelectorAll('.draft-tabs .vegas-tab');
+        allTabs.forEach(btn => btn.classList.remove('active'));
+        
+        // Hide all content sections
+        const stealsContent = document.getElementById('draft-steals');
+        const bustsContent = document.getElementById('draft-busts');
+        
+        if (stealsContent) stealsContent.style.display = 'none';
+        if (bustsContent) bustsContent.style.display = 'none';
+        
+        // Show selected content and activate tab
+        if (tab === 'steals') {
+            if (stealsContent) stealsContent.style.display = 'block';
+            allTabs[0]?.classList.add('active');
+        } else {
+            if (bustsContent) bustsContent.style.display = 'block';
+            allTabs[1]?.classList.add('active');
+        }
+    }
+
     // =====================================================================
     // WINS TRACKING CHART - LEAGUE SPECIFIC
     // =====================================================================
@@ -2602,6 +3099,14 @@ function getTeamLogo($teamName) {
     const trackingDates = <?php echo json_encode($trackingDates); ?>;
     const trackingParticipants = <?php echo json_encode($trackingParticipants); ?>;
     const trackingChartData = <?php echo json_encode($trackingData); ?>;
+    
+    // Calculate min and max for dynamic Y-axis
+    let allWins = [];
+    Object.values(trackingChartData).forEach(data => {
+        allWins = allWins.concat(data);
+    });
+    const minWins = Math.min(...allWins);
+    const maxWins = Math.max(...allWins);
     
     // Generate distinct colors for each participant
     const generateColor = (index, total) => {
@@ -2667,7 +3172,8 @@ function getTeamLogo($teamName) {
             },
             scales: {
                 y: {
-                    beginAtZero: true,
+                    min: Math.max(0, minWins - 5),
+                    max: maxWins + 5,
                     title: {
                         display: !isMobile,
                         text: 'Total Wins',
@@ -2935,7 +3441,7 @@ function getTeamLogo($teamName) {
                     {selectedWeekData?.participants.map((participant) => (
                         <div 
                             key={participant.name}
-                            className="weekly-rankings-item"
+                            className={`weekly-rankings-item rank-${participant.rank}`}
                         >
                             <div className="weekly-rankings-rank">
                                 {participant.rank}
@@ -2963,9 +3469,35 @@ function getTeamLogo($teamName) {
     <?php endif; ?>
     </script>
 
-
     <script>
-    // Widget pin/unpin functionality
+    // =====================================================================
+    // PLATFORM LEADERBOARD EXPAND
+    // =====================================================================
+    function togglePlatformTeams(teamListId, rowElement) {
+        const teamList = document.getElementById(teamListId);
+        const isExpanded = rowElement.classList.contains('expanded');
+        
+        if (isExpanded) {
+            teamList.style.display = 'none';
+            rowElement.classList.remove('expanded');
+        } else {
+            teamList.style.display = 'table-row';
+            rowElement.classList.add('expanded');
+        }
+    }
+
+    // =====================================================================
+    // TIME WINDOW CHANGE
+    // =====================================================================
+    function changeTimeWindow(days) {
+        const currentUrl = new URL(window.location.href);
+        currentUrl.searchParams.set('time_window', days);
+        window.location.href = currentUrl.toString();
+    }
+    
+    // =====================================================================
+    // WIDGET PIN/UNPIN
+    // =====================================================================
     function toggleWidgetPin(widgetType, button) {
         const isPinned = button.classList.contains('pinned');
         const action = isPinned ? 'unpin' : 'pin';
