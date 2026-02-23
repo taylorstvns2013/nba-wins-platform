@@ -1,6 +1,18 @@
 <?php
 // record_daily_wins.php - Record daily wins for participants in multi-league system
 // Location: /nba-wins-platform/tasks/
+//
+// SMART TIMING LOGIC:
+// This script is designed to run via cron every 5 minutes between midnight and 3 AM.
+// It will only record wins once all of yesterday's games are complete.
+// - If games finish before midnight → this runs at midnight (first cron hit)
+// - If games finish at 12:45 AM → this runs on the next 5-min check after completion
+// - Hard cutoff at 3 AM → runs regardless to prevent getting stuck
+// - Duplicate protection: won't re-record if already done for today
+//
+// CRON SCHEDULE (replace the old 1:15 AM entries):
+// */5 0,1,2 * * * /usr/bin/php /data/www/default/nba-wins-platform/tasks/record_daily_wins.php
+// 0 3 * * * /usr/bin/php /data/www/default/nba-wins-platform/tasks/record_daily_wins.php --force
 
 // Include database connection
 require_once(__DIR__ . '/../config/db_connection_cli.php');
@@ -86,6 +98,67 @@ function recordDailyWins($pdo) {
     } catch (PDOException $e) {
         throw new Exception("Database error: " . $e->getMessage());
     }
+}
+
+// =============================================================================
+// SMART TIMING GATE
+// Only proceed if games are done or we've hit the hard cutoff
+// =============================================================================
+$forceRun = in_array('--force', $argv ?? []);
+$currentHour = (int) date('G');
+$todayDate = date('Y-m-d');
+$yesterdayDate = date('Y-m-d', strtotime('-1 day'));
+
+// Check if we already recorded today's wins (duplicate protection)
+$stmt = $pdo->prepare("
+    SELECT COUNT(*) as count 
+    FROM update_log 
+    WHERE DATE(update_time) = ? 
+    AND script_name = 'record_daily_wins.php'
+    AND details NOT LIKE 'ERROR%'
+");
+$stmt->execute([$todayDate]);
+$alreadyRecorded = $stmt->fetch()['count'] > 0;
+
+if ($alreadyRecorded && !$forceRun) {
+    echo date('Y-m-d H:i:s') . " - Daily wins already recorded for today. Skipping.\n";
+    exit(0);
+}
+
+// Check if yesterday's games are all complete
+// "Active" games = NOT Final/Finished AND NOT Scheduled/Postponed/Cancelled
+// (games that are actually being played right now)
+$stmt = $pdo->prepare("
+    SELECT COUNT(*) as active_count
+    FROM games 
+    WHERE date = ?
+    AND status_long NOT IN ('Final', 'Finished')
+    AND status_long NOT IN ('Scheduled', 'Not Started', 'Postponed', 'Cancelled', 'Canceled')
+");
+$stmt->execute([$yesterdayDate]);
+$activeGamesYesterday = $stmt->fetch()['active_count'];
+
+// Also check: did yesterday have ANY games at all?
+$stmt = $pdo->prepare("SELECT COUNT(*) as total FROM games WHERE date = ?");
+$stmt->execute([$yesterdayDate]);
+$totalGamesYesterday = $stmt->fetch()['total'];
+
+if ($activeGamesYesterday > 0 && !$forceRun) {
+    // Games still in progress - wait (output goes to cron log for debugging)
+    echo date('Y-m-d H:i:s') . " - $activeGamesYesterday game(s) still in progress from yesterday. Waiting...\n";
+    exit(0);
+}
+
+// If we get here, either:
+// 1. All yesterday's games are Final/Finished (or Scheduled/Postponed which don't count)
+// 2. Yesterday had no games
+// 3. --force flag was used (3 AM hard cutoff)
+if ($forceRun) {
+    echo date('Y-m-d H:i:s') . " - Force run triggered (3 AM hard cutoff)\n";
+} elseif ($totalGamesYesterday == 0) {
+    echo date('Y-m-d H:i:s') . " - No games yesterday. Recording current standings.\n";
+} else {
+    echo date('Y-m-d H:i:s') . " - All $totalGamesYesterday game(s) from yesterday are complete. Recording wins.\n";
 }
 
 try {

@@ -10,6 +10,50 @@ ini_set('display_errors', 1);
 date_default_timezone_set('America/New_York');
 
 // ============================================================================
+// TEAM LOGO MAPPING (same as index.php)
+// ============================================================================
+function getTeamLogo($teamName) {
+    $logoMap = [
+        'Atlanta Hawks' => 'atlanta_hawks.png',
+        'Boston Celtics' => 'boston_celtics.png',
+        'Brooklyn Nets' => 'brooklyn_nets.png',
+        'Charlotte Hornets' => 'charlotte_hornets.png',
+        'Chicago Bulls' => 'chicago_bulls.png',
+        'Cleveland Cavaliers' => 'cleveland_cavaliers.png',
+        'Detroit Pistons' => 'detroit_pistons.png',
+        'Indiana Pacers' => 'indiana_pacers.png',
+        'Miami Heat' => 'miami_heat.png',
+        'Milwaukee Bucks' => 'milwaukee_bucks.png',
+        'New York Knicks' => 'new_york_knicks.png',
+        'Orlando Magic' => 'orlando_magic.png',
+        'Philadelphia 76ers' => 'philadelphia_76ers.png',
+        'Toronto Raptors' => 'toronto_raptors.png',
+        'Washington Wizards' => 'washington_wizards.png',
+        'Dallas Mavericks' => 'dallas_mavericks.png',
+        'Denver Nuggets' => 'denver_nuggets.png',
+        'Golden State Warriors' => 'golden_state_warriors.png',
+        'Houston Rockets' => 'houston_rockets.png',
+        'Los Angeles Clippers' => 'la_clippers.png',
+        'LA Clippers' => 'la_clippers.png',
+        'Los Angeles Lakers' => 'los_angeles_lakers.png',
+        'Memphis Grizzlies' => 'memphis_grizzlies.png',
+        'Minnesota Timberwolves' => 'minnesota_timberwolves.png',
+        'New Orleans Pelicans' => 'new_orleans_pelicans.png',
+        'Oklahoma City Thunder' => 'oklahoma_city_thunder.png',
+        'Phoenix Suns' => 'phoenix_suns.png',
+        'Portland Trail Blazers' => 'portland_trail_blazers.png',
+        'Sacramento Kings' => 'sacramento_kings.png',
+        'San Antonio Spurs' => 'san_antonio_spurs.png',
+        'Utah Jazz' => 'utah_jazz.png'
+    ];
+    if (isset($logoMap[$teamName])) {
+        return '/nba-wins-platform/public/assets/team_logos/' . $logoMap[$teamName];
+    }
+    $filename = strtolower(str_replace(' ', '_', $teamName)) . '.png';
+    return '/nba-wins-platform/public/assets/team_logos/' . $filename;
+}
+
+// ============================================================================
 // HELPER FUNCTIONS FOR API SCORE FETCHING
 // ============================================================================
 
@@ -184,8 +228,8 @@ if (!preg_match('/^[A-Z]{3}$/', $home_team) || !preg_match('/^[A-Z]{3}$/', $away
 // Fetch game info with multi-league participant data
 $stmt = $pdo->prepare("
     SELECT g.*, 
-           t1.logo AS home_logo,
-           t2.logo AS away_logo,
+           nt1.logo_filename AS home_logo,
+           nt2.logo_filename AS away_logo,
            (SELECT COALESCE(u1.display_name, lp1.participant_name)
             FROM league_participant_teams lpt1 
             JOIN league_participants lp1 ON lpt1.league_participant_id = lp1.id 
@@ -199,11 +243,13 @@ $stmt = $pdo->prepare("
             WHERE lpt2.team_name = g.away_team AND lp2.league_id = ? 
             LIMIT 1) AS away_participant
     FROM games g
-    LEFT JOIN 2025_2026 t1 ON g.home_team = t1.name
-    LEFT JOIN 2025_2026 t2 ON g.away_team = t2.name
+    LEFT JOIN nba_teams nt1 ON g.home_team = nt1.name
+    LEFT JOIN nba_teams nt2 ON g.away_team = nt2.name
     WHERE g.date = ? 
     AND g.home_team_code = ?
     AND g.away_team_code = ?
+    ORDER BY g.home_points DESC
+    LIMIT 1
 ");
 $stmt->execute([$league_id, $league_id, $date, $home_team, $away_team]);
 $game = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -212,8 +258,13 @@ if (!$game) {
     die("Game not found");
 }
 
-// Get API scores
-$api_scores = getAPIScores();
+// Get API scores - only for today's games (API only has today's scoreboard)
+$today = date('Y-m-d');
+if ($date === $today) {
+    $api_scores = getAPIScores();
+} else {
+    $api_scores = ['scoreboard' => ['games' => []]];
+}
 
 // Debug logging (can be removed after testing)
 error_log("API Scores fetched: " . (isset($api_scores['scoreboard']['games']) ? count($api_scores['scoreboard']['games']) . " games" : "No games"));
@@ -234,6 +285,52 @@ if ($current_scores) {
     $game['away_points'] = $current_scores['away_points'];
     if (isset($current_scores['status'])) {
         $game['status_long'] = $current_scores['status'];
+    }
+}
+
+// Fallback: If scores are still 0, try game_quarter_scores table
+if (empty($game['home_points']) && empty($game['away_points'])) {
+    $qsFallback = $pdo->prepare("
+        SELECT team_abbrev,
+               COALESCE(q1_points,0) + COALESCE(q2_points,0) + COALESCE(q3_points,0) + COALESCE(q4_points,0) AS total
+        FROM game_quarter_scores
+        WHERE game_date = ? AND team_abbrev IN (?, ?)
+    ");
+    $qsFallback->execute([$date, $home_team, $away_team]);
+    $qsRows = $qsFallback->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($qsRows as $qs) {
+        if ($qs['team_abbrev'] === $home_team && $qs['total'] > 0) {
+            $game['home_points'] = $qs['total'];
+        }
+        if ($qs['team_abbrev'] === $away_team && $qs['total'] > 0) {
+            $game['away_points'] = $qs['total'];
+        }
+    }
+    if (!empty($game['home_points']) || !empty($game['away_points'])) {
+        error_log("Score fallback from game_quarter_scores: Home={$game['home_points']}, Away={$game['away_points']}");
+    }
+}
+
+// Last resort: Sum from game_player_stats
+if (empty($game['home_points']) && empty($game['away_points'])) {
+    $psFallback = $pdo->prepare("
+        SELECT team_name, SUM(points) as total_pts
+        FROM game_player_stats
+        WHERE game_date = ? AND team_name IN (?, ?)
+        GROUP BY team_name
+    ");
+    $psFallback->execute([$date, $game['home_team'], $game['away_team']]);
+    $psRows = $psFallback->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($psRows as $ps) {
+        if ($ps['team_name'] === $game['home_team'] && $ps['total_pts'] > 0) {
+            $game['home_points'] = $ps['total_pts'];
+        }
+        if ($ps['team_name'] === $game['away_team'] && $ps['total_pts'] > 0) {
+            $game['away_points'] = $ps['total_pts'];
+        }
+    }
+    if (!empty($game['home_points']) || !empty($game['away_points'])) {
+        error_log("Score fallback from game_player_stats: Home={$game['home_points']}, Away={$game['away_points']}");
     }
 }
 
@@ -1017,12 +1114,12 @@ function normalizeTeamName($teamName) {
             
             <!-- Home Team -->
             <div class="team-row home-team">
-                <img src="<?php echo htmlspecialchars($game['home_logo']); ?>" 
+                <img src="<?php echo htmlspecialchars(getTeamLogo($game['home_team'])); ?>" 
                      alt="<?php echo htmlspecialchars($game['home_team']); ?>" 
                      class="team-logo-background">
                 <div class="team-info-left">
                     <a href="/nba-wins-platform/stats/team_data.php?team=<?php echo urlencode($game['home_team']); ?>">
-                        <img src="<?php echo htmlspecialchars($game['home_logo']); ?>" 
+                        <img src="<?php echo htmlspecialchars(getTeamLogo($game['home_team'])); ?>" 
                              alt="<?php echo htmlspecialchars($game['home_team']); ?>" 
                              class="team-logo-visible">
                     </a>
@@ -1040,12 +1137,12 @@ function normalizeTeamName($teamName) {
             
             <!-- Away Team -->
             <div class="team-row away-team">
-                <img src="<?php echo htmlspecialchars($game['away_logo']); ?>" 
+                <img src="<?php echo htmlspecialchars(getTeamLogo($game['away_team'])); ?>" 
                      alt="<?php echo htmlspecialchars($game['away_team']); ?>" 
                      class="team-logo-background">
                 <div class="team-info-right">
                     <a href="/nba-wins-platform/stats/team_data.php?team=<?php echo urlencode($game['away_team']); ?>">
-                        <img src="<?php echo htmlspecialchars($game['away_logo']); ?>" 
+                        <img src="<?php echo htmlspecialchars(getTeamLogo($game['away_team'])); ?>" 
                              alt="<?php echo htmlspecialchars($game['away_team']); ?>" 
                              class="team-logo-visible">
                     </a>
@@ -1130,7 +1227,11 @@ function normalizeTeamName($teamName) {
                     <tbody>
                         <?php foreach ($teamPlayers as $player): ?>
                         <tr>
-                            <td><?php echo htmlspecialchars($player['player_name']); ?></td>
+                            <td><?php 
+                                $pName = htmlspecialchars($player['player_name']);
+                                $pTeam = normalizeTeamName($team);
+                                $pUrl = '/nba-wins-platform/stats/player_profile.php?team=' . urlencode($pTeam) . '&player=' . urlencode($player['player_name']);
+                            ?><a href="<?php echo $pUrl; ?>" style="color: inherit; text-decoration: none; border-bottom: 1px dotted #ccc;" onmouseover="this.style.color='#1a73e8';this.style.borderBottomColor='#1a73e8'" onmouseout="this.style.color='inherit';this.style.borderBottomColor='#ccc'"><?php echo $pName; ?></a></td>
                             <td><?php echo formatMinutes($player['minutes']); ?></td>
                             <td><?php echo $player['points'] ?? '-'; ?></td>
                             <td><?php echo $player['rebounds'] ?? '-'; ?></td>

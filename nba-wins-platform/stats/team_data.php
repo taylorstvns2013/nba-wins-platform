@@ -36,6 +36,152 @@ $nbaApi = new NBAApiIntegration([
     'api_timeout' => 3 // 3 second timeout for fast page loads
 ]);
 
+// ESPN Team ID mapping
+function getEspnTeamId($teamName) {
+    $espnMap = [
+        'Atlanta Hawks' => 1, 'Boston Celtics' => 2, 'Brooklyn Nets' => 17,
+        'Charlotte Hornets' => 30, 'Chicago Bulls' => 4, 'Cleveland Cavaliers' => 5,
+        'Dallas Mavericks' => 6, 'Denver Nuggets' => 7, 'Detroit Pistons' => 8,
+        'Golden State Warriors' => 9, 'Houston Rockets' => 10, 'Indiana Pacers' => 11,
+        'Los Angeles Clippers' => 12, 'LA Clippers' => 12, 'Los Angeles Lakers' => 13,
+        'Memphis Grizzlies' => 29, 'Miami Heat' => 14, 'Milwaukee Bucks' => 15,
+        'Minnesota Timberwolves' => 16, 'New Orleans Pelicans' => 3, 'New York Knicks' => 18,
+        'Oklahoma City Thunder' => 25, 'Orlando Magic' => 19, 'Philadelphia 76ers' => 20,
+        'Phoenix Suns' => 21, 'Portland Trail Blazers' => 22, 'Sacramento Kings' => 23,
+        'San Antonio Spurs' => 24, 'Toronto Raptors' => 28, 'Utah Jazz' => 26,
+        'Washington Wizards' => 27
+    ];
+    return $espnMap[$teamName] ?? null;
+}
+
+// Normalize player names for matching (strips diacritics: ć→c, ñ→n, etc.)
+function normalizeForMatch($name) {
+    if (function_exists('transliterator_transliterate')) {
+        $name = transliterator_transliterate('Any-Latin; Latin-ASCII', $name);
+    } elseif (function_exists('iconv')) {
+        $name = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $name);
+    }
+    return strtolower(trim(preg_replace('/[^a-z ]/', '', strtolower($name))));
+}
+
+// Fetch roster from ESPN API (cached for 1 hour)
+function fetchEspnRoster($teamName) {
+    $espnId = getEspnTeamId($teamName);
+    if (!$espnId) return null;
+    
+    // Check file cache (1 hour)
+    $cacheDir = '/tmp/espn_cache';
+    if (!is_dir($cacheDir)) @mkdir($cacheDir, 0755, true);
+    $cacheFile = $cacheDir . '/roster_' . $espnId . '.json';
+    
+    if (file_exists($cacheFile) && (time() - filemtime($cacheFile)) < 3600) {
+        $cached = json_decode(file_get_contents($cacheFile), true);
+        if ($cached) return $cached;
+    }
+    
+    $url = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/{$espnId}/roster";
+    
+    // Use curl (more reliable than file_get_contents for external HTTPS)
+    $response = null;
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_HTTPHEADER => ['Accept: application/json'],
+            CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            CURLOPT_SSL_VERIFYPEER => true,
+        ]);
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+        
+        if ($httpCode !== 200 || !$response) {
+            error_log("ESPN roster fetch failed: HTTP $httpCode, curl error: $curlError");
+            $response = null;
+        }
+    } else {
+        // Fallback to file_get_contents
+        $ctx = stream_context_create([
+            'http' => [
+                'timeout' => 10,
+                'header' => "User-Agent: Mozilla/5.0\r\nAccept: application/json\r\n"
+            ]
+        ]);
+        $response = @file_get_contents($url, false, $ctx);
+    }
+    
+    if (!$response) return null;
+    
+    $data = json_decode($response, true);
+    if (!$data) return null;
+    
+    // Parse athletes - ESPN returns a flat array of player objects
+    $players = [];
+    $athleteList = $data['athletes'] ?? [];
+    
+    foreach ($athleteList as $p) {
+        // Skip if not a valid player object
+        if (!isset($p['displayName']) && !isset($p['fullName'])) continue;
+        
+        $pos = '';
+        if (isset($p['position']) && is_array($p['position'])) {
+            $pos = $p['position']['abbreviation'] ?? '';
+        } elseif (isset($p['position']) && is_string($p['position'])) {
+            $pos = $p['position'];
+        }
+        
+        // Experience: check both array and integer formats
+        $exp = 'R';
+        if (isset($p['experience'])) {
+            if (is_array($p['experience'])) {
+                $exp = $p['experience']['years'] ?? 'R';
+            } elseif (is_numeric($p['experience'])) {
+                $exp = $p['experience'] > 0 ? $p['experience'] : 'R';
+            }
+        }
+        
+        // Headshot: check multiple possible locations
+        $headshot = '';
+        if (isset($p['headshot']['href'])) {
+            $headshot = $p['headshot']['href'];
+        } elseif (isset($p['headshot']) && is_string($p['headshot'])) {
+            $headshot = $p['headshot'];
+        }
+        
+        // College: check multiple possible locations  
+        $college = '';
+        if (isset($p['college']['name'])) {
+            $college = $p['college']['name'];
+        } elseif (isset($p['college']) && is_string($p['college'])) {
+            $college = $p['college'];
+        }
+        
+        $players[] = [
+            'espn_id' => $p['id'] ?? '',
+            'name' => $p['displayName'] ?? $p['fullName'] ?? 'Unknown',
+            'jersey' => $p['jersey'] ?? '',
+            'position' => $pos,
+            'age' => $p['age'] ?? '',
+            'height' => $p['displayHeight'] ?? '',
+            'weight' => $p['displayWeight'] ?? '',
+            'experience' => $exp,
+            'headshot' => $headshot,
+            'college' => $college
+        ];
+    }
+    
+    // Cache result
+    if (!empty($players)) {
+        @file_put_contents($cacheFile, json_encode($players));
+    }
+    
+    return $players;
+}
+
 // Team logo mapping function
 function getTeamLogo($teamName) {
     $logoMap = [
@@ -374,58 +520,176 @@ if (isset($_GET['tab']) && $_GET['tab'] === 'schedule') {
     }
 }
 
-// Get roster if on roster tab - UPDATED TO USE team_roster_stats with jersey numbers
+// Get roster if on roster tab - ESPN API + DB stats merge
 $roster = null;
 if (isset($_GET['tab']) && $_GET['tab'] === 'roster') {
+    // Step 1: Fetch ESPN roster for bio data
+    $espnRoster = fetchEspnRoster($team_name);
+    
+    // Step 2: Fetch DB stats for per-game averages
+    $dbStats = [];
     try {
-        // Get roster with stats from team_roster_stats, sorted by PPG
         if (strpos($team_name, 'Clippers') !== false) {
-            // For Clippers, check both variations
             $stmt = $pdo->prepare("
-                SELECT 
-                    trs.player_name,
-                    trs.games_played,
-                    trs.avg_minutes,
-                    trs.avg_points,
-                    trs.avg_rebounds,
-                    trs.avg_assists,
-                    trs.avg_fg_made,
-                    trs.avg_fg_attempts,
-                    trs.fg_percentage
+                SELECT trs.player_name, trs.games_played, trs.avg_minutes,
+                       trs.avg_points, trs.avg_rebounds, trs.avg_assists,
+                       trs.avg_fg_made, trs.avg_fg_attempts, trs.fg_percentage
                 FROM team_roster_stats trs
                 WHERE (trs.current_team_name = 'LA Clippers' OR trs.current_team_name = 'Los Angeles Clippers')
-                ORDER BY trs.avg_points DESC
             ");
             $stmt->execute();
         } else {
-            // For all other teams, use standard query
             $stmt = $pdo->prepare("
-                SELECT 
-                    trs.player_name,
-                    trs.games_played,
-                    trs.avg_minutes,
-                    trs.avg_points,
-                    trs.avg_rebounds,
-                    trs.avg_assists,
-                    trs.avg_fg_made,
-                    trs.avg_fg_attempts,
-                    trs.fg_percentage
+                SELECT trs.player_name, trs.games_played, trs.avg_minutes,
+                       trs.avg_points, trs.avg_rebounds, trs.avg_assists,
+                       trs.avg_fg_made, trs.avg_fg_attempts, trs.fg_percentage
                 FROM team_roster_stats trs
                 WHERE trs.current_team_name = ?
-                ORDER BY trs.avg_points DESC
             ");
             $stmt->execute([$team_name]);
         }
-        $roster_players = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        if (!empty($roster_players)) {
-            $roster = ['success' => true, 'data' => $roster_players];
-        } else {
-            $roster = ['error' => 'No roster data available'];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            // Index by lowercase name for fuzzy matching
+            $dbStats[strtolower(trim($row['player_name']))] = $row;
         }
     } catch (Exception $e) {
-        error_log("Roster error: " . $e->getMessage());
-        $roster = ['error' => 'Error loading roster'];
+        error_log("DB roster stats error: " . $e->getMessage());
+    }
+    
+    // Build normalized name index for diacritic handling (Topić → topic, etc.)
+    $dbStatsNormalized = [];
+    foreach ($dbStats as $key => $row) {
+        $normKey = normalizeForMatch($key);
+        if (!isset($dbStatsNormalized[$normKey])) {
+            $dbStatsNormalized[$normKey] = $row;
+        }
+    }
+    
+    // Step 2b: Build game_player_stats fallback (handles diacritics + filters preseason)
+    $gpsFallback = [];
+    try {
+        $gpsTeamVariations = [$team_name];
+        if (strpos($team_name, 'Clippers') !== false) {
+            $gpsTeamVariations = ['LA Clippers', 'Los Angeles Clippers'];
+        }
+        $gpsPlaceholders = implode(',', array_fill(0, count($gpsTeamVariations), '?'));
+        $gpsStmt = $pdo->prepare("
+            SELECT player_name,
+                   COUNT(*) as games_played,
+                   ROUND(AVG(minutes), 1) as avg_minutes,
+                   ROUND(AVG(points), 1) as avg_points,
+                   ROUND(AVG(rebounds), 1) as avg_rebounds,
+                   ROUND(AVG(assists), 1) as avg_assists,
+                   ROUND(AVG(fg_made), 1) as avg_fg_made,
+                   ROUND(AVG(fg_attempts), 1) as avg_fg_attempts,
+                   CASE WHEN SUM(fg_attempts) > 0 
+                       THEN ROUND(SUM(fg_made)/SUM(fg_attempts)*100, 1) 
+                       ELSE 0 END as fg_percentage
+            FROM game_player_stats
+            WHERE team_name IN ($gpsPlaceholders) AND game_date >= '2025-10-20'
+            GROUP BY player_name
+        ");
+        $gpsStmt->execute($gpsTeamVariations);
+        foreach ($gpsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $gpsFallback[normalizeForMatch($row['player_name'])] = $row;
+        }
+    } catch (Exception $e) {
+        error_log("game_player_stats fallback error: " . $e->getMessage());
+    }
+    
+    // Step 3: Merge ESPN bio + DB stats
+    if ($espnRoster) {
+        $mergedRoster = [];
+        foreach ($espnRoster as $ep) {
+            $key = strtolower(trim($ep['name']));
+            $stats = $dbStats[$key] ?? null;
+            
+            // Try partial match if exact fails (e.g. "P.J. Washington" vs "PJ Washington")
+            if (!$stats) {
+                $cleanKey = strtolower(preg_replace('/[^a-z ]/', '', $ep['name']));
+                foreach ($dbStats as $dbKey => $dbRow) {
+                    $cleanDb = strtolower(preg_replace('/[^a-z ]/', '', $dbKey));
+                    if ($cleanDb === $cleanKey || 
+                        strpos($cleanDb, explode(' ', $cleanKey)[count(explode(' ', $cleanKey))-1]) !== false && 
+                        strpos($cleanDb, substr($cleanKey, 0, 2)) !== false) {
+                        $stats = $dbRow;
+                        break;
+                    }
+                }
+            }
+            
+            // Normalized diacritic match (Topić → topic, etc.)
+            if (!$stats) {
+                $normKey = normalizeForMatch($ep['name']);
+                if (isset($dbStatsNormalized[$normKey])) {
+                    $stats = $dbStatsNormalized[$normKey];
+                }
+            }
+            
+            // Fallback: Query by player name alone regardless of team (handles mid-season trades)
+            if (!$stats) {
+                try {
+                    $fallbackStmt = $pdo->prepare("
+                        SELECT player_name, games_played, avg_minutes, avg_points, 
+                               avg_rebounds, avg_assists, avg_fg_made, avg_fg_attempts, fg_percentage
+                        FROM team_roster_stats
+                        WHERE player_name = ?
+                        LIMIT 1
+                    ");
+                    $fallbackStmt->execute([$ep['name']]);
+                    $fallbackRow = $fallbackStmt->fetch(PDO::FETCH_ASSOC);
+                    if ($fallbackRow) {
+                        $stats = $fallbackRow;
+                    }
+                } catch (Exception $e) {
+                    // Silently continue
+                }
+            }
+            
+            // Last resort: game_player_stats calculation (diacritics + date filtered >= Oct 20)
+            if (!$stats) {
+                $normKey = normalizeForMatch($ep['name']);
+                if (isset($gpsFallback[$normKey])) {
+                    $stats = $gpsFallback[$normKey];
+                }
+            }
+            
+            $mergedRoster[] = [
+                'name' => $ep['name'],
+                'espn_id' => $ep['espn_id'],
+                'jersey' => $ep['jersey'],
+                'position' => $ep['position'],
+                'age' => $ep['age'],
+                'height' => $ep['height'],
+                'weight' => $ep['weight'],
+                'experience' => $ep['experience'],
+                'headshot' => $ep['headshot'],
+                'college' => $ep['college'],
+                'games_played' => $stats['games_played'] ?? 0,
+                'avg_minutes' => $stats['avg_minutes'] ?? 0,
+                'avg_points' => $stats['avg_points'] ?? 0,
+                'avg_rebounds' => $stats['avg_rebounds'] ?? 0,
+                'avg_assists' => $stats['avg_assists'] ?? 0,
+                'fg_percentage' => $stats['fg_percentage'] ?? 0,
+                'has_stats' => $stats !== null
+            ];
+        }
+        
+        // Sort by PPG descending
+        usort($mergedRoster, function($a, $b) {
+            return $b['avg_points'] <=> $a['avg_points'];
+        });
+        
+        $roster = ['success' => true, 'source' => 'espn', 'data' => $mergedRoster];
+    } elseif (!empty($dbStats)) {
+        // Fallback: DB only
+        $dbOnly = array_values($dbStats);
+        usort($dbOnly, function($a, $b) {
+            return $b['avg_points'] <=> $a['avg_points'];
+        });
+        $roster = ['success' => true, 'source' => 'database', 'data' => $dbOnly];
+    } else {
+        $roster = ['error' => 'No roster data available'];
     }
 }
 
@@ -520,9 +784,8 @@ $apiStatus = $nbaApi->checkDependencies();
     }
 
     .team-header {
-        background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7));
+        position: relative;
         padding: 2rem;
-        color: white;
         text-align: center;
         display: flex;
         align-items: center;
@@ -530,18 +793,49 @@ $apiStatus = $nbaApi->checkDependencies();
         gap: 2rem;
         min-height: 150px;
         margin-bottom: 2rem;
-        border-radius: 8px;
-        background-color: #333;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        overflow: hidden;
     }
     
-    .team-header img {
+    .team-header-logo-bg {
+        position: absolute;
+        width: 250px;
+        height: 250px;
+        object-fit: contain;
+        opacity: 0.2;
+        z-index: 1;
+        pointer-events: none;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+    }
+    
+    .team-header-content {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        gap: 2rem;
+    }
+    
+    .team-header-logo {
         width: 100px;
         height: 100px;
         object-fit: contain;
+        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15));
     }
     
     .team-info {
         text-align: left;
+    }
+    
+    .team-info h1 {
+        color: #333;
+    }
+    
+    .team-info p {
+        color: #555;
     }
     
     .stats-grid {
@@ -838,13 +1132,26 @@ $apiStatus = $nbaApi->checkDependencies();
         }
         
         .team-header {
-            flex-direction: column;
             padding: 1.5rem;
         }
         
-        .team-header img {
+        .team-header-content {
+            flex-direction: column;
+            gap: 1rem;
+        }
+        
+        .team-header-logo {
             width: 80px;
             height: 80px;
+        }
+        
+        .team-header-logo-bg {
+            width: 180px;
+            height: 180px;
+        }
+        
+        .team-info {
+            text-align: center;
         }
 
         .stats-grid {
@@ -1218,6 +1525,202 @@ $apiStatus = $nbaApi->checkDependencies();
             text-transform: uppercase;
             margin-top: 2px;
         }
+        
+        /* Roster Table List Styles */
+        .roster-table-wrap {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            margin-top: 1rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+        
+        .roster-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+            min-width: 600px;
+        }
+        
+        .roster-table thead {
+            background-color: var(--primary-color);
+            color: white;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        
+        .roster-table thead th {
+            padding: 10px 12px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            white-space: nowrap;
+        }
+        
+        .roster-table thead th.col-stat {
+            text-align: center;
+        }
+        
+        .roster-table thead th.col-meta {
+            text-align: center;
+        }
+        
+        .roster-table thead th.col-photo {
+            width: 44px;
+            padding: 6px;
+        }
+        
+        .roster-row td {
+            padding: 10px 12px;
+            vertical-align: middle;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .roster-row.alt {
+            background-color: #fafafa;
+        }
+        
+        .roster-row:hover {
+            background-color: #f0f4ff;
+        }
+        
+        .col-stat {
+            text-align: center;
+            font-variant-numeric: tabular-nums;
+            min-width: 48px;
+        }
+        
+        .col-meta {
+            text-align: center;
+            color: #666;
+            font-size: 0.85rem;
+            white-space: nowrap;
+        }
+        
+        .stat-ppg {
+            font-weight: 700;
+            color: var(--primary-color);
+        }
+        
+        .player-headshot {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            object-fit: cover;
+            background-color: #eee;
+        }
+        
+        .headshot-fallback {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background-color: #e8e8e8;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #aaa;
+            font-size: 0.85rem;
+        }
+        
+        .player-name-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        
+        .jersey-num {
+            font-weight: 600;
+            color: #888;
+            font-size: 0.85rem;
+            min-width: 28px;
+        }
+        
+        .player-name-text {
+            font-weight: 600;
+        }
+        
+        .pos-badge {
+            display: inline-block;
+            background-color: #e8e8e8;
+            color: #555;
+            padding: 1px 6px;
+            border-radius: 3px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }
+        
+        .player-college {
+            font-size: 0.75rem;
+            color: #999;
+            margin-top: 2px;
+        }
+        
+        @media (max-width: 768px) {
+            .hide-mobile {
+                display: none;
+            }
+            
+            .roster-table {
+                font-size: 0.75rem;
+                min-width: 520px;
+            }
+            
+            .roster-table thead th {
+                padding: 6px 4px;
+                font-size: 0.65rem;
+            }
+            
+            .roster-row td {
+                padding: 5px 4px;
+            }
+            
+            .player-headshot,
+            .headshot-fallback {
+                width: 26px;
+                height: 26px;
+            }
+            
+            .player-college {
+                display: none;
+            }
+            
+            .col-stat {
+                min-width: 30px;
+                font-size: 0.75rem;
+            }
+            
+            /* Compact player name: single line, no wrap */
+            .player-name-row {
+                gap: 3px;
+                flex-wrap: nowrap;
+            }
+            
+            .jersey-num {
+                font-size: 0.7rem;
+                min-width: auto;
+            }
+            
+            .player-name-text {
+                font-size: 0.78rem;
+                white-space: nowrap;
+            }
+            
+            .pos-badge {
+                font-size: 0.55rem;
+                padding: 0px 3px;
+                white-space: nowrap;
+            }
+            
+            .col-photo {
+                padding: 3px !important;
+                width: 32px !important;
+            }
+        }
 </style>
 </head>
 <body>
@@ -1294,7 +1797,12 @@ $apiStatus = $nbaApi->checkDependencies();
         
         <div class="team-header">
             <img src="<?php echo htmlspecialchars($team['logo']); ?>" 
+                 alt="" class="team-header-logo-bg"
+                 onerror="this.style.display='none'">
+            <div class="team-header-content">
+            <img src="<?php echo htmlspecialchars($team['logo']); ?>" 
                  alt="<?php echo htmlspecialchars($team['name']); ?>"
+                 class="team-header-logo"
                  onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iNTAiIGN5PSI1MCIgcj0iNDAiIHN0cm9rZT0iIzMzMzMzMyIgc3Ryb2tlLXdpZHRoPSI0Ii8+PHRleHQgeD0iNTAiIHk9IjU1IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjE2IiBmaWxsPSIjMzMzMzMzIj4/PC90ZXh0Pjwvc3ZnPgo='">
             <div class="team-info">
                 <h1 class="text-4xl font-bold mb-2"><?php echo htmlspecialchars($team['name']); ?></h1>
@@ -1314,6 +1822,7 @@ $apiStatus = $nbaApi->checkDependencies();
                     <p class="text-xl opacity-75">Draft information not available</p>
                 <?php endif; ?>
             </div>
+            </div><!-- /team-header-content -->
         </div>
 
         <!-- Team Record Stats -->
@@ -1596,72 +2105,93 @@ $apiStatus = $nbaApi->checkDependencies();
         </div>
         <?php endif; ?>
         
-        <!-- Roster Tab - SIMPLIFIED DISPLAY -->
+        <!-- Roster Tab - LIST DISPLAY with ESPN Bio + DB Stats -->
         <?php elseif (isset($_GET['tab']) && $_GET['tab'] === 'roster'): ?>
         
         <h2 class="section-title">
             <i class="fas fa-users"></i>
             Team Roster
+            <?php if (isset($roster['source']) && $roster['source'] === 'espn'): ?>
+                <span style="font-size: 0.75rem; color: #888; font-weight: normal; margin-left: auto;">via ESPN</span>
+            <?php endif; ?>
         </h2>
         
         <?php if (isset($roster['error'])): ?>
         <div class="no-data">
-            <h3>Team Roster</h3>
-            <p style="font-size: 1.2rem; color: #666; margin-top: 1rem;">
+            <p style="font-size: 1.2rem; color: #666;">
                 <?php echo htmlspecialchars($roster['error']); ?>
             </p>
         </div>
         <?php elseif (isset($roster['success']) && $roster['success'] && !empty($roster['data'])): ?>
-        <div class="roster-grid-enhanced">
-            <?php foreach ($roster['data'] as $player): ?>
-            <div class="player-card-enhanced">
-                <div class="player-header">
-                    <div class="player-icon-enhanced">
-                        <i class="fa-solid fa-user"></i>
-                    </div>
-                    <div class="player-info">
-                        <div class="player-name-enhanced">
-                            <?php echo htmlspecialchars($player['player_name']); ?>
-                        </div>
-                        <div class="player-games">
-                            <?php echo $player['games_played']; ?> Games Played
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="player-stats-grid">
-                    <div class="stat-item">
-                        <div class="stat-value"><?php echo number_format($player['avg_points'], 1); ?></div>
-                        <div class="stat-label">PPG</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-value"><?php echo number_format($player['avg_rebounds'], 1); ?></div>
-                        <div class="stat-label">RPG</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-value"><?php echo number_format($player['avg_assists'], 1); ?></div>
-                        <div class="stat-label">APG</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-value"><?php echo number_format($player['avg_minutes'], 1); ?></div>
-                        <div class="stat-label">MPG</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-value"><?php echo number_format($player['fg_percentage'], 1); ?>%</div>
-                        <div class="stat-label">FG%</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-value"><?php echo number_format($player['avg_fg_made'], 1); ?>/<?php echo number_format($player['avg_fg_attempts'], 1); ?></div>
-                        <div class="stat-label">FGM/A</div>
-                    </div>
-                </div>
-            </div>
-            <?php endforeach; ?>
+        
+        <?php $isEspn = ($roster['source'] ?? '') === 'espn'; ?>
+        
+        <!-- Desktop Table -->
+        <div class="roster-table-wrap">
+            <table class="roster-table">
+                <thead>
+                    <tr>
+                        <?php if ($isEspn): ?><th class="col-photo"></th><?php endif; ?>
+                        <th class="col-player">Player</th>
+                        <th class="col-stat">GP</th>
+                        <th class="col-stat">MPG</th>
+                        <th class="col-stat">PPG</th>
+                        <th class="col-stat">RPG</th>
+                        <th class="col-stat">APG</th>
+                        <th class="col-stat">FG%</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($roster['data'] as $idx => $player): ?>
+                    <tr class="roster-row<?php echo $idx % 2 === 0 ? '' : ' alt'; ?>">
+                        <?php if ($isEspn): ?>
+                        <td class="col-photo">
+                            <?php if (!empty($player['headshot'])): ?>
+                                <img src="<?php echo htmlspecialchars($player['headshot']); ?>" 
+                                     alt="" class="player-headshot"
+                                     onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                                <div class="headshot-fallback" style="display:none"><i class="fas fa-user"></i></div>
+                            <?php else: ?>
+                                <div class="headshot-fallback"><i class="fas fa-user"></i></div>
+                            <?php endif; ?>
+                        </td>
+                        <?php endif; ?>
+                        
+                        <td class="col-player">
+                            <div class="player-name-row">
+                                <?php if ($isEspn && !empty($player['jersey'])): ?>
+                                    <span class="jersey-num">#<?php echo htmlspecialchars($player['jersey']); ?></span>
+                                <?php endif; ?>
+                                <?php 
+                                    $playerName = $player['name'] ?? $player['player_name'] ?? '';
+                                    $playerEspnId = $player['espn_id'] ?? '';
+                                    $playerUrl = '/nba-wins-platform/stats/player_profile.php?team=' . urlencode($team_name) . '&player=' . urlencode($playerName) . ($playerEspnId ? '&espn_id=' . urlencode($playerEspnId) : '');
+                                ?>
+                                <a href="<?php echo $playerUrl; ?>" class="player-name-text" style="color: inherit; text-decoration: none; border-bottom: 1px dotted #ccc;" onmouseover="this.style.color='#1a73e8';this.style.borderBottomColor='#1a73e8'" onmouseout="this.style.color='inherit';this.style.borderBottomColor='#ccc'"><?php echo htmlspecialchars($playerName); ?></a>
+                                <?php if ($isEspn && !empty($player['position'])): ?>
+                                    <span class="pos-badge"><?php echo htmlspecialchars($player['position']); ?></span>
+                                <?php endif; ?>
+                            </div>
+                            <?php if ($isEspn && !empty($player['college'])): ?>
+                                <div class="player-college"><?php echo htmlspecialchars($player['college']); ?></div>
+                            <?php endif; ?>
+                        </td>
+                        
+                        <td class="col-stat"><?php echo $player['games_played'] ?? '-'; ?></td>
+                        <td class="col-stat"><?php echo ($player['avg_minutes'] ?? 0) > 0 ? number_format($player['avg_minutes'], 1) : '-'; ?></td>
+                        <td class="col-stat stat-ppg"><?php echo ($player['avg_points'] ?? 0) > 0 ? number_format($player['avg_points'], 1) : '-'; ?></td>
+                        <td class="col-stat"><?php echo ($player['avg_rebounds'] ?? 0) > 0 ? number_format($player['avg_rebounds'], 1) : '-'; ?></td>
+                        <td class="col-stat"><?php echo ($player['avg_assists'] ?? 0) > 0 ? number_format($player['avg_assists'], 1) : '-'; ?></td>
+                        <td class="col-stat"><?php echo ($player['fg_percentage'] ?? 0) > 0 ? number_format($player['fg_percentage'], 1) . '%' : '-'; ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
         </div>
+        
         <?php else: ?>
         <div class="no-data">
-            <h3>Team Roster</h3>
-            <p style="font-size: 1.2rem; color: #666; margin-top: 1rem;">Data coming soon</p>
+            <p style="font-size: 1.2rem; color: #666;">Roster data coming soon</p>
         </div>
         <?php endif; ?>
         

@@ -678,6 +678,77 @@ try {
     });
 
     // =====================================================================
+    // BIGGEST LEAD & BIGGEST DEFICIT - League-specific
+    // Finds the date where the gap between 1st and 2nd was largest (biggest lead)
+    // and the date where the gap between 1st and last was largest (biggest deficit)
+    // =====================================================================
+    $stmt = $pdo->prepare("
+        SELECT 
+            lpw.date,
+            COALESCE(u.display_name, lp.participant_name) as name,
+            lpw.total_wins,
+            u.id as user_id,
+            u.profile_photo
+        FROM league_participant_daily_wins lpw
+        JOIN league_participants lp ON lpw.league_participant_id = lp.id
+        LEFT JOIN users u ON lp.user_id = u.id
+        WHERE lp.league_id = ?
+        AND lpw.date >= ?
+        AND lpw.date <= ?
+        AND lpw.total_wins > 0
+        ORDER BY lpw.date ASC, lpw.total_wins DESC
+    ");
+    $stmt->execute([$currentLeagueId, $seasonStartDate, $snapshotEndDate]);
+    $dailyWinsForGaps = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Group by date
+    $gapsByDate = [];
+    foreach ($dailyWinsForGaps as $row) {
+        $gapsByDate[$row['date']][] = $row;
+    }
+    
+    $biggestLead = ['gap' => 0, 'name' => '', 'date' => '', 'wins' => 0, 'user_id' => null, 'profile_photo' => null, 'second_name' => '', 'second_wins' => 0];
+    $biggestDeficit = ['gap' => 0, 'name' => '', 'date' => '', 'wins' => 0, 'user_id' => null, 'profile_photo' => null, 'first_name' => '', 'first_wins' => 0];
+    
+    foreach ($gapsByDate as $date => $dayParticipants) {
+        if (count($dayParticipants) < 2) continue;
+        
+        // Already sorted by total_wins DESC from query
+        $first = $dayParticipants[0];
+        $second = $dayParticipants[1];
+        $last = end($dayParticipants);
+        
+        $leadGap = $first['total_wins'] - $second['total_wins'];
+        $deficitGap = $first['total_wins'] - $last['total_wins'];
+        
+        if ($leadGap > $biggestLead['gap']) {
+            $biggestLead = [
+                'gap' => $leadGap,
+                'name' => $first['name'],
+                'date' => $date,
+                'wins' => $first['total_wins'],
+                'user_id' => $first['user_id'],
+                'profile_photo' => $first['profile_photo'],
+                'second_name' => $second['name'],
+                'second_wins' => $second['total_wins']
+            ];
+        }
+        
+        if ($deficitGap > $biggestDeficit['gap']) {
+            $biggestDeficit = [
+                'gap' => $deficitGap,
+                'name' => $last['name'],
+                'date' => $date,
+                'wins' => $last['total_wins'],
+                'user_id' => $last['user_id'],
+                'profile_photo' => $last['profile_photo'],
+                'first_name' => $first['name'],
+                'first_wins' => $first['total_wins']
+            ];
+        }
+    }
+
+    // =====================================================================
     // NAIL-BITERS - Games decided by 3 points or less - For current league
     // =====================================================================
     $stmt = $pdo->prepare("
@@ -1254,6 +1325,7 @@ try {
         /* Base slide styles */
         .slide {
             min-height: 100vh;
+            min-height: 100dvh;
             min-height: -webkit-fill-available;
             opacity: 0;
             display: none;
@@ -1273,6 +1345,14 @@ try {
             justify-content: center;
             opacity: 1;
             transform: translateY(0);
+        }
+        
+        /* Desktop: force exact viewport height so flex centering works */
+        @media (min-width: 769px) {
+            .slide {
+                height: 100vh;
+                height: 100dvh;
+            }
         }
     
         /* Slide direction animations */
@@ -2033,6 +2113,81 @@ try {
             }
         }
         
+        /* ====== BIGGEST LEAD & DEFICIT - MOBILE COMPACT ====== */
+        @media (max-width: 768px) {
+            /* Reduce top emoji and heading spacing */
+            .lead-deficit-emoji {
+                font-size: 2.5rem !important;
+                margin-bottom: 0.5rem !important;
+            }
+            .lead-deficit-heading {
+                font-size: 1.5rem !important;
+                margin-bottom: 0.5rem !important;
+            }
+            /* Tighten the grid gap between the two cards */
+            .lead-deficit-grid {
+                gap: 0.75rem !important;
+            }
+            /* Compact card padding */
+            .lead-deficit-card {
+                padding: 0.75rem !important;
+            }
+            /* Compact card header: inline emoji + title */
+            .lead-deficit-card-header {
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                gap: 0.5rem !important;
+                margin-bottom: 0.5rem !important;
+            }
+            .lead-deficit-card-emoji {
+                font-size: 1.5rem !important;
+                margin-bottom: 0 !important;
+            }
+            .lead-deficit-card-header h3 {
+                font-size: 1rem !important;
+            }
+            /* Hide the subtitle on mobile to save space */
+            .lead-deficit-subtitle {
+                display: none !important;
+            }
+            /* Reduce content gap */
+            .lead-deficit-content {
+                gap: 0.25rem !important;
+            }
+            /* Smaller profile photo */
+            .lead-deficit-photo {
+                width: 56px !important;
+                height: 56px !important;
+                min-width: 56px !important;
+                min-height: 56px !important;
+                max-width: 56px !important;
+                max-height: 56px !important;
+                border-width: 3px !important;
+            }
+            /* Smaller name text */
+            .lead-deficit-content .text-2xl {
+                font-size: 1.1rem !important;
+            }
+            /* Smaller stat number */
+            .lead-deficit-stat {
+                font-size: 1.5rem !important;
+            }
+        }
+        @media (max-width: 380px) {
+            .lead-deficit-photo {
+                width: 44px !important;
+                height: 44px !important;
+                min-width: 44px !important;
+                min-height: 44px !important;
+                max-width: 44px !important;
+                max-height: 44px !important;
+            }
+            .lead-deficit-stat {
+                font-size: 1.25rem !important;
+            }
+        }
+
         /* Extra small screens */
         @media (max-width: 380px) {
             h2 {
@@ -2367,8 +2522,76 @@ try {
             </div>
         </div>
 
-        <!-- Nail-Biters Slide -->
+        <!-- Biggest Lead & Deficit Slide -->
         <div class="slide" id="slide8">
+            <div class="text-6xl mb-8 slide-emoji lead-deficit-emoji">📏</div>
+            <h2 class="text-3xl font-bold mb-8 text-center lead-deficit-heading">Biggest Lead & Deficit</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl w-full lead-deficit-grid">
+                <!-- Biggest Lead -->
+                <div class="stagger-item">
+                    <div class="glass-card p-6 lead-deficit-card">
+                        <div class="text-center mb-4 lead-deficit-card-header">
+                            <div class="text-4xl mb-2 lead-deficit-card-emoji">👑</div>
+                            <h3 class="text-xl font-semibold">Biggest Lead</h3>
+                            <div class="text-sm text-gray-400 lead-deficit-subtitle">Largest gap over 2nd place</div>
+                        </div>
+                        <?php if ($biggestLead['gap'] > 0): ?>
+                            <div class="flex flex-col items-center gap-3 lead-deficit-content">
+                                <?php $leadPhotoUrl = getProfilePhotoUrl($biggestLead['user_id'], $biggestLead['profile_photo']); ?>
+                                <img src="<?php echo htmlspecialchars($leadPhotoUrl); ?>" 
+                                     alt="<?php echo htmlspecialchars($biggestLead['name']); ?>" 
+                                     class="profile-photo-large lead-deficit-photo"
+                                     onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiIGZpbGw9IiNFNUU3RUIiLz4KcGF0aCBkPSJNMjAgMjJDMjMuMzEzNyAyMiAyNiAxOS4zMTM3IDI2IDE2QzI2IDEyLjY4NjMgMjMuMzEzNyAxMCAyMCAxMEMxNi42ODYzIDEwIDE0IDEyLjY4NjMgMTQgMTZDMTQgMTkuMzEzNyAxNi42ODYzIDIyIDIwIDIyWiIgZmlsbD0iIzlDQTNBRiIvPgo8cGF0aCBkPSJNMjggMzBDMjggMjUuNTgxNyAyNC40MTgzIDIyIDIwIDIyQzE1LjU4MTcgMjIgMTIgMjUuNTgxNyAxMiAzMEgyOFoiIGZpbGw9IiM5Q0EzQUYiLz4KPC9zdmc+Cg=='">
+                                <div class="text-2xl font-bold"><?php echo htmlspecialchars($biggestLead['name']); ?></div>
+                                <div class="text-4xl font-bold stat-glow-green lead-deficit-stat">+<?php echo $biggestLead['gap']; ?> wins</div>
+                                <div class="text-sm text-gray-400">
+                                    <?php echo $biggestLead['wins']; ?> wins vs <?php echo htmlspecialchars($biggestLead['second_name']); ?>'s <?php echo $biggestLead['second_wins']; ?>
+                                </div>
+                                <div class="text-sm text-gray-400">
+                                    <?php echo date('F j, Y', strtotime($biggestLead['date'])); ?>
+                                </div>
+                            </div>
+                        <?php else: ?>
+                            <div class="text-center text-gray-400">No data available yet</div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                
+                <!-- Biggest Deficit -->
+                <div class="stagger-item">
+                    <div class="glass-card p-6 lead-deficit-card">
+                        <div class="text-center mb-4 lead-deficit-card-header">
+                            <div class="text-4xl mb-2 lead-deficit-card-emoji">🕳️</div>
+                            <h3 class="text-xl font-semibold">Biggest Deficit</h3>
+                            <div class="text-sm text-gray-400 lead-deficit-subtitle">Furthest from 1st place</div>
+                        </div>
+                        <?php if ($biggestDeficit['gap'] > 0): ?>
+                            <div class="flex flex-col items-center gap-3 lead-deficit-content">
+                                <?php $deficitPhotoUrl = getProfilePhotoUrl($biggestDeficit['user_id'], $biggestDeficit['profile_photo']); ?>
+                                <img src="<?php echo htmlspecialchars($deficitPhotoUrl); ?>" 
+                                     alt="<?php echo htmlspecialchars($biggestDeficit['name']); ?>" 
+                                     class="profile-photo-large lead-deficit-photo"
+                                     onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiIGZpbGw9IiNFNUU3RUIiLz4KcGF0aCBkPSJNMjAgMjJDMjMuMzEzNyAyMiAyNiAxOS4zMTM3IDI2IDE2QzI2IDEyLjY4NjMgMjMuMzEzNyAxMCAyMCAxMEMxNi42ODYzIDEwIDE0IDEyLjY4NjMgMTQgMTZDMTQgMTkuMzEzNyAxNi42ODYzIDIyIDIwIDIyWiIgZmlsbD0iIzlDQTNBRiIvPgo8cGF0aCBkPSJNMjggMzBDMjggMjUuNTgxNyAyNC40MTgzIDIyIDIwIDIyQzE1LjU4MTcgMjIgMTIgMjUuNTgxNyAxMiAzMEgyOFoiIGZpbGw9IiM5Q0EzQUYiLz4KPC9zdmc+Cg=='">
+                                <div class="text-2xl font-bold"><?php echo htmlspecialchars($biggestDeficit['name']); ?></div>
+                                <div class="text-4xl font-bold stat-glow-red lead-deficit-stat">-<?php echo $biggestDeficit['gap']; ?> wins</div>
+                                <div class="text-sm text-gray-400">
+                                    <?php echo $biggestDeficit['wins']; ?> wins vs <?php echo htmlspecialchars($biggestDeficit['first_name']); ?>'s <?php echo $biggestDeficit['first_wins']; ?>
+                                </div>
+                                <div class="text-sm text-gray-400">
+                                    <?php echo date('F j, Y', strtotime($biggestDeficit['date'])); ?>
+                                </div>
+                            </div>
+                        <?php else: ?>
+                            <div class="text-center text-gray-400">No data available yet</div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Nail-Biters Slide -->
+        <div class="slide" id="slide9">
             <div class="text-6xl mb-8 slide-emoji">😰</div>
             <h2 class="text-3xl font-bold mb-8 text-center">Nail-Biters</h2>
             <div class="text-center text-gray-400 mb-6">Games decided by 3 points or less</div>
@@ -2413,7 +2636,7 @@ try {
         </div>
         
         <!-- Perfect Nights Slide -->
-        <div class="slide" id="slide9">
+        <div class="slide" id="slide10">
             <div class="text-6xl mb-8 slide-emoji">💯</div>
             <h2 class="text-3xl font-bold mb-8 text-center">Perfect Nights</h2>
             <div class="text-center text-gray-400 mb-6">Multiple teams played, all victorious</div>
@@ -2465,7 +2688,7 @@ try {
         </div>
     
         <!-- Heartbreaker Nights Slide -->
-        <div class="slide" id="slide10">
+        <div class="slide" id="slide11">
             <div class="text-6xl mb-8 slide-emoji">💔</div>
             <h2 class="text-3xl font-bold mb-8 text-center">Heartbreaker Nights</h2>
             <div class="text-center text-gray-400 mb-6">Multiple teams played, all defeated</div>
@@ -2516,7 +2739,7 @@ try {
         </div>
     
         <!-- Over/Underachievers Slide -->
-        <div class="slide" id="slide11">
+        <div class="slide" id="slide12">
             <div class="text-6xl mb-8 slide-emoji">🌟</div>
             <h2 class="text-3xl font-bold mb-8 text-center">The Vegas Zone</h2>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl w-full">
@@ -2562,7 +2785,7 @@ try {
         </div>
 
         <!-- Draft Steals Slide -->
-        <div class="slide" id="slide12">
+        <div class="slide" id="slide13">
             <div class="text-6xl mb-8 slide-emoji">💰</div>
             <h2 class="text-3xl font-bold mb-8 text-center">Best Draft Steals</h2>
             <div class="text-center text-gray-400 mb-6">Teams outperforming their draft round average</div>
@@ -2599,7 +2822,7 @@ try {
         </div>
 
         <!-- Worst Draft Picks Slide -->
-        <div class="slide" id="slide13">
+        <div class="slide" id="slide14">
             <div class="text-6xl mb-8 slide-emoji">📉</div>
             <h2 class="text-3xl font-bold mb-8 text-center">Worst Draft Picks</h2>
             <div class="text-center text-gray-400 mb-6">Teams underperforming their draft round average</div>
@@ -2636,7 +2859,7 @@ try {
         </div>
 
         <!-- Platform-Wide Top 5 Leaderboard Slide -->
-        <div class="slide" id="slide14" style="padding-bottom: 6rem;">
+        <div class="slide" id="slide15" style="padding-bottom: 6rem;">
             <div class="text-6xl mb-8 slide-emoji">🌐</div>
             <h2 class="text-3xl font-bold mb-8 text-center">Platform-Wide Top 5</h2>
             <div class="text-center text-gray-400 mb-6">Best performers across all leagues</div>
@@ -2668,7 +2891,7 @@ try {
             </div>
         </div>
         <!-- Season Summary Slide -->
-        <div class="slide" id="slide15">
+        <div class="slide" id="slide16">
             <div class="halftime-animate">
                 <div class="text-6xl mb-6">📊</div>
             </div>
@@ -2702,7 +2925,7 @@ try {
         </div>
 
         <!-- Shameless Plug Slide -->
-        <div class="slide" id="slide16">
+        <div class="slide" id="slide17">
             <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; width: 100%;">
                 <div class="text-6xl mb-8 slide-emoji">☕</div>
                 <h2 class="text-3xl font-bold mb-4 text-center">Enjoying the Platform?<br>(Shameless Plug)</h2>

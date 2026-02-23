@@ -17,15 +17,47 @@ if (!$leagueContext || !$leagueContext['league_id']) {
     die('Error: No league selected. Please contact administrator.');
 }
 
-// Check if there are games today that aren't complete yet
+// =============================================================================
+// SMART GAME DAY DETECTION
+// Between midnight and 3 AM, if yesterday's games are still in progress,
+// treat "today" as yesterday so scores/games don't flip prematurely.
+// Hard cutoff at 3 AM - always move to the new day by then.
+// =============================================================================
+$currentHour = (int) date('G'); // 0-23
+$currentMinute = (int) date('i');
+$calendarToday = date('Y-m-d');
+$yesterday = date('Y-m-d', strtotime('-1 day'));
+$effectiveToday = $calendarToday; // default
+
+if ($currentHour < 3) {
+    // Between midnight and 3 AM - check if yesterday has active games
+    // Active = NOT Final/Finished AND NOT just Scheduled/Postponed/Cancelled/Not Started
+    // This catches games that are actually in progress (Q1-Q4, Halftime, OT, etc.)
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) as active_count
+        FROM games 
+        WHERE date = ?
+        AND status_long NOT IN ('Final', 'Finished')
+        AND status_long NOT IN ('Scheduled', 'Not Started', 'Postponed', 'Cancelled', 'Canceled')
+    ");
+    $stmt->execute([$yesterday]);
+    $activeYesterdayGames = $stmt->fetch()['active_count'];
+    
+    if ($activeYesterdayGames > 0) {
+        // Yesterday's games are still in progress - stay on yesterday
+        $effectiveToday = $yesterday;
+    }
+}
+
+// Check if there are games on the effective date that aren't complete yet
 // Complete statuses are: "Final" or "Finished"
 $stmt = $pdo->prepare("
     SELECT COUNT(*) as count 
     FROM games 
-    WHERE date = CURDATE() 
+    WHERE date = ? 
     AND status_long NOT IN ('Final', 'Finished')
 ");
-$stmt->execute();
+$stmt->execute([$effectiveToday]);
 $has_incomplete_games = $stmt->fetch()['count'] > 0;
 
 if ($has_incomplete_games) {
@@ -191,8 +223,9 @@ foreach ($participantData as $row) {
 }
 
 // Fetch previous day's and today's logged wins
-$yesterdayDate = date('Y-m-d', strtotime('-1 day'));
-$todayDate = date('Y-m-d');
+// Use effectiveToday so wins_change reflects the correct game day
+$todayDate = $effectiveToday;
+$yesterdayDate = date('Y-m-d', strtotime($effectiveToday . ' -1 day'));
 
 // MODIFIED: Get yesterday's wins for baseline from league-specific table
 $stmt = $pdo->prepare("
@@ -300,8 +333,9 @@ $nbaCupDates = [
     '2025-12-16'
 ];
 
-// Get the selected date from the query string, defaulting to today if not set
-$selectedDate = isset($_GET['date']) ? $_GET['date'] : date('Y-m-d');
+// Get the selected date from the query string, defaulting to effective "today"
+// (which may be yesterday if games are still in progress past midnight)
+$selectedDate = isset($_GET['date']) ? $_GET['date'] : $effectiveToday;
 
 // Check if selected date is an NBA Cup date
 $isNbaCupDate = in_array($selectedDate, $nbaCupDates);
@@ -1737,7 +1771,7 @@ function getParticipantGameCounts($games, $participants) {
             <?php if ($isAllStarBreak && empty($games)): ?>
                 <div style="text-align: center; padding: 2rem 1rem;">
                     <p style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.25rem;">All-Star Break</p>
-                    <p style="color: #9ca3af; font-size: 0.9rem;">No regular season games during the All-Star Break.<br>The season resumes February 19th.</p>
+                    <p style="color: #9ca3af; font-size: 0.9rem;">No regular season games during the All-Star Break.</p>
                     <?php if ($isAllStarBreakToday): ?>
                     <a href="/nba-wins-platform/recap/all_star_recap.php" 
                        style="display: inline-block; margin-top: 1.25rem; padding: 0.65rem 1.5rem; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; border-radius: 9999px; text-decoration: none; font-weight: 600; font-size: 0.95rem; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 4px 15px rgba(59,130,246,0.3);" 
