@@ -46,29 +46,35 @@ if ($_POST) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#121a23">
     <title>Login - NBA Wins Pool</title>
     <link rel="apple-touch-icon" type="image/png" href="../public/assets/favicon/favicon.png">
     <link rel="icon" type="image/png" href="../public/assets/favicon/favicon.png">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-image: url('../public/assets/background/geometric_white.png');
-            background-repeat: repeat;
-            background-attachment: fixed;
-            background-color: #f5f5f5;
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: #121a23;
+            background-image: radial-gradient(ellipse at 50% 0%, rgba(56, 139, 253, 0.06) 0%, transparent 60%);
             margin: 0;
             padding: 20px;
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
+            -webkit-font-smoothing: antialiased;
         }
 
         .login-container {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 12px;
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            background: rgba(22, 30, 40, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 16px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             padding: 40px;
             width: 100%;
             max-width: 400px;
@@ -83,13 +89,15 @@ if ($_POST) {
             width: 80px;
             height: 80px;
             margin-bottom: 10px;
+            border-radius: 16px;
         }
 
         h1 {
             text-align: center;
-            color: #333;
+            color: #e6edf3;
             margin: 0 0 30px 0;
-            font-size: 28px;
+            font-size: 26px;
+            font-weight: 700;
         }
 
         .form-group {
@@ -99,55 +107,65 @@ if ($_POST) {
         label {
             display: block;
             margin-bottom: 8px;
-            color: #555;
+            color: #8b949e;
             font-weight: 500;
+            font-size: 14px;
         }
 
         input[type="text"],
         input[type="password"] {
             width: 100%;
             padding: 12px 15px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-size: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            font-size: 15px;
+            font-family: 'Outfit', sans-serif;
             box-sizing: border-box;
-            transition: border-color 0.3s ease;
+            transition: border-color 0.25s ease, box-shadow 0.25s ease;
+            background: rgba(255, 255, 255, 0.04);
+            color: #e6edf3;
         }
+
+        input::placeholder { color: #484f58; }
 
         input:focus {
             outline: none;
-            border-color: #2196F3;
+            border-color: #388bfd;
+            box-shadow: 0 0 0 3px rgba(56, 139, 253, 0.15);
         }
 
         .submit-btn {
             width: 100%;
-            background: linear-gradient(135deg, #2196F3, #1976D2);
+            background: linear-gradient(135deg, #388bfd, #2563eb);
             color: white;
-            padding: 14px 20px;
+            padding: 13px 20px;
             border: none;
-            border-radius: 8px;
-            font-size: 16px;
+            border-radius: 10px;
+            font-size: 15px;
             font-weight: 600;
+            font-family: 'Outfit', sans-serif;
             cursor: pointer;
-            transition: transform 0.2s ease;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
             margin-top: 10px;
         }
 
         .submit-btn:hover {
             transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(56, 139, 253, 0.3);
         }
 
         .guest-btn {
             width: 100%;
-            background: linear-gradient(135deg, #757575, #616161);
-            color: white;
-            padding: 14px 20px;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
+            background: rgba(255, 255, 255, 0.06);
+            color: #8b949e;
+            padding: 13px 20px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            font-size: 15px;
             font-weight: 600;
+            font-family: 'Outfit', sans-serif;
             cursor: pointer;
-            transition: transform 0.2s ease;
+            transition: all 0.2s ease;
             margin-top: 10px;
             text-decoration: none;
             display: block;
@@ -156,59 +174,56 @@ if ($_POST) {
         }
 
         .guest-btn:hover {
-            transform: translateY(-1px);
-            background: linear-gradient(135deg, #616161, #424242);
+            background: rgba(255, 255, 255, 0.1);
+            color: #c9d1d9;
+            border-color: rgba(255, 255, 255, 0.14);
         }
 
         .divider {
             display: flex;
             align-items: center;
             margin: 20px 0 10px 0;
-            color: #aaa;
-            font-size: 14px;
+            color: #484f58;
+            font-size: 13px;
         }
 
         .divider::before,
         .divider::after {
             content: '';
             flex: 1;
-            border-bottom: 1px solid #e0e0e0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
         }
 
-        .divider::before {
-            margin-right: 12px;
-        }
-
-        .divider::after {
-            margin-left: 12px;
-        }
+        .divider::before { margin-right: 12px; }
+        .divider::after { margin-left: 12px; }
 
         .message {
             padding: 12px 15px;
-            border-radius: 6px;
+            border-radius: 8px;
             margin-bottom: 20px;
             text-align: center;
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
+            background-color: rgba(248, 81, 73, 0.12);
+            color: #f85149;
+            border: 1px solid rgba(248, 81, 73, 0.2);
+            font-size: 14px;
         }
 
         .register-link {
             text-align: center;
             margin-top: 20px;
             padding-top: 20px;
-            border-top: 1px solid #e0e0e0;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            color: #8b949e;
+            font-size: 14px;
         }
 
         .register-link a {
-            color: #2196F3;
+            color: #388bfd;
             text-decoration: none;
             font-weight: 500;
         }
 
-        .register-link a:hover {
-            text-decoration: underline;
-        }
+        .register-link a:hover { text-decoration: underline; }
 
         .forgot-password-link {
             text-align: right;
@@ -216,37 +231,35 @@ if ($_POST) {
         }
 
         .forgot-password-link a {
-            color: #2196F3;
-            font-size: 14px;
+            color: #388bfd;
+            font-size: 13px;
             text-decoration: none;
         }
 
-        .forgot-password-link a:hover {
-            text-decoration: underline;
-        }
+        .forgot-password-link a:hover { text-decoration: underline; }
 
         .test-accounts {
-            background-color: #e3f2fd;
-            border: 1px solid #bbdefb;
-            border-radius: 6px;
+            background-color: rgba(56, 139, 253, 0.08);
+            border: 1px solid rgba(56, 139, 253, 0.15);
+            border-radius: 8px;
             padding: 15px;
             margin-bottom: 20px;
-            font-size: 14px;
+            font-size: 13px;
         }
 
         .test-accounts h4 {
             margin: 0 0 10px 0;
-            color: #1565c0;
+            color: #388bfd;
         }
 
         .test-accounts p {
             margin: 5px 0;
-            color: #333;
+            color: #c9d1d9;
         }
 
         @media (max-width: 500px) {
             .login-container {
-                padding: 25px 20px;
+                padding: 28px 22px;
                 margin: 10px;
             }
         }
