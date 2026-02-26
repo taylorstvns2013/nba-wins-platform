@@ -209,6 +209,94 @@ function getQuarterScores($home_team, $away_team, $api_scores) {
 }
 
 /**
+ * Sync final games from API to database BEFORE standings are read.
+ * This fires the MySQL trigger immediately so the leaderboard is current.
+ * Returns the API scores for reuse (avoids calling the API twice).
+ */
+function syncFinalGames($pdo, $effectiveDate) {
+    $debug_log = "/tmp/game_scores_debug.log";
+    $timestamp = date('Y-m-d H:i:s');
+    
+    // Get API scores (this is the same call getAPIScores makes)
+    $api_scores = getAPIScores();
+    
+    if (empty($api_scores['scoreboard']['games'])) {
+        return $api_scores; // No games from API, nothing to sync
+    }
+    
+    // Get today's non-final games from the database
+    $stmt = $pdo->prepare("
+        SELECT id, home_team, away_team, home_points, away_points, 
+               status_long, date, home_team_code, away_team_code
+        FROM games 
+        WHERE date = ? 
+        AND status_long NOT IN ('Final', 'Finished')
+    ");
+    $stmt->execute([$effectiveDate]);
+    $db_games = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    if (empty($db_games)) {
+        return $api_scores; // All games already final in DB
+    }
+    
+    $updated_count = 0;
+    
+    foreach ($api_scores['scoreboard']['games'] as $api_game) {
+        // Only care about games the API says are Final (gameStatus == 3)
+        if ($api_game['gameStatus'] != 3) {
+            continue;
+        }
+        
+        $api_home = $api_game['homeTeam']['teamCity'] . ' ' . $api_game['homeTeam']['teamName'];
+        $api_away = $api_game['awayTeam']['teamCity'] . ' ' . $api_game['awayTeam']['teamName'];
+        $api_home_score = $api_game['homeTeam']['score'] ?? 0;
+        $api_away_score = $api_game['awayTeam']['score'] ?? 0;
+        
+        // Convert API UTC time to EST date for matching
+        $utc_dt = new DateTime($api_game['gameTimeUTC']);
+        $utc_dt->setTimezone(new DateTimeZone('America/New_York'));
+        $api_date = $utc_dt->format('Y-m-d');
+        
+        // Find matching non-final game in DB
+        foreach ($db_games as $db_game) {
+            if ($db_game['home_team'] === $api_home && 
+                $db_game['away_team'] === $api_away &&
+                $db_game['date'] === $api_date) {
+                
+                // This game is Final in API but not in DB — update it
+                // This UPDATE fires the MySQL trigger which updates 2025_2026 standings
+                $update_stmt = $pdo->prepare("
+                    UPDATE games 
+                    SET status_long = 'Final', 
+                        home_points = ?, 
+                        away_points = ?
+                    WHERE id = ?
+                ");
+                $update_stmt->execute([$api_home_score, $api_away_score, $db_game['id']]);
+                
+                $updated_count++;
+                file_put_contents($debug_log, 
+                    "[$timestamp] SYNC FINAL: {$api_away} @ {$api_home} — " .
+                    "{$api_away_score}-{$api_home_score} (game_id: {$db_game['id']})\n", 
+                    FILE_APPEND
+                );
+                
+                break; // Found the match, move to next API game
+            }
+        }
+    }
+    
+    if ($updated_count > 0) {
+        file_put_contents($debug_log, 
+            "[$timestamp] SYNC COMPLETE: Updated $updated_count game(s) to Final\n", 
+            FILE_APPEND
+        );
+    }
+    
+    return $api_scores; // Return for reuse in game display
+}
+
+/**
  * Format team name from abbreviation to full name
  */
 function getFullTeamName($abbr) {

@@ -146,6 +146,36 @@ if ($_POST) {
                     }
                 }
                 break;
+
+            // --- Set Default League ---
+            case 'set_default_league':
+                if (isset($_SESSION['user_id'])) {
+                    $default_league_val = $_POST['default_league_id'] ?? '';
+                    try {
+                        if ($default_league_val === '' || $default_league_val === 'none') {
+                            // Clear default
+                            $stmt = $pdo->prepare("UPDATE users SET default_league_id = NULL WHERE id = ?");
+                            $stmt->execute([$_SESSION['user_id']]);
+                            $success_message = "Default league cleared.";
+                        } else {
+                            $default_league_val = intval($default_league_val);
+                            // Verify user is an active participant in this league
+                            $stmt = $pdo->prepare("
+                                SELECT 1 FROM league_participants 
+                                WHERE user_id = ? AND league_id = ? AND status = 'active'
+                            ");
+                            $stmt->execute([$_SESSION['user_id'], $default_league_val]);
+                            if ($stmt->fetch()) {
+                                $stmt = $pdo->prepare("UPDATE users SET default_league_id = ? WHERE id = ?");
+                                $stmt->execute([$default_league_val, $_SESSION['user_id']]);
+                                $success_message = "Default league updated!";
+                            }
+                        }
+                    } catch (Exception $e) {
+                        $error_message = "Error: " . $e->getMessage();
+                    }
+                }
+                break;
         }
     }
 }
@@ -197,6 +227,25 @@ if (!$participant) {
 
 // ------ Own Profile Check ------
 $is_own_profile = isset($_SESSION['user_id']) && ($participant['user_id'] == $_SESSION['user_id']);
+
+// ------ User's Leagues (for default league setting) ------
+$user_leagues = [];
+$user_default_league_id = null;
+if ($is_own_profile) {
+    $stmt = $pdo->prepare("
+        SELECT l.id, l.display_name
+        FROM league_participants lp
+        JOIN leagues l ON l.id = lp.league_id
+        WHERE lp.user_id = ? AND lp.status = 'active'
+        ORDER BY l.display_name ASC
+    ");
+    $stmt->execute([$_SESSION['user_id']]);
+    $user_leagues = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $stmt = $pdo->prepare("SELECT default_league_id FROM users WHERE id = ?");
+    $stmt->execute([$_SESSION['user_id']]);
+    $user_default_league_id = $stmt->fetchColumn() ?: null;
+}
 
 // ------ Pinned Dashboard Widgets ------
 $pinned_widgets = [];
@@ -635,7 +684,7 @@ $currentLeagueId = $league_id;
    CSS VARIABLES
    ========================================================================== */
 :root {
-    --bg-primary: #121a23;
+    --bg-primary: #151d28;
     --bg-secondary: #1a222c;
     --bg-card: #202a38;
     --bg-card-hover: #273140;
@@ -678,6 +727,17 @@ body {
     background-image: url('../public/assets/background/geometric_white.png');
     background-repeat: repeat;
     background-attachment: fixed;
+}
+.header-controls .participant-select {
+    background-color: rgba(255, 255, 255, 0.6);
+    border-color: rgba(0, 0, 0, 0.12);
+    color: #333;
+}
+.header-controls .participant-select option { background: #fff; color: #333; }
+.header-controls .gear-btn {
+    background: rgba(255, 255, 255, 0.6);
+    border-color: rgba(0, 0, 0, 0.12);
+    color: #666;
 }
 <?php endif; ?>
 
@@ -756,16 +816,16 @@ body {
 }
 .participant-select:hover { border-color: rgba(56, 139, 253, 0.3); }
 .participant-select option { background: var(--bg-card); color: var(--text-primary); }
-.profile-topbar .participant-select { margin-bottom: 0; }
 
 /* ==========================================================================
    PROFILE HEADER
    ========================================================================== */
 .profile-header {
     background: var(--bg-card); padding: 2rem;
+    padding-top: 3rem;
     color: var(--text-primary); text-align: center;
-    border-radius: var(--radius-lg); margin-bottom: 14px;
-    position: relative; overflow: hidden; min-height: 180px;
+    border-radius: var(--radius-lg); margin-bottom: 14px; margin-top: 14px;
+    position: relative; overflow: visible; min-height: 180px; z-index: 10;
     display: flex; align-items: center; justify-content: center;
     box-shadow: var(--shadow-card);
 }
@@ -773,6 +833,7 @@ body {
     position: absolute; top: 0; left: 0; right: 0; bottom: 0;
     display: flex; flex-wrap: wrap; justify-content: space-around;
     align-items: center; opacity: 0.08;
+    overflow: hidden; border-radius: var(--radius-lg);
 }
 .header-logo { width: 90px; height: 90px; object-fit: contain; margin: 5px; }
 .profile-content { position: relative; z-index: 2; }
@@ -866,10 +927,26 @@ body {
 /* ==========================================================================
    GEAR SETTINGS PANEL
    ========================================================================== */
-/* Top bar: selector + gear */
-.profile-topbar {
+/* Header controls: selector left, gear right */
+.header-controls {
+    position: absolute; top: 10px; left: 12px; right: 12px;
     display: flex; align-items: center; justify-content: space-between;
-    gap: 12px; padding-top: 14px; margin-bottom: 14px;
+    z-index: 5;
+}
+.header-controls .participant-select {
+    max-width: 180px; padding: 7px 30px 7px 12px;
+    font-size: 13px; margin-bottom: 0;
+    background-color: rgba(0, 0, 0, 0.25);
+    border-color: rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.header-controls .gear-btn {
+    width: 32px; height: 32px; font-size: 13px;
+    background: rgba(0, 0, 0, 0.25);
+    border-color: rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    box-shadow: none;
 }
 
 .gear-settings-wrapper {
@@ -889,10 +966,9 @@ body {
 
 .gear-panel {
     display: none; position: absolute; top: 100%; right: 0;
-    margin-top: 8px; min-width: 300px; z-index: 50;
+    margin-top: 8px; min-width: 300px; z-index: 100;
     background: var(--bg-card); border: 1px solid var(--border-color);
     border-radius: var(--radius-md); box-shadow: var(--shadow-elevated);
-    overflow: hidden;
 }
 .gear-panel.open { display: block; }
 
@@ -900,7 +976,8 @@ body {
     padding: 14px 16px;
     border-bottom: 1px solid var(--border-color);
 }
-.gear-section:last-child { border-bottom: none; }
+.gear-section:first-child { border-radius: var(--radius-md) var(--radius-md) 0 0; }
+.gear-section:last-child { border-bottom: none; border-radius: 0 0 var(--radius-md) var(--radius-md); }
 .gear-section.disabled {
     opacity: 0.4; pointer-events: none;
 }
@@ -968,11 +1045,51 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
     font-size: 0.8rem; color: var(--text-muted); font-style: italic;
 }
 
+/* Default league dropdown */
+.default-league-select {
+    flex: 1;
+    padding: 7px 12px;
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color 0.2s;
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b949e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 30px;
+}
+.default-league-select:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 2px rgba(56, 139, 253, 0.15);
+}
+.default-league-select option {
+    background: var(--bg-card);
+    color: var(--text-primary);
+}
+
 /* ==========================================================================
    STATS GRID & CARDS
    ========================================================================== */
 .stats-grid {
     display: grid; gap: 14px; grid-template-columns: 1fr;
+}
+
+/* Cascade load animation */
+@keyframes cascadeIn {
+    from { opacity: 0; transform: translateY(18px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.cascade-item {
+    opacity: 0;
+    animation: cascadeIn 0.8s ease-out forwards;
 }
 
 .stats-card {
@@ -1018,33 +1135,43 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
 /* ==========================================================================
    GAMES LIST
    ========================================================================== */
-.games-list { border-radius: var(--radius-md); overflow: hidden; }
+.games-list { display: flex; flex-direction: column; gap: 6px; }
 
 .game-list-item {
-    padding: 10px 12px; border-bottom: 1px solid var(--border-color);
+    padding: 10px 12px;
+    background: var(--bg-elevated);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
     display: flex; justify-content: space-between; align-items: center;
     text-decoration: none; color: inherit;
-    transition: background var(--transition-fast);
+    transition: all var(--transition-fast);
+    gap: 10px;
 }
-.game-list-item.clickable:hover { background: var(--bg-card-hover); }
-.game-list-item:last-child { border-bottom: none; }
-.game-list-item.win { background: rgba(63, 185, 80, 0.06); }
-.game-list-item.loss { background: rgba(248, 81, 73, 0.06); }
+.game-list-item.clickable:hover { background: var(--bg-card-hover); border-color: rgba(56, 139, 253, 0.15); }
+.game-list-item.win { border-left: 3px solid var(--accent-green); }
+.game-list-item.loss { border-left: 3px solid var(--accent-red); }
 
 .game-list-info { flex: 1; min-width: 0; }
-.game-list-date { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 2px; }
+.game-list-date { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 2px; }
 .game-list-matchup {
-    font-weight: 600; font-size: 0.9rem; color: var(--text-primary);
-    display: flex; align-items: center; flex-wrap: wrap; gap: 4px;
+    font-weight: 600; font-size: 0.88rem; color: var(--text-primary);
+    display: flex; align-items: center; gap: 4px;
 }
-.game-list-matchup img { width: 18px; height: 18px; vertical-align: middle; }
-.game-list-matchup .owner-tag {
-    font-size: 0.78rem; color: var(--text-muted); font-weight: 400;
+.game-list-matchup img { width: 18px; height: 18px; vertical-align: middle; flex-shrink: 0; }
+.game-list-owner {
+    font-size: 0.75rem; color: var(--text-muted); font-weight: 400;
+    font-style: italic; display: block; margin-top: 1px;
 }
 
-.game-list-result { text-align: right; min-width: 65px; }
+.game-list-result {
+    text-align: right; flex-shrink: 0; white-space: nowrap;
+    display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
+}
+.game-list-score-line {
+    display: flex; align-items: center; gap: 4px; white-space: nowrap;
+}
 .game-list-score {
-    font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums;
+    font-size: 1rem; font-weight: 700; font-variant-numeric: tabular-nums;
 }
 .game-list-outcome { font-size: 0.85rem; font-weight: 700; }
 
@@ -1130,7 +1257,10 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
    ========================================================================== */
 @media (max-width: 600px) {
     .app-container { padding: 0 8px 2rem; }
-    .profile-header { padding: 1.5rem 1rem; min-height: 150px; }
+    .profile-header { padding: 1.5rem 0.75rem; padding-top: 2.8rem; min-height: 150px; }
+    .header-controls { top: 8px; left: 8px; right: 8px; }
+    .header-controls .participant-select { max-width: 150px; font-size: 12px; padding: 6px 26px 6px 10px; }
+    .header-controls .gear-btn { width: 28px; height: 28px; font-size: 12px; }
     .profile-name { font-size: 1.5rem; }
     .profile-record { font-size: 1.2rem; }
     .stats-grid { grid-template-columns: 1fr; }
@@ -1139,13 +1269,11 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
     .team-row .team-info a { font-size: 0.82rem; }
     .team-record { font-size: 0.9rem; min-width: 55px; }
 
-    .game-list-item {
-        flex-direction: column; align-items: flex-start; gap: 6px;
-    }
-    .game-list-result {
-        width: 100%; display: flex; justify-content: space-between;
-        padding-top: 6px; border-top: 1px solid var(--border-color);
-    }
+    .game-list-item { padding: 8px 10px; }
+    .game-list-matchup { font-size: 0.82rem; }
+    .game-list-matchup img { width: 16px; height: 16px; }
+    .game-list-score { font-size: 0.88rem; }
+    .game-list-outcome { font-size: 0.78rem; }
     .form-row { flex-direction: column; }
 }
 
@@ -1156,16 +1284,180 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
 @media (min-width: 768px) {
     .stats-grid { grid-template-columns: repeat(2, 1fr); }
 }
-    /* ===== FLOATING PILL NAV ===== */
-    .floating-pill { position: fixed; bottom: 12px; left: 50%; z-index: 9999; display: flex; align-items: center; gap: 2px; background: rgba(32, 42, 56, 0.95); border: 1px solid var(--border-color); border-radius: 999px; padding: 5px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.04); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); -webkit-transform: translateX(-50%) translateZ(0); transform: translateX(-50%) translateZ(0); will-change: transform; }
-    body { padding-bottom: 76px; }
-    @media (max-width: 600px) { .floating-pill { bottom: calc(8px + env(safe-area-inset-bottom, 0px)); } }
-    .pill-item { display: flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 999px; text-decoration: none; color: var(--text-muted); font-size: 16px; transition: all 0.15s ease; cursor: pointer; border: none; background: none; -webkit-tap-highlight-color: transparent; position: relative; }
-    .pill-item:hover { color: var(--text-primary); background: var(--bg-elevated); }
-    .pill-item.active { color: white; background: var(--accent-blue); }
-    .pill-item:active { transform: scale(0.92); }
-    .pill-divider { width: 1px; height: 24px; background: var(--border-color); flex-shrink: 0; }
-    @media (min-width: 601px) { .pill-item::after { content: attr(data-label); position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%) scale(0.9); background: var(--bg-elevated); color: var(--text-primary); font-size: 11px; font-weight: 600; font-family: 'Outfit', sans-serif; padding: 4px 10px; border-radius: 6px; white-space: nowrap; opacity: 0; pointer-events: none; transition: all 0.15s ease; border: 1px solid var(--border-color); } .pill-item:hover::after { opacity: 1; transform: translateX(-50%) scale(1); } }
+/* ===== FLOATING PILL NAV ===== */
+    .floating-pill {
+        position: fixed;
+        bottom: 18px;
+        left: 50%;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background: rgba(24, 33, 47, 0.82);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 999px;
+        padding: 6px;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03);
+        -webkit-backdrop-filter: blur(20px);
+        backdrop-filter: blur(20px);
+        -webkit-transform: translateX(-50%) translateZ(0);
+        transform: translateX(-50%) translateZ(0);
+        will-change: transform;
+        transition: border-radius 0.35s ease, padding 0.35s ease;
+    }
+
+    .floating-pill.expanded {
+        border-radius: 22px;
+        padding: 8px;
+    }
+
+    /* Main row (always visible) */
+    .pill-main-row {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+    }
+
+    /* Expanded row (hidden by default) */
+    .pill-expanded-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        max-height: 0;
+        opacity: 0;
+        overflow: hidden;
+        transition: max-height 0.35s ease, opacity 0.25s ease, margin 0.35s ease, padding 0.35s ease;
+        margin-bottom: 0;
+        padding: 0 4px;
+    }
+    .floating-pill.expanded .pill-expanded-row {
+        max-height: 60px;
+        opacity: 1;
+        margin-bottom: 6px;
+        padding: 0 4px 6px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .pill-expanded-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        width: 52px;
+        height: 44px;
+        border-radius: 12px;
+        text-decoration: none;
+        color: var(--text-muted);
+        font-size: 14px;
+        transition: all var(--transition-fast);
+        cursor: pointer;
+        border: none;
+        background: none;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .pill-expanded-item span {
+        font-size: 9px;
+        font-weight: 600;
+        font-family: 'Outfit', sans-serif;
+        letter-spacing: 0.02em;
+        line-height: 1;
+        white-space: nowrap;
+    }
+    .pill-expanded-item:hover {
+        color: var(--text-primary);
+        background: rgba(255, 255, 255, 0.08);
+    }
+    .pill-expanded-item.logout-item:hover {
+        color: var(--accent-red);
+    }
+
+    /* Hamburger to X morph */
+    .pill-menu-btn .fa-bars,
+    .pill-menu-btn .fa-xmark { transition: transform 0.3s ease, opacity 0.2s ease; }
+    .pill-menu-btn .fa-xmark { position: absolute; opacity: 0; transform: rotate(-90deg); }
+    .floating-pill.expanded .pill-menu-btn .fa-bars { opacity: 0; transform: rotate(90deg); }
+    .floating-pill.expanded .pill-menu-btn .fa-xmark { opacity: 1; transform: rotate(0deg); }
+
+    /* Space at the bottom so content doesn't hide behind pill */
+    body { padding-bottom: 84px; }
+
+    @media (max-width: 600px) {
+        .floating-pill {
+            bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+        }
+    }
+
+    .pill-item {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 46px;
+        height: 46px;
+        border-radius: 999px;
+        text-decoration: none;
+        color: var(--text-muted);
+        font-size: 17px;
+        transition: all var(--transition-fast);
+        cursor: pointer;
+        border: none;
+        background: none;
+        -webkit-tap-highlight-color: transparent;
+        position: relative;
+    }
+
+    .pill-item:hover {
+        color: var(--text-primary);
+        background: var(--bg-elevated);
+    }
+
+    .pill-item.active {
+        color: white;
+        background: var(--accent-blue);
+    }
+
+    .pill-item:active {
+        transform: scale(0.92);
+    }
+
+    .pill-divider {
+        width: 1px;
+        height: 26px;
+        background: var(--border-color);
+        flex-shrink: 0;
+    }
+
+    /* Tooltip on hover (desktop only) */
+    @media (min-width: 601px) {
+        .pill-item::after {
+            content: attr(data-label);
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%) scale(0.9);
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            font-size: 11px;
+            font-weight: 600;
+            font-family: 'Outfit', sans-serif;
+            padding: 4px 10px;
+            border-radius: var(--radius-sm);
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.15s ease;
+            border: 1px solid var(--border-color);
+        }
+
+        .pill-item:hover::after {
+            opacity: 1;
+            transform: translateX(-50%) scale(1);
+        }
+
+        /* Hide tooltips when expanded (items have labels) */
+        .floating-pill.expanded .pill-item:hover::after { opacity: 0; }
+    }
 </style>
 </head>
 <body>
@@ -1229,102 +1521,123 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
     <?php endif; ?>
 
     <!-- ================================================================
-         TOP BAR: SELECTOR + GEAR
-         ================================================================ -->
-    <div class="profile-topbar">
-        <select class="participant-select" onchange="window.location.href='?league_id=<?= $league_id ?>&user_id='+this.value">
-            <?php foreach ($all_participants as $p): ?>
-                <option value="<?= $p['user_id'] ?>" <?= $p['user_id'] == $user_id ? 'selected' : '' ?>>
-                    <?= htmlspecialchars($p['display_name']) ?>
-                </option>
-            <?php endforeach; ?>
-        </select>
-
-        <?php if ($is_own_profile): ?>
-        <div class="gear-settings-wrapper">
-            <button type="button" class="gear-btn" id="gearBtn" onclick="toggleGearPanel()">
-                <i class="fas fa-gear"></i>
-            </button>
-
-            <div class="gear-panel" id="gearPanel">
-
-                <!-- Theme Section -->
-                <div class="gear-section">
-                    <div class="gear-section-label">
-                        <i class="fas fa-palette"></i> Theme
-                    </div>
-                    <div class="gear-section-row">
-                        <div class="theme-toggle-group">
-                            <button type="button" class="theme-btn <?= $current_theme === 'dark' ? 'active' : '' ?>"
-                                    onclick="setTheme('dark')">
-                                <i class="fas fa-moon" style="margin-right: 4px"></i> Dark
-                            </button>
-                            <button type="button" class="theme-btn <?= $current_theme === 'classic' ? 'active' : '' ?>"
-                                    onclick="setTheme('classic')">
-                                <i class="fas fa-sun" style="margin-right: 4px"></i> Light
-                            </button>
-                        </div>
-                    </div>
-                    <form method="POST" id="themeForm" style="display:none">
-                        <input type="hidden" name="action" value="toggle_theme">
-                        <input type="hidden" name="theme" id="themeInput" value="">
-                    </form>
-                </div>
-
-                <!-- Draft Preferences Section -->
-                <div class="gear-section<?= $draft_completed ? ' disabled' : '' ?>">
-                    <div class="gear-section-label">
-                        <i class="fas fa-basketball"></i> Draft
-                    </div>
-                    <?php if (!$draft_completed): ?>
-                        <div class="gear-section-row">
-                            <form method="POST" id="autoDraftForm" style="display: flex; align-items: center; gap: 10px; margin: 0">
-                                <input type="hidden" name="action" value="toggle_auto_draft">
-                                <label class="toggle-switch" style="margin: 0">
-                                    <input type="checkbox" name="auto_draft_enabled" id="autoDraftToggle"
-                                           <?= $participant['auto_draft_enabled'] ? 'checked' : '' ?>
-                                           onchange="confirmAutoDraftToggle(this)">
-                                    <span class="toggle-slider"></span>
-                                </label>
-                                <label for="autoDraftToggle" style="cursor: pointer; user-select: none; font-size: 0.9rem; color: var(--text-secondary)">
-                                    <strong style="color: var(--text-primary)">Auto-Draft:</strong>
-                                    <span style="color: <?= $participant['auto_draft_enabled'] ? 'var(--accent-green)' : 'var(--text-muted)' ?>">
-                                        <?= $participant['auto_draft_enabled'] ? 'On' : 'Off' ?>
-                                    </span>
-                                </label>
-                            </form>
-
-                            <a href="/nba-wins-platform/profiles/draft_preferences.php?league_id=<?= $league_id ?>&user_id=<?= $user_id ?>"
-                               class="preferences-link">
-                                <i class="fas fa-list-ol"></i> Team Rankings
-                                <?php
-                                $stmt = $pdo->prepare("SELECT COUNT(*) AS count FROM user_draft_preferences WHERE user_id = ?");
-                                $stmt->execute([$user_id]);
-                                $pc = $stmt->fetch()['count'];
-                                if ($pc == 30) {
-                                    echo '<span style="background:rgba(0,0,0,0.15);padding:1px 6px;border-radius:10px;font-size:0.8rem">✓</span>';
-                                } elseif ($pc > 0) {
-                                    echo '<span style="background:rgba(0,0,0,0.15);padding:1px 6px;border-radius:10px;font-size:0.8rem">' . $pc . '/30</span>';
-                                }
-                                ?>
-                            </a>
-                        </div>
-                    <?php else: ?>
-                        <div class="gear-section-row">
-                            <span class="draft-disabled-note"><i class="fas fa-check-circle" style="margin-right: 4px"></i>Draft complete</span>
-                        </div>
-                    <?php endif; ?>
-                </div>
-
-            </div>
-        </div>
-        <?php endif; ?>
-    </div>
-
-    <!-- ================================================================
-         PROFILE HEADER CARD
+         PROFILE HEADER CARD (with selector + gear)
          ================================================================ -->
     <div class="profile-header">
+        <!-- Controls: selector + gear -->
+        <div class="header-controls">
+            <select class="participant-select" onchange="window.location.href='?league_id=<?= $league_id ?>&user_id='+this.value">
+                <?php foreach ($all_participants as $p): ?>
+                    <option value="<?= $p['user_id'] ?>" <?= $p['user_id'] == $user_id ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($p['display_name']) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+
+            <?php if ($is_own_profile): ?>
+            <div class="gear-settings-wrapper">
+                <button type="button" class="gear-btn" id="gearBtn" onclick="toggleGearPanel()">
+                    <i class="fas fa-gear"></i>
+                </button>
+
+                <div class="gear-panel" id="gearPanel">
+                    <!-- Theme Section -->
+                    <div class="gear-section">
+                        <div class="gear-section-label">
+                            <i class="fas fa-palette"></i> Theme
+                        </div>
+                        <div class="gear-section-row">
+                            <div class="theme-toggle-group">
+                                <button type="button" class="theme-btn <?= $current_theme === 'dark' ? 'active' : '' ?>"
+                                        onclick="setTheme('dark')">
+                                    <i class="fas fa-moon" style="margin-right: 4px"></i> Dark
+                                </button>
+                                <button type="button" class="theme-btn <?= $current_theme === 'classic' ? 'active' : '' ?>"
+                                        onclick="setTheme('classic')">
+                                    <i class="fas fa-sun" style="margin-right: 4px"></i> Light
+                                </button>
+                            </div>
+                        </div>
+                        <form method="POST" id="themeForm" style="display:none">
+                            <input type="hidden" name="action" value="toggle_theme">
+                            <input type="hidden" name="theme" id="themeInput" value="">
+                        </form>
+                    </div>
+
+                    <!-- Draft Preferences Section -->
+                    <div class="gear-section<?= $draft_completed ? ' disabled' : '' ?>">
+                        <div class="gear-section-label">
+                            <i class="fas fa-basketball"></i> Draft
+                        </div>
+                        <?php if (!$draft_completed): ?>
+                            <div class="gear-section-row">
+                                <form method="POST" id="autoDraftForm" style="display: flex; align-items: center; gap: 10px; margin: 0">
+                                    <input type="hidden" name="action" value="toggle_auto_draft">
+                                    <label class="toggle-switch" style="margin: 0">
+                                        <input type="checkbox" name="auto_draft_enabled" id="autoDraftToggle"
+                                               <?= $participant['auto_draft_enabled'] ? 'checked' : '' ?>
+                                               onchange="confirmAutoDraftToggle(this)">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                    <label for="autoDraftToggle" style="cursor: pointer; user-select: none; font-size: 0.9rem; color: var(--text-secondary)">
+                                        <strong style="color: var(--text-primary)">Auto-Draft:</strong>
+                                        <span style="color: <?= $participant['auto_draft_enabled'] ? 'var(--accent-green)' : 'var(--text-muted)' ?>">
+                                            <?= $participant['auto_draft_enabled'] ? 'On' : 'Off' ?>
+                                        </span>
+                                    </label>
+                                </form>
+
+                                <a href="/nba-wins-platform/profiles/draft_preferences.php?league_id=<?= $league_id ?>&user_id=<?= $user_id ?>"
+                                   class="preferences-link">
+                                    <i class="fas fa-list-ol"></i> Team Rankings
+                                    <?php
+                                    $stmt = $pdo->prepare("SELECT COUNT(*) AS count FROM user_draft_preferences WHERE user_id = ?");
+                                    $stmt->execute([$user_id]);
+                                    $pc = $stmt->fetch()['count'];
+                                    if ($pc == 30) {
+                                        echo '<span style="background:rgba(0,0,0,0.15);padding:1px 6px;border-radius:10px;font-size:0.8rem">✓</span>';
+                                    } elseif ($pc > 0) {
+                                        echo '<span style="background:rgba(0,0,0,0.15);padding:1px 6px;border-radius:10px;font-size:0.8rem">' . $pc . '/30</span>';
+                                    }
+                                    ?>
+                                </a>
+                            </div>
+                        <?php else: ?>
+                            <div class="gear-section-row">
+                                <span class="draft-disabled-note"><i class="fas fa-check-circle" style="margin-right: 4px"></i>Draft complete</span>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+
+                    <?php if (count($user_leagues) > 1): ?>
+                    <!-- Default League Section -->
+                    <div class="gear-section">
+                        <div class="gear-section-label">
+                            <i class="fas fa-house-flag"></i> Default League
+                        </div>
+                        <div class="gear-section-row">
+                            <form method="POST" id="defaultLeagueForm" style="display: flex; align-items: center; gap: 10px; margin: 0; flex: 1">
+                                <input type="hidden" name="action" value="set_default_league">
+                                <select name="default_league_id" id="defaultLeagueSelect" class="default-league-select" onchange="document.getElementById('defaultLeagueForm').submit()">
+                                    <option value="none"<?= $user_default_league_id === null ? ' selected' : '' ?>>No default</option>
+                                    <?php foreach ($user_leagues as $ul): ?>
+                                    <option value="<?= $ul['id'] ?>"<?= $user_default_league_id == $ul['id'] ? ' selected' : '' ?>>
+                                        <?= htmlspecialchars($ul['display_name']) ?>
+                                    </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </form>
+                        </div>
+                        <div style="margin-top: 6px; font-size: 0.75rem; color: var(--text-muted); line-height: 1.4">
+                            Opens to this league on login
+                        </div>
+                    </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <?php endif; ?>
+        </div>
+
         <!-- Background team logos -->
         <div class="logo-background">
             <?php foreach ($teams as $team): ?>
@@ -1388,7 +1701,7 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
 
         <!-- Teams Card -->
         <div class="stats-card">
-            <h2 class="section-title">Teams (<?= count($teams) ?>)</h2>
+            <h2 class="section-title">Teams</h2>
             <?php if (empty($teams)): ?>
                 <div class="no-data">No teams drafted yet</div>
             <?php else: ?>
@@ -1471,7 +1784,7 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
             <!-- Rivals sub-section -->
             <div class="rivals-section">
                 <h3 class="rivals-title">
-                    <i class="fas fa-trophy" style="color: var(--accent-orange)"></i> Rivals
+                    Rivals
                 </h3>
 
                 <?php if ($biggest_rival): ?>
@@ -1536,7 +1849,7 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
         }
         ?>
         <h2 class="section-title">
-            <i class="fas fa-history"></i> Last 10 Games
+            Recent Games
             <?php if (!empty($lastGames)): ?>
                 <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 400; margin-left: 6px">
                     (<?= $l10w ?>-<?= $l10l ?>)
@@ -1565,16 +1878,18 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
                                 <img src="<?= htmlspecialchars(getTeamLogo($game['opponent'])) ?>" alt=""
                                      onerror="this.style.display='none'">
                                 <?= htmlspecialchars($game['opponent']) ?>
-                                <?php if (!empty($game['opponent_owner'])): ?>
-                                    <span class="owner-tag">(<?= htmlspecialchars($game['opponent_owner']) ?>)</span>
-                                <?php endif; ?>
                             </div>
+                            <?php if (!empty($game['opponent_owner'])): ?>
+                                <span class="game-list-owner">(<?= htmlspecialchars($game['opponent_owner']) ?>)</span>
+                            <?php endif; ?>
                         </div>
                         <div class="game-list-result">
-                            <div class="game-list-score"><?= $ts . '-' . $os ?></div>
-                            <div class="game-list-outcome"
-                                 style="color: <?= $game['result'] === 'W' ? 'var(--accent-green)' : 'var(--accent-red)' ?>">
-                                <?= $game['result'] ?>
+                            <div class="game-list-score-line">
+                                <span class="game-list-score"><?= $ts ?>-<?= $os ?></span>
+                                <span class="game-list-outcome"
+                                      style="color: <?= $game['result'] === 'W' ? 'var(--accent-green)' : 'var(--accent-red)' ?>">
+                                    <?= $game['result'] ?>
+                                </span>
                             </div>
                         </div>
                     </a>
@@ -1596,7 +1911,7 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
             </button>
         <?php endif; ?>
 
-        <h2 class="section-title"><i class="fas fa-calendar-alt"></i> Next 5 Games</h2>
+        <h2 class="section-title">Upcoming Games</h2>
 
         <?php if (!empty($upcomingGames)): ?>
             <div class="games-list">
@@ -1617,10 +1932,10 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
                                 <img src="<?= htmlspecialchars(getTeamLogo($game['opponent'])) ?>" alt=""
                                      onerror="this.style.display='none'">
                                 <?= htmlspecialchars($game['opponent']) ?>
-                                <?php if (!empty($game['opponent_owner'])): ?>
-                                    <span class="owner-tag">(<?= htmlspecialchars($game['opponent_owner']) ?>)</span>
-                                <?php endif; ?>
                             </div>
+                            <?php if (!empty($game['opponent_owner'])): ?>
+                                <span class="game-list-owner">(<?= htmlspecialchars($game['opponent_owner']) ?>)</span>
+                            <?php endif; ?>
                         </div>
                     </a>
                 <?php endforeach; ?>
@@ -1820,14 +2135,72 @@ function toggleWidgetPin(w, b) {
     })
     .catch(() => alert('Error. Try again.'));
 }
+
+// Cascade-in animation for all boxes
+document.addEventListener('DOMContentLoaded', function() {
+    const items = document.querySelectorAll('.profile-header, .stats-card');
+    items.forEach(function(el, i) {
+        el.classList.add('cascade-item');
+        el.style.animationDelay = (i * 80) + 'ms';
+    });
+});
 </script>
-    <nav class="floating-pill">
-        <a href="/index_new.php" class="pill-item" data-label="Home"><i class="fas fa-home"></i></a>
-        <a href="/nba-wins-platform/profiles/participant_profile_new.php?league_id=<?php echo $currentLeagueId ?? ($_SESSION['current_league_id'] ?? 0); ?>&user_id=<?php echo $profileUserId ?? ($_SESSION['user_id'] ?? 0); ?>" class="pill-item active" data-label="Profile"><i class="fas fa-user"></i></a>
-        <a href="/analytics_new.php" class="pill-item" data-label="Analytics"><i class="fas fa-chart-line"></i></a>
-        <a href="/claudes-column_new.php" class="pill-item" data-label="Column" style="position:relative"><i class="fa-solid fa-newspaper"></i><?php if ($hasNewArticles): ?><span style="position:absolute;top:2px;right:2px;width:7px;height:7px;background:#f85149;border-radius:50%;box-shadow:0 0 4px rgba(248,81,73,0.5)"></span><?php endif; ?></a>
-        <div class="pill-divider"></div>
-        <button class="pill-item" data-label="Menu" onclick="toggleDarkNav()"><i class="fas fa-bars"></i></button>
+    <!-- Floating Pill Navigation -->
+    <nav class="floating-pill" id="floatingPill">
+        <!-- Expanded row (hidden until menu tap) -->
+        <div class="pill-expanded-row" id="pillExpandedRow">
+            <a href="/nba_standings_new.php" class="pill-expanded-item">
+                <i class="fas fa-basketball-ball"></i>
+                <span>Standings</span>
+            </a>
+            <a href="/draft_summary_new.php" class="pill-expanded-item">
+                <i class="fas fa-file-alt"></i>
+                <span>Draft</span>
+            </a>
+            <a href="https://buymeacoffee.com/taylorstvns" target="_blank" class="pill-expanded-item">
+                <i class="fas fa-mug-hot"></i>
+                <span>Tip Jar</span>
+            </a>
+            <?php if (empty($is_guest)): ?>
+            <a href="/nba-wins-platform/auth/logout.php" class="pill-expanded-item logout-item">
+                <i class="fas fa-sign-out-alt"></i>
+                <span>Logout</span>
+            </a>
+            <?php endif; ?>
+        </div>
+        <!-- Main row -->
+        <div class="pill-main-row">
+            <a href="/index_new.php" class="pill-item" data-label="Home">
+                <i class="fas fa-home"></i>
+            </a>
+            <a href="/nba-wins-platform/profiles/participant_profile_new.php?league_id=<?php echo $currentLeagueId ?? ($_SESSION['current_league_id'] ?? 0); ?>&user_id=<?php echo $profileUserId ?? ($_SESSION['user_id'] ?? 0); ?>" class="pill-item active" data-label="Profile">
+                <i class="fas fa-user"></i>
+            </a>
+            <a href="/analytics_new.php" class="pill-item" data-label="Analytics">
+                <i class="fas fa-chart-line"></i>
+            </a>
+            <a href="/claudes-column_new.php" class="pill-item" data-label="Column" style="position:relative">
+                <i class="fa-solid fa-newspaper"></i>
+                <?php if ($hasNewArticles): ?><span style="position:absolute;top:2px;right:2px;width:7px;height:7px;background:#f85149;border-radius:50%;box-shadow:0 0 4px rgba(248,81,73,0.5)"></span><?php endif; ?>
+            </a>
+            <div class="pill-divider"></div>
+            <button class="pill-item pill-menu-btn" data-label="Menu" onclick="togglePillMenu()">
+                <i class="fas fa-bars"></i>
+                <i class="fas fa-xmark"></i>
+            </button>
+        </div>
     </nav>
+    <script>
+    function togglePillMenu() {
+        document.getElementById('floatingPill').classList.toggle('expanded');
+    }
+    // Close expanded pill when clicking outside
+    document.addEventListener('click', function(e) {
+        var pill = document.getElementById('floatingPill');
+        if (pill.classList.contains('expanded') && !pill.contains(e.target)) {
+            pill.classList.remove('expanded');
+        }
+    });
+    </script>
 </body>
 </html>

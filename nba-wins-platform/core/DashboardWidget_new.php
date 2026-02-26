@@ -438,11 +438,16 @@ class DashboardWidget {
         $stats = $this->widgetFetcher->getLeagueStatsAndRivals($user_id, $league_id);
         if (!$stats) return '';
         
+        // Get display name for header
+        $nameStmt = $this->pdo->prepare("SELECT display_name FROM users WHERE id = ?");
+        $nameStmt->execute([$user_id]);
+        $dwDisplayName = $nameStmt->fetchColumn() ?: 'My';
+        
         ob_start();
         ?>
         <div class="dw-card" data-widget-type="league_stats">
             <div class="dw-header">
-                <h3 class="dw-title">League Stats</h3>
+                <h3 class="dw-title"><?php echo htmlspecialchars($dwDisplayName); ?> Stats</h3>
                 <?php echo $this->renderEditControls('league_stats', $edit_mode); ?>
             </div>
             
@@ -456,14 +461,6 @@ class DashboardWidget {
                     <div class="dw-team-stat-value"><?php echo $stats['avg_wins'] . '-' . $stats['avg_losses']; ?></div>
                 </div>
                 <div class="dw-team-stat-row">
-                    <div class="dw-team-stat-left"><span>Best Team</span></div>
-                    <div class="dw-team-stat-value">
-                        <?php echo $stats['best_team'] 
-                            ? htmlspecialchars($stats['best_team']['team_name']) . ' (' . $stats['best_team']['wins'] . '-' . $stats['best_team']['losses'] . ')'
-                            : 'N/A'; ?>
-                    </div>
-                </div>
-                <div class="dw-team-stat-row">
                     <div class="dw-team-stat-left"><span>Win %</span></div>
                     <div class="dw-team-stat-value">
                         <?php 
@@ -474,6 +471,14 @@ class DashboardWidget {
                             ? number_format(($totalW / $totalG) * 100, 1) . '%'
                             : '0.0%';
                         ?>
+                    </div>
+                </div>
+                <div class="dw-team-stat-row">
+                    <div class="dw-team-stat-left"><span>Best Team</span></div>
+                    <div class="dw-team-stat-value">
+                        <?php echo $stats['best_team'] 
+                            ? htmlspecialchars($stats['best_team']['team_name']) . ' (' . $stats['best_team']['wins'] . '-' . $stats['best_team']['losses'] . ')'
+                            : 'N/A'; ?>
                     </div>
                 </div>
             </div>

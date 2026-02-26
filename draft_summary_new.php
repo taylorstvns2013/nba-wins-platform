@@ -15,6 +15,68 @@ $user_id = $_SESSION['user_id'];
 $league_id = $_SESSION['current_league_id'];
 $currentLeagueId = $league_id;
 
+// ==================== AJAX ENDPOINT FOR ROUND DATA ====================
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'round_data') {
+    header('Content-Type: application/json');
+    require_once '/data/www/default/nba-wins-platform/config/db_connection.php';
+
+    $stmt = $pdo->prepare("
+        SELECT ds.*, COUNT(dp.id) as total_picks,
+               (SELECT COUNT(*) FROM league_participants WHERE league_id = ? AND status = 'active') as participant_count
+        FROM draft_sessions ds
+        LEFT JOIN draft_picks dp ON ds.id = dp.draft_session_id
+        WHERE ds.league_id = ?
+        GROUP BY ds.id
+        ORDER BY ds.created_at DESC
+        LIMIT 1
+    ");
+    $stmt->execute([$league_id, $league_id]);
+    $draft_info_ajax = $stmt->fetch();
+
+    if (!$draft_info_ajax) { echo json_encode([]); exit; }
+
+    $round = isset($_GET['round']) ? max(1, min((int)$_GET['round'], $draft_info_ajax['total_rounds'])) : 1;
+    $mode = isset($_GET['mode']) ? $_GET['mode'] : 'order';
+
+    $stmt = $pdo->prepare("
+        SELECT 
+            dp.id, dp.pick_number, dp.round_number, dp.picked_at, dp.picked_by_commissioner,
+            nt.name as team_name, nt.abbreviation, nt.logo_filename as logo,
+            lp.participant_name, u.display_name,
+            COALESCE(nss.win, 0) as wins, COALESCE(nss.loss, 0) as losses
+        FROM draft_picks dp
+        JOIN nba_teams nt ON dp.team_id = nt.id
+        JOIN league_participants lp ON dp.league_participant_id = lp.id
+        JOIN users u ON lp.user_id = u.id
+        LEFT JOIN 2025_2026 nss ON nt.name = nss.name
+        WHERE dp.draft_session_id = ? AND dp.round_number = ?
+        ORDER BY dp.pick_number ASC
+    ");
+    $stmt->execute([$draft_info_ajax['id'], $round]);
+    $picks = $stmt->fetchAll();
+
+    $participants_count = $draft_info_ajax['participant_count'];
+    foreach ($picks as &$p) {
+        $p['position_in_round'] = (($p['pick_number'] - 1) % $participants_count) + 1;
+        $p['logo_path'] = getTeamLogo($p['team_name']);
+    }
+    unset($p);
+
+    if ($mode === 'rank') {
+        usort($picks, function($a, $b) {
+            if ($a['wins'] === $b['wins']) return $a['losses'] - $b['losses'];
+            return $b['wins'] - $a['wins'];
+        });
+    } else {
+        usort($picks, function($a, $b) {
+            return $a['pick_number'] - $b['pick_number'];
+        });
+    }
+
+    echo json_encode($picks);
+    exit;
+}
+
 function getTeamLogo($teamName) {
     $teamName = trim($teamName);
     $nameVariations = [
@@ -187,6 +249,54 @@ if ($view_mode === 'rank') {
         return $a['pick_number'] - $b['pick_number'];
     });
 }
+
+// ==================== BUILD PARTICIPANT ROSTER DATA ====================
+$participant_rosters = [];
+foreach ($all_picks as $pick) {
+    $name = $pick['display_name'];
+    if (!isset($participant_rosters[$name])) {
+        $participant_rosters[$name] = [
+            'display_name' => $name,
+            'teams' => [],
+            'total_wins' => 0,
+            'total_losses' => 0,
+            'first_pick' => $pick['pick_number']
+        ];
+    }
+    $participant_rosters[$name]['teams'][] = $pick;
+    $participant_rosters[$name]['total_wins'] += $pick['wins'];
+    $participant_rosters[$name]['total_losses'] += $pick['losses'];
+}
+
+// Sort by total wins descending
+uasort($participant_rosters, function($a, $b) {
+    return $b['total_wins'] - $a['total_wins'];
+});
+$participant_rosters = array_values($participant_rosters);
+
+// Calculate highest pace participant
+$highest_pace = 0;
+$highest_pace_name = '';
+foreach ($participant_rosters as $roster) {
+    $total_games = $roster['total_wins'] + $roster['total_losses'];
+    $team_count = count($roster['teams']);
+    $pace = $total_games > 0 ? round(($roster['total_wins'] / $total_games) * 82 * $team_count, 0) : 0;
+    if ($pace > $highest_pace) {
+        $highest_pace = $pace;
+        $highest_pace_name = $roster['display_name'];
+    }
+}
+
+// Calculate draft stats
+$total_commissioner_picks = count(array_filter($all_picks, fn($p) => $p['picked_by_commissioner']));
+$best_record_pick = null;
+$best_record_wins = -1;
+foreach ($all_picks as $pick) {
+    if ($pick['wins'] > $best_record_wins) {
+        $best_record_wins = $pick['wins'];
+        $best_record_pick = $pick;
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -205,7 +315,7 @@ if ($view_mode === 'rank') {
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
     :root {
-        --bg-primary: #121a23;
+        --bg-primary: #151d28;
         --bg-secondary: #1a222c;
         --bg-card: #202a38;
         --bg-card-hover: #273140;
@@ -220,6 +330,9 @@ if ($view_mode === 'rank') {
         --accent-green: #3fb950;
         --accent-red: #f85149;
         --accent-orange: #d29922;
+        --accent-gold: #f0c644;
+        --accent-silver: #a0aec0;
+        --accent-bronze: #cd7f32;
         --radius-sm: 6px;
         --radius-md: 10px;
         --radius-lg: 14px;
@@ -276,7 +389,16 @@ if ($view_mode === 'rank') {
     .app-container {
         max-width: 1000px;
         margin: 0 auto;
-        padding: 0 12px 2rem;
+        padding: 16px 12px 2rem;
+    }
+
+    /* Draft container card */
+    .draft-container {
+        background: var(--bg-card);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-card);
+        padding: 16px;
+        overflow: hidden;
     }
 
     /* Header */
@@ -322,36 +444,38 @@ if ($view_mode === 'rank') {
         letter-spacing: -0.02em;
     }
 
-    /* Page title */
-    .page-title {
-        font-size: 1.35rem;
-        font-weight: 700;
-        letter-spacing: -0.02em;
-        text-align: center;
-        padding: 16px 0 12px;
-    }
-
     /* Draft info banner */
     .draft-info-banner {
-        background: var(--bg-card);
-        border-radius: var(--radius-lg);
-        padding: 16px 20px;
-        margin-bottom: 14px;
-        box-shadow: var(--shadow-card);
-        text-align: center;
+        background: var(--bg-elevated);
+        border-radius: var(--radius-md);
+        padding: 10px 16px;
+        margin-bottom: 10px;
+        border: 1px solid var(--border-subtle);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        flex-wrap: wrap;
     }
 
     .draft-info-league {
-        font-size: 16px;
+        font-size: 14px;
         font-weight: 700;
         color: var(--text-primary);
-        margin-bottom: 4px;
+    }
+
+    .draft-info-dot {
+        width: 3px;
+        height: 3px;
+        border-radius: 50%;
+        background: var(--text-muted);
+        flex-shrink: 0;
     }
 
     .draft-info-meta {
-        font-size: 13px;
+        font-size: 12px;
         color: var(--text-muted);
-        line-height: 1.6;
+        line-height: 1.4;
     }
 
     /* Controls bar */
@@ -451,16 +575,15 @@ if ($view_mode === 'rank') {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        background: var(--bg-card);
+        background: var(--bg-elevated);
         padding: 12px 16px;
         border-radius: var(--radius-md);
-        box-shadow: var(--shadow-card);
+        border: 1px solid var(--border-subtle);
         transition: all var(--transition-fast);
     }
 
     .team-card:hover {
         background: var(--bg-card-hover);
-        box-shadow: var(--shadow-elevated);
     }
 
     .team-info {
@@ -549,21 +672,373 @@ if ($view_mode === 'rank') {
         .team-name { font-size: 14px; }
         .drafter-info { font-size: 11px; }
         .team-record { font-size: 14px; min-width: 60px; }
+        .draft-container { padding: 12px; }
     }
 
     @media (min-width: 601px) {
-        .app-container { padding: 0 20px 2rem; }
+        .app-container { padding: 16px 20px 2rem; }
+        .draft-container { padding: 20px; }
     }
     /* ===== FLOATING PILL NAV ===== */
-    .floating-pill { position: fixed; bottom: 12px; left: 50%; z-index: 9999; display: flex; align-items: center; gap: 2px; background: rgba(32, 42, 56, 0.95); border: 1px solid var(--border-color); border-radius: 999px; padding: 5px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.04); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); -webkit-transform: translateX(-50%) translateZ(0); transform: translateX(-50%) translateZ(0); will-change: transform; }
-    body { padding-bottom: 76px; }
-    @media (max-width: 600px) { .floating-pill { bottom: calc(8px + env(safe-area-inset-bottom, 0px)); } }
-    .pill-item { display: flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 999px; text-decoration: none; color: var(--text-muted); font-size: 16px; transition: all 0.15s ease; cursor: pointer; border: none; background: none; -webkit-tap-highlight-color: transparent; position: relative; }
-    .pill-item:hover { color: var(--text-primary); background: var(--bg-elevated); }
-    .pill-item.active { color: white; background: var(--accent-blue); }
-    .pill-item:active { transform: scale(0.92); }
-    .pill-divider { width: 1px; height: 24px; background: var(--border-color); flex-shrink: 0; }
-    @media (min-width: 601px) { .pill-item::after { content: attr(data-label); position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%) scale(0.9); background: var(--bg-elevated); color: var(--text-primary); font-size: 11px; font-weight: 600; font-family: 'Outfit', sans-serif; padding: 4px 10px; border-radius: 6px; white-space: nowrap; opacity: 0; pointer-events: none; transition: all 0.15s ease; border: 1px solid var(--border-color); } .pill-item:hover::after { opacity: 1; transform: translateX(-50%) scale(1); } }
+    /* ===== FLOATING PILL NAV ===== */
+    .floating-pill {
+        position: fixed;
+        bottom: 18px;
+        left: 50%;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background: rgba(24, 33, 47, 0.82);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 999px;
+        padding: 6px;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03);
+        -webkit-backdrop-filter: blur(20px);
+        backdrop-filter: blur(20px);
+        -webkit-transform: translateX(-50%) translateZ(0);
+        transform: translateX(-50%) translateZ(0);
+        will-change: transform;
+        transition: border-radius 0.35s ease, padding 0.35s ease;
+    }
+
+    .floating-pill.expanded {
+        border-radius: 22px;
+        padding: 8px;
+    }
+
+    .pill-main-row {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+    }
+
+    .pill-expanded-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        max-height: 0;
+        opacity: 0;
+        overflow: hidden;
+        transition: max-height 0.35s ease, opacity 0.25s ease, margin 0.35s ease, padding 0.35s ease;
+        margin-bottom: 0;
+        padding: 0 4px;
+    }
+    .floating-pill.expanded .pill-expanded-row {
+        max-height: 60px;
+        opacity: 1;
+        margin-bottom: 6px;
+        padding: 0 4px 6px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .pill-expanded-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        width: 52px;
+        height: 44px;
+        border-radius: 12px;
+        text-decoration: none;
+        color: var(--text-muted);
+        font-size: 14px;
+        transition: all var(--transition-fast);
+        cursor: pointer;
+        border: none;
+        background: none;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .pill-expanded-item span {
+        font-size: 9px;
+        font-weight: 600;
+        font-family: 'Outfit', sans-serif;
+        letter-spacing: 0.02em;
+        line-height: 1;
+        white-space: nowrap;
+    }
+    .pill-expanded-item:hover {
+        color: var(--text-primary);
+        background: rgba(255, 255, 255, 0.08);
+    }
+    .pill-expanded-item.logout-item:hover {
+        color: var(--accent-red);
+    }
+
+    .pill-menu-btn .fa-bars,
+    .pill-menu-btn .fa-xmark { transition: transform 0.3s ease, opacity 0.2s ease; }
+    .pill-menu-btn .fa-xmark { position: absolute; opacity: 0; transform: rotate(-90deg); }
+    .floating-pill.expanded .pill-menu-btn .fa-bars { opacity: 0; transform: rotate(90deg); }
+    .floating-pill.expanded .pill-menu-btn .fa-xmark { opacity: 1; transform: rotate(0deg); }
+
+    body { padding-bottom: 84px; }
+
+    @media (max-width: 600px) {
+        .floating-pill {
+            bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+        }
+    }
+
+    .pill-item {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 46px;
+        height: 46px;
+        border-radius: 999px;
+        text-decoration: none;
+        color: var(--text-muted);
+        font-size: 17px;
+        transition: all var(--transition-fast);
+        cursor: pointer;
+        border: none;
+        background: none;
+        -webkit-tap-highlight-color: transparent;
+        position: relative;
+    }
+
+    .pill-item:hover {
+        color: var(--text-primary);
+        background: var(--bg-elevated);
+    }
+
+    .pill-item.active {
+        color: white;
+        background: var(--accent-blue);
+    }
+
+    .pill-item:active {
+        transform: scale(0.92);
+    }
+
+    .pill-divider {
+        width: 1px;
+        height: 26px;
+        background: var(--border-color);
+        flex-shrink: 0;
+    }
+
+    @media (min-width: 601px) {
+        .pill-item::after {
+            content: attr(data-label);
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%) scale(0.9);
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            font-size: 11px;
+            font-weight: 600;
+            font-family: 'Outfit', sans-serif;
+            padding: 4px 10px;
+            border-radius: var(--radius-sm);
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.15s ease;
+            border: 1px solid var(--border-color);
+        }
+
+        .pill-item:hover::after {
+            opacity: 1;
+            transform: translateX(-50%) scale(1);
+        }
+
+        .floating-pill.expanded .pill-item:hover::after { opacity: 0; }
+    }
+
+    /* ===== DRAFT STATS STRIP ===== */
+    .draft-stats-strip {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        margin-bottom: 12px;
+    }
+    .stat-card {
+        background: var(--bg-elevated);
+        border-radius: var(--radius-md);
+        padding: 10px 12px;
+        border: 1px solid var(--border-subtle);
+        text-align: center;
+    }
+    .stat-card-value {
+        font-size: 1.15rem;
+        font-weight: 800;
+        color: var(--text-primary);
+        line-height: 1.2;
+        font-variant-numeric: tabular-nums;
+    }
+    .stat-card-label {
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin-top: 2px;
+    }
+    .stat-card-sub {
+        font-size: 11px;
+        color: var(--text-secondary);
+        margin-top: 1px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* ===== SECTION DIVIDER ===== */
+    .section-divider {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 24px 0 14px;
+    }
+    .section-divider-line {
+        flex: 1;
+        height: 1px;
+        background: var(--border-color);
+    }
+    .section-divider-title {
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        white-space: nowrap;
+    }
+
+    /* ===== ROSTER OVERVIEW CARDS ===== */
+    .roster-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 12px;
+        margin-bottom: 14px;
+    }
+    .roster-card {
+        background: var(--bg-card);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-card);
+        overflow: hidden;
+        transition: box-shadow var(--transition-fast);
+    }
+    .roster-card:hover {
+        box-shadow: var(--shadow-elevated);
+    }
+    .roster-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--border-subtle);
+    }
+    .roster-card-rank {
+        font-size: 1.3rem;
+        font-weight: 800;
+        min-width: 32px;
+    }
+    .roster-card-rank.rank-1 { color: var(--accent-gold); }
+    .roster-card-rank.rank-2 { color: var(--accent-silver); }
+    .roster-card-rank.rank-3 { color: var(--accent-bronze); }
+    .roster-card-rank.rank-other { color: var(--text-muted); }
+    .roster-card-name {
+        flex: 1;
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--text-primary);
+        margin-left: 10px;
+    }
+    .roster-card-wins {
+        font-size: 1.1rem;
+        font-weight: 800;
+        color: var(--accent-green);
+        font-variant-numeric: tabular-nums;
+    }
+    .roster-card-wins small {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-muted);
+    }
+    .roster-card-body {
+        padding: 0;
+    }
+    .roster-team-row {
+        display: flex;
+        align-items: center;
+        padding: 9px 16px;
+        gap: 10px;
+        border-bottom: 1px solid var(--border-subtle);
+        transition: background var(--transition-fast);
+    }
+    .roster-team-row:last-child { border-bottom: none; }
+    .roster-team-row:hover { background: var(--bg-card-hover); }
+    .roster-team-row a {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        text-decoration: none;
+        color: var(--text-primary);
+        flex: 1;
+        min-width: 0;
+    }
+    .roster-team-row a:hover { color: var(--accent-blue); }
+    .roster-team-logo {
+        width: 28px;
+        height: 28px;
+        object-fit: contain;
+        flex-shrink: 0;
+    }
+    .roster-team-name {
+        font-size: 14px;
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .roster-team-meta {
+        font-size: 11px;
+        color: var(--text-muted);
+        white-space: nowrap;
+    }
+    .roster-team-record {
+        font-size: 14px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+        min-width: 52px;
+        flex-shrink: 0;
+    }
+    .roster-card-footer {
+        padding: 10px 16px;
+        background: var(--bg-elevated);
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: var(--text-muted);
+    }
+    .roster-card-footer strong { color: var(--text-secondary); }
+
+    @media (max-width: 600px) {
+        .draft-stats-strip { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+        .stat-card { padding: 10px 8px; }
+        .stat-card-value { font-size: 1.2rem; }
+        .stat-card-label { font-size: 10px; }
+        .stat-card-sub { font-size: 11px; }
+        .roster-grid { grid-template-columns: 1fr; }
+        .roster-card-name { font-size: 14px; }
+        .roster-team-row { padding: 8px 12px; }
+        .roster-team-logo { width: 24px; height: 24px; }
+    }
+
+    /* Cascade animation */
+    @keyframes cascadeIn {
+        from { opacity: 0; transform: translateY(12px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    .cascade-card {
+        opacity: 0;
+        animation: cascadeIn 0.35s ease-out forwards;
+    }
 </style>
 </head>
 <body>
@@ -572,13 +1047,34 @@ if ($view_mode === 'rank') {
 
     <div class="app-container">
 
-        <div class="page-title">Draft Summary</div>
+        <div class="draft-container">
 
         <div class="draft-info-banner">
-            <div class="draft-info-league"><?= htmlspecialchars($league['display_name']) ?></div>
-            <div class="draft-info-meta">
-                Completed <?= date('F j, Y \a\t g:i A', strtotime($draft_info['completed_at'])) ?><br>
-                <?= $draft_info['total_picks'] ?> picks across <?= $draft_info['total_rounds'] ?> rounds
+            <span class="draft-info-league"><?= htmlspecialchars($league['display_name']) ?></span>
+            <span class="draft-info-dot"></span>
+            <span class="draft-info-meta"><?= date('M j, Y', strtotime($draft_info['completed_at'])) ?></span>
+            <span class="draft-info-dot"></span>
+            <span class="draft-info-meta"><?= $draft_info['total_picks'] ?> picks · <?= $draft_info['total_rounds'] ?> rounds</span>
+        </div>
+
+        <!-- Draft Stats Strip -->
+        <div class="draft-stats-strip">
+            <div class="stat-card">
+                <div class="stat-card-value"><?= count($participant_rosters) ?></div>
+                <div class="stat-card-label">Participants</div>
+                <div class="stat-card-sub"><?= count($participant_rosters[0]['teams'] ?? []) ?> teams each</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card-value" style="color: var(--accent-green)"><?= $highest_pace ?></div>
+                <div class="stat-card-label">Highest Pace</div>
+                <div class="stat-card-sub"><?= htmlspecialchars($highest_pace_name) ?></div>
+            </div>
+            <div class="stat-card">
+                <?php if ($best_record_pick): ?>
+                <div class="stat-card-value"><?= $best_record_pick['wins'] ?>-<?= $best_record_pick['losses'] ?></div>
+                <div class="stat-card-label">Best Team</div>
+                <div class="stat-card-sub"><?= htmlspecialchars($best_record_pick['team_name']) ?></div>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -631,34 +1127,204 @@ if ($view_mode === 'rank') {
                 <?php endforeach; ?>
             </div>
         <?php endif; ?>
+
+        </div><!-- /.draft-container -->
+
     </div>
 
     <script>
+        let currentRound = <?php echo $selected_round; ?>;
+        let currentMode = '<?php echo $view_mode; ?>';
+
         function toggleView() {
-            const currentMode = new URLSearchParams(window.location.search).get('mode') || 'rank';
-            const newMode = currentMode === 'rank' ? 'order' : 'rank';
-            updateURL(newMode);
+            currentMode = currentMode === 'rank' ? 'order' : 'rank';
+            // Update toggle UI instantly
+            const slider = document.querySelector('.toggle-slider');
+            const options = document.querySelectorAll('.toggle-option');
+            if (currentMode === 'order') {
+                slider.classList.add('order');
+                options[0].classList.remove('active');
+                options[1].classList.add('active');
+            } else {
+                slider.classList.remove('order');
+                options[0].classList.add('active');
+                options[1].classList.remove('active');
+            }
+            // Update URL without reload
+            const params = new URLSearchParams(window.location.search);
+            params.set('mode', currentMode);
+            params.set('round', currentRound);
+            history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
+            // Fetch and re-render picks (no cascade on mode toggle)
+            fetchRoundData(currentRound, currentMode, false);
         }
 
         function changeRound(round) {
-            const currentMode = new URLSearchParams(window.location.search).get('mode') || 'order';
-            updateURL(currentMode, round);
+            if (round === currentRound) return;
+            currentRound = round;
+            // Update active round button
+            document.querySelectorAll('.round-btn').forEach(function(btn, i) {
+                btn.classList.toggle('active', (i + 1) === round);
+            });
+            // Update URL without reload
+            const params = new URLSearchParams(window.location.search);
+            params.set('round', round);
+            params.set('mode', currentMode);
+            history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
+            // Fetch and re-render picks with cascade
+            fetchRoundData(round, currentMode, true);
         }
 
-        function updateURL(mode, round = null) {
-            const params = new URLSearchParams(window.location.search);
-            params.set('mode', mode);
-            if (round) params.set('round', round);
-            window.location.href = `${window.location.pathname}?${params.toString()}`;
+        function fetchRoundData(round, mode, cascade) {
+            fetch(`${window.location.pathname}?ajax=round_data&round=${round}&mode=${mode}`)
+                .then(r => r.json())
+                .then(picks => renderPicks(picks, mode, cascade))
+                .catch(err => console.error('Failed to fetch round data:', err));
+        }
+
+        function renderPicks(picks, mode, cascade) {
+            const container = document.querySelector('.picks-list') || document.querySelector('.empty-state')?.parentElement;
+            if (!container) return;
+
+            // Find or create picks-list
+            let picksList = document.querySelector('.picks-list');
+            const emptyState = document.querySelector('.empty-state');
+
+            if (picks.length === 0) {
+                if (picksList) picksList.remove();
+                if (!emptyState) {
+                    const empty = document.createElement('div');
+                    empty.className = 'empty-state';
+                    empty.textContent = 'No picks found for Round ' + currentRound;
+                    // Insert after controls-bar
+                    const controlsBar = document.querySelector('.controls-bar');
+                    controlsBar.parentNode.insertBefore(empty, controlsBar.nextSibling.nextSibling || null);
+                } else {
+                    emptyState.textContent = 'No picks found for Round ' + currentRound;
+                }
+                return;
+            }
+
+            if (emptyState) emptyState.remove();
+
+            if (!picksList) {
+                picksList = document.createElement('div');
+                picksList.className = 'picks-list';
+                const controlsBar = document.querySelector('.controls-bar');
+                controlsBar.parentNode.insertBefore(picksList, controlsBar.nextSibling.nextSibling || null);
+            }
+
+            picksList.innerHTML = '';
+
+            picks.forEach(function(pick, index) {
+                const card = document.createElement('div');
+                card.className = 'team-card';
+                if (cascade) {
+                    card.classList.add('cascade-card');
+                    card.style.animationDelay = (index * 50) + 'ms';
+                }
+
+                const pickNum = mode === 'rank' ? (index + 1) + '.' : pick.position_in_round + '.';
+                const commBadge = pick.picked_by_commissioner == 1
+                    ? '<span class="commissioner-pick">(Commissioner)</span>' : '';
+
+                card.innerHTML = `
+                    <div class="team-info">
+                        <span class="pick-number">${pickNum}</span>
+                        <img src="${escapeHtml(pick.logo_path)}" alt="" class="team-logo" onerror="this.style.opacity='0.3'">
+                        <div class="team-details">
+                            <div class="team-name">${escapeHtml(pick.team_name)}</div>
+                            <div class="drafter-info">
+                                Pick #${pick.pick_number} by ${escapeHtml(pick.display_name)}
+                                ${commBadge}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="team-record">
+                        <span class="wins">${pick.wins}W</span><span class="record-dash">-</span><span class="losses">${pick.losses}L</span>
+                    </div>
+                `;
+                picksList.appendChild(card);
+            });
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
         }
     </script>
-    <nav class="floating-pill">
-        <a href="/index_new.php" class="pill-item" data-label="Home"><i class="fas fa-home"></i></a>
-        <a href="/nba-wins-platform/profiles/participant_profile_new.php?league_id=<?php echo $currentLeagueId ?? ($_SESSION['current_league_id'] ?? 0); ?>&user_id=<?php echo $profileUserId ?? ($_SESSION['user_id'] ?? 0); ?>" class="pill-item" data-label="Profile"><i class="fas fa-user"></i></a>
-        <a href="/analytics_new.php" class="pill-item" data-label="Analytics"><i class="fas fa-chart-line"></i></a>
-        <a href="/claudes-column_new.php" class="pill-item" data-label="Column" style="position:relative"><i class="fa-solid fa-newspaper"></i><?php if ($hasNewArticles): ?><span style="position:absolute;top:2px;right:2px;width:7px;height:7px;background:#f85149;border-radius:50%;box-shadow:0 0 4px rgba(248,81,73,0.5)"></span><?php endif; ?></a>
-        <div class="pill-divider"></div>
-        <button class="pill-item" data-label="Menu" onclick="toggleDarkNav()"><i class="fas fa-bars"></i></button>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initial page load: cascade stat cards, round buttons, and team cards
+        document.querySelectorAll('.stat-card').forEach(function(card, i) {
+            card.classList.add('cascade-card');
+            card.style.animationDelay = (i * 60) + 'ms';
+        });
+        document.querySelectorAll('.round-btn').forEach(function(btn, i) {
+            btn.classList.add('cascade-card');
+            btn.style.animationDelay = (i * 40) + 'ms';
+        });
+        document.querySelectorAll('.picks-list .team-card').forEach(function(card, i) {
+            card.classList.add('cascade-card');
+            card.style.animationDelay = (i * 50) + 'ms';
+        });
+    });
+    </script>
+    <!-- Floating Pill Navigation -->
+    <nav class="floating-pill" id="floatingPill">
+        <div class="pill-expanded-row" id="pillExpandedRow">
+            <a href="/nba_standings_new.php" class="pill-expanded-item">
+                <i class="fas fa-basketball-ball"></i>
+                <span>Standings</span>
+            </a>
+            <a href="/draft_summary_new.php" class="pill-expanded-item">
+                <i class="fas fa-file-alt"></i>
+                <span>Draft</span>
+            </a>
+            <a href="https://buymeacoffee.com/taylorstvns" target="_blank" class="pill-expanded-item">
+                <i class="fas fa-mug-hot"></i>
+                <span>Tip Jar</span>
+            </a>
+            <?php if (empty($isGuest)): ?>
+            <a href="/nba-wins-platform/auth/logout.php" class="pill-expanded-item logout-item">
+                <i class="fas fa-sign-out-alt"></i>
+                <span>Logout</span>
+            </a>
+            <?php endif; ?>
+        </div>
+        <div class="pill-main-row">
+            <a href="/index_new.php" class="pill-item" data-label="Home">
+                <i class="fas fa-home"></i>
+            </a>
+            <a href="/nba-wins-platform/profiles/participant_profile_new.php?league_id=<?php echo $currentLeagueId ?? ($_SESSION['current_league_id'] ?? 0); ?>&user_id=<?php echo $profileUserId ?? ($_SESSION['user_id'] ?? 0); ?>" class="pill-item" data-label="Profile">
+                <i class="fas fa-user"></i>
+            </a>
+            <a href="/analytics_new.php" class="pill-item" data-label="Analytics">
+                <i class="fas fa-chart-line"></i>
+            </a>
+            <a href="/claudes-column_new.php" class="pill-item" data-label="Column" style="position:relative">
+                <i class="fa-solid fa-newspaper"></i>
+                <?php if ($hasNewArticles): ?><span style="position:absolute;top:2px;right:2px;width:7px;height:7px;background:#f85149;border-radius:50%;box-shadow:0 0 4px rgba(248,81,73,0.5)"></span><?php endif; ?>
+            </a>
+            <div class="pill-divider"></div>
+            <button class="pill-item pill-menu-btn" data-label="Menu" onclick="togglePillMenu()">
+                <i class="fas fa-bars"></i>
+                <i class="fas fa-xmark"></i>
+            </button>
+        </div>
     </nav>
+    <script>
+    function togglePillMenu() {
+        document.getElementById('floatingPill').classList.toggle('expanded');
+    }
+    document.addEventListener('click', function(e) {
+        var pill = document.getElementById('floatingPill');
+        if (pill.classList.contains('expanded') && !pill.contains(e.target)) {
+            pill.classList.remove('expanded');
+        }
+    });
+    </script>
 </body>
 </html>

@@ -133,8 +133,8 @@ if ($draft_status['status'] !== 'not_started') {
     <style>
         :root {
             /* Core backgrounds */
-            --bg-primary: #0d1117;
-            --bg-secondary: #121a23;
+            --bg-primary: #151d28;
+            --bg-secondary: #1a222c;
             --bg-card: #161e28;
             --bg-elevated: #1c2634;
             --bg-card-hover: #1e2a3a;
@@ -809,6 +809,87 @@ if ($draft_status['status'] !== 'not_started') {
         @media (min-width: 601px) {
             .container { max-width: 1200px; padding: 24px; }
         }
+
+        /* ===== FLOATING PILL NAV ===== */
+        .floating-pill {
+            position: fixed;
+            bottom: 18px;
+            left: 50%;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: rgba(24, 33, 47, 0.82);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 999px;
+            padding: 6px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03);
+            -webkit-backdrop-filter: blur(20px);
+            backdrop-filter: blur(20px);
+            -webkit-transform: translateX(-50%) translateZ(0);
+            transform: translateX(-50%) translateZ(0);
+            will-change: transform;
+            transition: border-radius 0.35s ease, padding 0.35s ease;
+        }
+        .floating-pill.expanded { border-radius: 22px; padding: 8px; }
+        .pill-main-row { display: flex; align-items: center; gap: 2px; }
+        .pill-expanded-row {
+            display: flex; align-items: center; justify-content: center; gap: 4px;
+            max-height: 0; opacity: 0; overflow: hidden;
+            transition: max-height 0.35s ease, opacity 0.25s ease, margin 0.35s ease, padding 0.35s ease;
+            margin-bottom: 0; padding: 0 4px;
+        }
+        .floating-pill.expanded .pill-expanded-row {
+            max-height: 60px; opacity: 1; margin-bottom: 6px;
+            padding: 0 4px 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        .pill-expanded-item {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 2px; width: 52px; height: 44px; border-radius: 12px;
+            text-decoration: none; color: var(--text-muted); font-size: 14px;
+            transition: all var(--transition-fast); cursor: pointer;
+            border: none; background: none; -webkit-tap-highlight-color: transparent;
+        }
+        .pill-expanded-item span {
+            font-size: 9px; font-weight: 600; font-family: 'Outfit', sans-serif;
+            letter-spacing: 0.02em; line-height: 1; white-space: nowrap;
+        }
+        .pill-expanded-item:hover { color: var(--text-primary); background: rgba(255, 255, 255, 0.08); }
+        .pill-expanded-item.logout-item:hover { color: var(--accent-red); }
+        .pill-menu-btn .fa-bars,
+        .pill-menu-btn .fa-xmark { transition: transform 0.3s ease, opacity 0.2s ease; }
+        .pill-menu-btn .fa-xmark { position: absolute; opacity: 0; transform: rotate(-90deg); }
+        .floating-pill.expanded .pill-menu-btn .fa-bars { opacity: 0; transform: rotate(90deg); }
+        .floating-pill.expanded .pill-menu-btn .fa-xmark { opacity: 1; transform: rotate(0deg); }
+        body { padding-bottom: 84px; }
+        @media (max-width: 600px) {
+            .floating-pill { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
+        }
+        .pill-item {
+            display: flex; align-items: center; justify-content: center;
+            width: 46px; height: 46px; border-radius: 999px;
+            text-decoration: none; color: var(--text-muted); font-size: 17px;
+            transition: all var(--transition-fast); cursor: pointer;
+            border: none; background: none; -webkit-tap-highlight-color: transparent;
+            position: relative;
+        }
+        .pill-item:hover { color: var(--text-primary); background: var(--bg-elevated); }
+        .pill-item.active { color: white; background: var(--accent-blue); }
+        .pill-item:active { transform: scale(0.92); }
+        .pill-divider { width: 1px; height: 26px; background: var(--border-color); flex-shrink: 0; }
+        @media (min-width: 601px) {
+            .pill-item::after {
+                content: attr(data-label); position: absolute; bottom: calc(100% + 8px);
+                left: 50%; transform: translateX(-50%) scale(0.9);
+                background: var(--bg-elevated); color: var(--text-primary);
+                font-size: 11px; font-weight: 600; font-family: 'Outfit', sans-serif;
+                padding: 4px 10px; border-radius: var(--radius-sm);
+                white-space: nowrap; opacity: 0; pointer-events: none;
+                transition: all 0.15s ease; border: 1px solid var(--border-color);
+            }
+            .pill-item:hover::after { opacity: 1; transform: translateX(-50%) scale(1); }
+            .floating-pill.expanded .pill-item:hover::after { opacity: 0; }
+        }
     </style>
 </head>
 <body>
@@ -1433,6 +1514,61 @@ if ($draft_status['status'] !== 'not_started') {
         });
         
         console.log('Draft interface initialized (dark theme)');
+    </script>
+
+    <!-- Floating Pill Navigation -->
+    <nav class="floating-pill" id="floatingPill">
+        <div class="pill-expanded-row" id="pillExpandedRow">
+            <a href="/nba_standings_new.php" class="pill-expanded-item">
+                <i class="fas fa-basketball-ball"></i>
+                <span>Standings</span>
+            </a>
+            <a href="/draft_summary_new.php" class="pill-expanded-item">
+                <i class="fas fa-file-alt"></i>
+                <span>Draft</span>
+            </a>
+            <a href="https://buymeacoffee.com/taylorstvns" target="_blank" class="pill-expanded-item">
+                <i class="fas fa-mug-hot"></i>
+                <span>Tip Jar</span>
+            </a>
+            <?php if (empty($is_guest)): ?>
+            <a href="/nba-wins-platform/auth/logout.php" class="pill-expanded-item logout-item">
+                <i class="fas fa-sign-out-alt"></i>
+                <span>Logout</span>
+            </a>
+            <?php endif; ?>
+        </div>
+        <div class="pill-main-row">
+            <a href="/index_new.php" class="pill-item" data-label="Home">
+                <i class="fas fa-home"></i>
+            </a>
+            <a href="/nba-wins-platform/profiles/participant_profile_new.php?league_id=<?php echo $currentLeagueId ?? ($_SESSION['current_league_id'] ?? 0); ?>&user_id=<?php echo $profileUserId ?? ($_SESSION['user_id'] ?? 0); ?>" class="pill-item" data-label="Profile">
+                <i class="fas fa-user"></i>
+            </a>
+            <a href="/analytics_new.php" class="pill-item" data-label="Analytics">
+                <i class="fas fa-chart-line"></i>
+            </a>
+            <a href="/claudes-column_new.php" class="pill-item" data-label="Column" style="position:relative">
+                <i class="fa-solid fa-newspaper"></i>
+                <?php if ($hasNewArticles): ?><span style="position:absolute;top:2px;right:2px;width:7px;height:7px;background:#f85149;border-radius:50%;box-shadow:0 0 4px rgba(248,81,73,0.5)"></span><?php endif; ?>
+            </a>
+            <div class="pill-divider"></div>
+            <button class="pill-item pill-menu-btn" data-label="Menu" onclick="togglePillMenu()">
+                <i class="fas fa-bars"></i>
+                <i class="fas fa-xmark"></i>
+            </button>
+        </div>
+    </nav>
+    <script>
+    function togglePillMenu() {
+        document.getElementById('floatingPill').classList.toggle('expanded');
+    }
+    document.addEventListener('click', function(e) {
+        var pill = document.getElementById('floatingPill');
+        if (pill.classList.contains('expanded') && !pill.contains(e.target)) {
+            pill.classList.remove('expanded');
+        }
+    });
     </script>
 </body>
 </html>

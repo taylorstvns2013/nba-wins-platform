@@ -788,7 +788,7 @@ $activeTab = $_GET['tab'] ?? 'home';
    CSS VARIABLES
    ========================================================================== */
 :root {
-    --bg-primary: #121a23;
+    --bg-primary: #151d28;
     --bg-secondary: #1a222c;
     --bg-card: #202a38;
     --bg-card-hover: #273140;
@@ -1054,33 +1054,49 @@ body {
    ========================================================================== */
 .game-list-item {
     display: flex; flex-direction: column;
-    padding: 0.85rem;
-    border-bottom: 1px solid var(--border-color);
-    transition: background 0.2s;
+    padding: 0.75rem 0.85rem;
+    margin-bottom: 6px;
+    background: var(--bg-elevated);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    transition: all 0.2s;
     text-decoration: none;
     color: inherit;
 }
-.game-list-item:last-child { border-bottom: none; }
-.game-list-item:hover { background: var(--bg-card-hover); }
-.game-list-row { display: flex; justify-content: space-between; align-items: center; }
-.game-list-date { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 2px; }
+.game-list-item:last-child { margin-bottom: 0; }
+.game-list-item:hover { background: var(--bg-card-hover); border-color: rgba(56, 139, 253, 0.15); }
+.game-list-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.game-list-date { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 2px; }
 .game-list-matchup {
-    font-weight: 600; font-size: 0.92rem;
-    display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+    font-weight: 600; font-size: 0.88rem;
+    display: flex; align-items: center; gap: 5px;
 }
-.game-list-matchup img { width: 18px; height: 18px; object-fit: contain; }
-.game-list-owner { font-size: 0.78rem; color: var(--text-muted); font-weight: 400; font-style: italic; }
+.game-list-matchup img { width: 18px; height: 18px; object-fit: contain; flex-shrink: 0; }
+.game-list-owner { font-size: 0.75rem; color: var(--text-muted); font-weight: 400; font-style: italic; display: block; margin-top: 1px; }
+.game-list-result {
+    text-align: right;
+    flex-shrink: 0;
+    white-space: nowrap;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 1px;
+}
+.game-list-score-line {
+    display: flex; align-items: center; gap: 4px;
+    white-space: nowrap;
+}
 .game-list-score { font-size: 1rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-.game-list-outcome { font-size: 0.85rem; font-weight: 700; margin-left: 6px; }
+.game-list-outcome { font-size: 0.85rem; font-weight: 700; }
 .game-list-outcome.w { color: var(--accent-green); }
 .game-list-outcome.l { color: var(--accent-red); }
-.game-list-record { font-size: 0.78rem; color: var(--text-muted); font-weight: 400; margin-left: 6px; }
+.game-list-record { font-size: 0.72rem; color: var(--text-muted); font-weight: 400; }
 
 .top-scorers {
-    font-size: 0.75rem; color: var(--text-muted);
+    font-size: 0.73rem; color: var(--text-muted);
     margin-top: 6px; padding-top: 6px;
     border-top: 1px solid var(--border-color);
-    display: flex; gap: 1.25rem; flex-wrap: wrap;
+    display: flex; gap: 1rem; flex-wrap: wrap;
 }
 .scorer-pts { font-weight: 700; color: var(--text-secondary); }
 
@@ -1196,11 +1212,13 @@ td.center { text-align: center; }
     .stat-value { font-size: 1.2rem; }
     .stat-label { font-size: 0.65rem; }
 
-    .game-list-item { padding: 0.65rem 0.5rem; }
+    .game-list-item { padding: 0.6rem 0.7rem; margin-bottom: 5px; }
     .game-list-matchup { font-size: 0.82rem; }
     .game-list-matchup img { width: 16px; height: 16px; }
-    .game-list-score { font-size: 0.9rem; }
-    .top-scorers { flex-direction: column; gap: 4px; font-size: 0.7rem; }
+    .game-list-score { font-size: 0.88rem; }
+    .game-list-outcome { font-size: 0.78rem; }
+    .game-list-record { font-size: 0.68rem; }
+    .top-scorers { flex-direction: column; gap: 3px; font-size: 0.68rem; }
 
     table.roster { font-size: 0.75rem; min-width: 480px; }
     table.roster th { padding: 6px 4px; font-size: 0.62rem; }
@@ -1214,16 +1232,182 @@ td.center { text-align: center; }
     .section-title { font-size: 0.95rem; }
     .section-title a { font-size: 0.75rem; }
 }
-    /* ===== FLOATING PILL NAV ===== */
-    .floating-pill { position: fixed; bottom: 12px; left: 50%; z-index: 9999; display: flex; align-items: center; gap: 2px; background: rgba(32, 42, 56, 0.95); border: 1px solid var(--border-color); border-radius: 999px; padding: 5px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.04); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); -webkit-transform: translateX(-50%) translateZ(0); transform: translateX(-50%) translateZ(0); will-change: transform; }
-    body { padding-bottom: 76px; }
-    @media (max-width: 600px) { .floating-pill { bottom: calc(8px + env(safe-area-inset-bottom, 0px)); } }
-    .pill-item { display: flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 999px; text-decoration: none; color: var(--text-muted); font-size: 16px; transition: all 0.15s ease; cursor: pointer; border: none; background: none; -webkit-tap-highlight-color: transparent; position: relative; }
-    .pill-item:hover { color: var(--text-primary); background: var(--bg-elevated); }
-    .pill-item.active { color: white; background: var(--accent-blue); }
-    .pill-item:active { transform: scale(0.92); }
-    .pill-divider { width: 1px; height: 24px; background: var(--border-color); flex-shrink: 0; }
-    @media (min-width: 601px) { .pill-item::after { content: attr(data-label); position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%) scale(0.9); background: var(--bg-elevated); color: var(--text-primary); font-size: 11px; font-weight: 600; font-family: 'Outfit', sans-serif; padding: 4px 10px; border-radius: 6px; white-space: nowrap; opacity: 0; pointer-events: none; transition: all 0.15s ease; border: 1px solid var(--border-color); } .pill-item:hover::after { opacity: 1; transform: translateX(-50%) scale(1); } }
+    
+/* ===== FLOATING PILL NAV ===== */
+    .floating-pill {
+        position: fixed;
+        bottom: 18px;
+        left: 50%;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background: rgba(24, 33, 47, 0.82);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 999px;
+        padding: 6px;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03);
+        -webkit-backdrop-filter: blur(20px);
+        backdrop-filter: blur(20px);
+        -webkit-transform: translateX(-50%) translateZ(0);
+        transform: translateX(-50%) translateZ(0);
+        will-change: transform;
+        transition: border-radius 0.35s ease, padding 0.35s ease;
+    }
+
+    .floating-pill.expanded {
+        border-radius: 22px;
+        padding: 8px;
+    }
+
+    /* Main row (always visible) */
+    .pill-main-row {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+    }
+
+    /* Expanded row (hidden by default) */
+    .pill-expanded-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        max-height: 0;
+        opacity: 0;
+        overflow: hidden;
+        transition: max-height 0.35s ease, opacity 0.25s ease, margin 0.35s ease, padding 0.35s ease;
+        margin-bottom: 0;
+        padding: 0 4px;
+    }
+    .floating-pill.expanded .pill-expanded-row {
+        max-height: 60px;
+        opacity: 1;
+        margin-bottom: 6px;
+        padding: 0 4px 6px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .pill-expanded-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        width: 52px;
+        height: 44px;
+        border-radius: 12px;
+        text-decoration: none;
+        color: var(--text-muted);
+        font-size: 14px;
+        transition: all var(--transition-fast);
+        cursor: pointer;
+        border: none;
+        background: none;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .pill-expanded-item span {
+        font-size: 9px;
+        font-weight: 600;
+        font-family: 'Outfit', sans-serif;
+        letter-spacing: 0.02em;
+        line-height: 1;
+        white-space: nowrap;
+    }
+    .pill-expanded-item:hover {
+        color: var(--text-primary);
+        background: rgba(255, 255, 255, 0.08);
+    }
+    .pill-expanded-item.logout-item:hover {
+        color: var(--accent-red);
+    }
+
+    /* Hamburger to X morph */
+    .pill-menu-btn .fa-bars,
+    .pill-menu-btn .fa-xmark { transition: transform 0.3s ease, opacity 0.2s ease; }
+    .pill-menu-btn .fa-xmark { position: absolute; opacity: 0; transform: rotate(-90deg); }
+    .floating-pill.expanded .pill-menu-btn .fa-bars { opacity: 0; transform: rotate(90deg); }
+    .floating-pill.expanded .pill-menu-btn .fa-xmark { opacity: 1; transform: rotate(0deg); }
+
+    /* Space at the bottom so content doesn't hide behind pill */
+    body { padding-bottom: 84px; }
+
+    @media (max-width: 600px) {
+        .floating-pill {
+            bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+        }
+    }
+
+    .pill-item {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 46px;
+        height: 46px;
+        border-radius: 999px;
+        text-decoration: none;
+        color: var(--text-muted);
+        font-size: 17px;
+        transition: all var(--transition-fast);
+        cursor: pointer;
+        border: none;
+        background: none;
+        -webkit-tap-highlight-color: transparent;
+        position: relative;
+    }
+
+    .pill-item:hover {
+        color: var(--text-primary);
+        background: var(--bg-elevated);
+    }
+
+    .pill-item.active {
+        color: white;
+        background: var(--accent-blue);
+    }
+
+    .pill-item:active {
+        transform: scale(0.92);
+    }
+
+    .pill-divider {
+        width: 1px;
+        height: 26px;
+        background: var(--border-color);
+        flex-shrink: 0;
+    }
+
+    /* Tooltip on hover (desktop only) */
+    @media (min-width: 601px) {
+        .pill-item::after {
+            content: attr(data-label);
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%) scale(0.9);
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            font-size: 11px;
+            font-weight: 600;
+            font-family: 'Outfit', sans-serif;
+            padding: 4px 10px;
+            border-radius: var(--radius-sm);
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.15s ease;
+            border: 1px solid var(--border-color);
+        }
+
+        .pill-item:hover::after {
+            opacity: 1;
+            transform: translateX(-50%) scale(1);
+        }
+
+        /* Hide tooltips when expanded (items have labels) */
+        .floating-pill.expanded .pill-item:hover::after { opacity: 0; }
+    }
+
 </style>
 </head>
 <body>
@@ -1289,7 +1473,6 @@ td.center { text-align: center; }
 
         <!-- Season Record -->
         <div class="section">
-            <h2 class="section-title"><i class="fas fa-trophy"></i> Season Record</h2>
             <div class="stats-grid">
                 <div class="stat-card">
                     <div class="stat-value"><?= $team['win'] ?>-<?= $team['loss'] ?></div>
@@ -1330,9 +1513,7 @@ td.center { text-align: center; }
         <!-- Team Statistics -->
         <?php if ($liveStats && $liveStats['GP'] > 0): ?>
             <div class="section">
-                <h2 class="section-title"><i class="fas fa-basketball-ball"></i> Team Statistics</h2>
-
-                <h3 class="sub-heading"><i class="fas fa-bullseye"></i> Shooting</h3>
+                <h3 class="sub-heading">Shooting</h3>
                 <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-value"><?= number_format($liveStats['PTS'], 1) ?></div>
@@ -1360,7 +1541,7 @@ td.center { text-align: center; }
                     </div>
                 </div>
 
-                <h3 class="sub-heading"><i class="fas fa-chart-line"></i> Core Stats</h3>
+                <h3 class="sub-heading">Core Stats</h3>
                 <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-value"><?= number_format($liveStats['REB'], 1) ?></div>
@@ -1395,7 +1576,7 @@ td.center { text-align: center; }
         <!-- Last 5 Games -->
         <div class="section">
             <h2 class="section-title">
-                <i class="fas fa-history"></i> Last 5 Games
+                Recent Games
                 <a href="?team=<?= urlencode($team['name']) ?>&tab=schedule">Full Schedule →</a>
             </h2>
             <?php if (!empty($lastGames)): ?>
@@ -1409,23 +1590,23 @@ td.center { text-align: center; }
                 ?>
                     <a href="<?= $gameUrl ?>" class="game-list-item">
                         <div class="game-list-row">
-                            <div>
+                            <div style="min-width:0">
                                 <div class="game-list-date"><?= date('M j, Y', strtotime($gd_game['game_date'])) ?></div>
                                 <div class="game-list-matchup">
                                     <?= $gd_game['team_location'] === 'home' ? 'vs' : '@' ?>
                                     <img src="<?= htmlspecialchars(getTeamLogo($gd_game['opponent'])) ?>" alt=""
                                          onerror="this.style.display='none'">
                                     <?= htmlspecialchars($gd_game['opponent']) ?>
-                                    <?php if (!empty($gd_game['opponent_owner'])): ?>
-                                        <span class="game-list-owner">(<?= htmlspecialchars($gd_game['opponent_owner']) ?>)</span>
-                                    <?php endif; ?>
                                 </div>
+                                <?php if (!empty($gd_game['opponent_owner'])): ?>
+                                    <span class="game-list-owner">(<?= htmlspecialchars($gd_game['opponent_owner']) ?>)</span>
+                                <?php endif; ?>
                             </div>
-                            <div style="text-align: right">
-                                <span class="game-list-score"><?= $teamScore . '-' . $oppScore ?></span>
-                                <span class="game-list-outcome <?= strtolower($gd_game['result']) ?>">
-                                    <?= $gd_game['result'] ?>
-                                </span>
+                            <div class="game-list-result">
+                                <div class="game-list-score-line">
+                                    <span class="game-list-score"><?= $teamScore ?>-<?= $oppScore ?></span>
+                                    <span class="game-list-outcome <?= strtolower($gd_game['result']) ?>"><?= $gd_game['result'] ?></span>
+                                </div>
                             </div>
                         </div>
                     </a>
@@ -1437,7 +1618,7 @@ td.center { text-align: center; }
 
         <!-- Upcoming 5 Games -->
         <div class="section">
-            <h2 class="section-title"><i class="fas fa-calendar-alt"></i> Upcoming 5 Games</h2>
+            <h2 class="section-title">Upcoming Games</h2>
             <?php if (!empty($upcomingGames)): ?>
                 <?php foreach ($upcomingGames as $gd_game):
                     $compUrl = "/nba-wins-platform/stats/team_comparison_new.php"
@@ -1447,17 +1628,17 @@ td.center { text-align: center; }
                 ?>
                     <a href="<?= $compUrl ?>" class="game-list-item">
                         <div class="game-list-row">
-                            <div>
+                            <div style="min-width:0">
                                 <div class="game-list-date"><?= date('M j, Y', strtotime($gd_game['game_date'])) ?></div>
                                 <div class="game-list-matchup">
                                     <?= $gd_game['team_location'] === 'home' ? 'vs' : '@' ?>
                                     <img src="<?= htmlspecialchars(getTeamLogo($gd_game['opponent'])) ?>" alt=""
                                          onerror="this.style.display='none'">
                                     <?= htmlspecialchars($gd_game['opponent']) ?>
-                                    <?php if (!empty($gd_game['opponent_owner'])): ?>
-                                        <span class="game-list-owner">(<?= htmlspecialchars($gd_game['opponent_owner']) ?>)</span>
-                                    <?php endif; ?>
                                 </div>
+                                <?php if (!empty($gd_game['opponent_owner'])): ?>
+                                    <span class="game-list-owner">(<?= htmlspecialchars($gd_game['opponent_owner']) ?>)</span>
+                                <?php endif; ?>
                             </div>
                         </div>
                     </a>
@@ -1475,7 +1656,6 @@ td.center { text-align: center; }
 
         <div class="section">
             <h2 class="section-title">
-                <i class="fas fa-users"></i> Team Roster
                 <?php if (isset($roster['source']) && $roster['source'] === 'espn'): ?>
                     <span class="source">via ESPN</span>
                 <?php endif; ?>
@@ -1567,8 +1747,7 @@ td.center { text-align: center; }
          ================================================================ -->
     <?php elseif ($activeTab === 'schedule'): ?>
 
-        <div class="section">
-            <h2 class="section-title"><i class="fas fa-calendar"></i> Full Schedule</h2>
+        <div class="section" style="padding: 0.75rem; background: transparent; box-shadow: none;">
 
             <?php if (!empty($fullSchedule)): ?>
                 <?php foreach ($fullSchedule as $gd_game):
@@ -1588,24 +1767,24 @@ td.center { text-align: center; }
                 ?>
                     <a href="<?= $gameUrl ?>" class="game-list-item">
                         <div class="game-list-row">
-                            <div>
+                            <div style="min-width:0">
                                 <div class="game-list-date"><?= date('M j, Y', strtotime($gd_game['game_date'])) ?></div>
                                 <div class="game-list-matchup">
                                     <?= $gd_game['team_location'] === 'home' ? 'vs' : '@' ?>
                                     <img src="<?= htmlspecialchars(getTeamLogo($gd_game['opponent'])) ?>" alt=""
                                          onerror="this.style.display='none'">
                                     <?= htmlspecialchars($gd_game['opponent']) ?>
-                                    <?php if (!empty($gd_game['opponent_owner'])): ?>
-                                        <span class="game-list-owner">(<?= htmlspecialchars($gd_game['opponent_owner']) ?>)</span>
-                                    <?php endif; ?>
                                 </div>
+                                <?php if (!empty($gd_game['opponent_owner'])): ?>
+                                    <span class="game-list-owner">(<?= htmlspecialchars($gd_game['opponent_owner']) ?>)</span>
+                                <?php endif; ?>
                             </div>
                             <?php if ($isCompleted): ?>
-                                <div style="text-align: right">
-                                    <span class="game-list-score"><?= $teamScore . '-' . $oppScore ?></span>
-                                    <span class="game-list-outcome <?= strtolower($gd_game['result']) ?>">
-                                        <?= $gd_game['result'] ?>
-                                    </span>
+                                <div class="game-list-result">
+                                    <div class="game-list-score-line">
+                                        <span class="game-list-score"><?= $teamScore ?>-<?= $oppScore ?></span>
+                                        <span class="game-list-outcome <?= strtolower($gd_game['result']) ?>"><?= $gd_game['result'] ?></span>
+                                    </div>
                                     <?php if (!empty($gd_game['record'])): ?>
                                         <span class="game-list-record">(<?= $gd_game['record'] ?>)</span>
                                     <?php endif; ?>
@@ -1639,13 +1818,64 @@ td.center { text-align: center; }
     <?php endif; ?>
 
 </div>
-    <nav class="floating-pill">
-        <a href="/index_new.php" class="pill-item" data-label="Home"><i class="fas fa-home"></i></a>
-        <a href="/nba-wins-platform/profiles/participant_profile_new.php?league_id=<?php echo $currentLeagueId ?? ($_SESSION['current_league_id'] ?? 0); ?>&user_id=<?php echo $profileUserId ?? ($_SESSION['user_id'] ?? 0); ?>" class="pill-item" data-label="Profile"><i class="fas fa-user"></i></a>
-        <a href="/analytics_new.php" class="pill-item" data-label="Analytics"><i class="fas fa-chart-line"></i></a>
-        <a href="/claudes-column_new.php" class="pill-item" data-label="Column" style="position:relative"><i class="fa-solid fa-newspaper"></i><?php if ($hasNewArticles): ?><span style="position:absolute;top:2px;right:2px;width:7px;height:7px;background:#f85149;border-radius:50%;box-shadow:0 0 4px rgba(248,81,73,0.5)"></span><?php endif; ?></a>
-        <div class="pill-divider"></div>
-        <button class="pill-item" data-label="Menu" onclick="toggleDarkNav()"><i class="fas fa-bars"></i></button>
+
+    <!-- Floating Pill Navigation -->
+    <nav class="floating-pill" id="floatingPill">
+        <!-- Expanded row (hidden until menu tap) -->
+        <div class="pill-expanded-row" id="pillExpandedRow">
+            <a href="/nba_standings_new.php" class="pill-expanded-item">
+                <i class="fas fa-basketball-ball"></i>
+                <span>Standings</span>
+            </a>
+            <a href="/draft_summary_new.php" class="pill-expanded-item">
+                <i class="fas fa-file-alt"></i>
+                <span>Draft</span>
+            </a>
+            <a href="https://buymeacoffee.com/taylorstvns" target="_blank" class="pill-expanded-item">
+                <i class="fas fa-mug-hot"></i>
+                <span>Tip Jar</span>
+            </a>
+            <?php if (empty($isGuest)): ?>
+            <a href="/nba-wins-platform/auth/logout.php" class="pill-expanded-item logout-item">
+                <i class="fas fa-sign-out-alt"></i>
+                <span>Logout</span>
+            </a>
+            <?php endif; ?>
+        </div>
+        <!-- Main row -->
+        <div class="pill-main-row">
+            <a href="/index_new.php" class="pill-item" data-label="Home">
+                <i class="fas fa-home"></i>
+            </a>
+            <a href="/nba-wins-platform/profiles/participant_profile_new.php?league_id=<?php echo $currentLeagueId ?? ($_SESSION['current_league_id'] ?? 0); ?>&user_id=<?php echo $profileUserId ?? ($_SESSION['user_id'] ?? 0); ?>" class="pill-item" data-label="Profile">
+                <i class="fas fa-user"></i>
+            </a>
+            <a href="/analytics_new.php" class="pill-item" data-label="Analytics">
+                <i class="fas fa-chart-line"></i>
+            </a>
+            <a href="/claudes-column_new.php" class="pill-item" data-label="Column" style="position:relative">
+                <i class="fa-solid fa-newspaper"></i>
+                <?php if ($hasNewArticles): ?><span style="position:absolute;top:2px;right:2px;width:7px;height:7px;background:#f85149;border-radius:50%;box-shadow:0 0 4px rgba(248,81,73,0.5)"></span><?php endif; ?>
+            </a>
+            <div class="pill-divider"></div>
+            <button class="pill-item pill-menu-btn" data-label="Menu" onclick="togglePillMenu()">
+                <i class="fas fa-bars"></i>
+                <i class="fas fa-xmark"></i>
+            </button>
+        </div>
     </nav>
+    <script>
+    function togglePillMenu() {
+        document.getElementById('floatingPill').classList.toggle('expanded');
+    }
+    // Close expanded pill when clicking outside
+    document.addEventListener('click', function(e) {
+        var pill = document.getElementById('floatingPill');
+        if (pill.classList.contains('expanded') && !pill.contains(e.target)) {
+            pill.classList.remove('expanded');
+        }
+    });
+    </script>
+
 </body>
 </html>

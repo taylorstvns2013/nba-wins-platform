@@ -121,30 +121,62 @@ if ($_POST) {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="theme-color" content="#121a23">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reset Password - NBA Wins Pool</title>
     <link rel="apple-touch-icon" type="image/png" href="../public/assets/favicon/favicon.png">
     <link rel="icon" type="image/png" href="../public/assets/favicon/favicon.png">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg-primary: #151d28;
+            --bg-secondary: #1a222c;
+            --bg-card: #202a38;
+            --bg-card-hover: #273140;
+            --bg-elevated: #2a3446;
+            --border-color: rgba(255, 255, 255, 0.08);
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-muted: #545d68;
+            --accent-blue: #388bfd;
+            --accent-blue-dim: rgba(56, 139, 253, 0.15);
+            --accent-green: #3fb950;
+            --accent-red: #f85149;
+            --accent-orange: #d29922;
+            --radius-md: 10px;
+            --radius-lg: 14px;
+            --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--border-color);
+            --shadow-elevated: 0 8px 25px rgba(0, 0, 0, 0.5);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { background: var(--bg-primary); }
+
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-image: url('../public/assets/background/geometric_white.png');
-            background-repeat: repeat;
-            background-attachment: fixed;
-            background-color: #f5f5f5;
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg-primary);
+            background-image: radial-gradient(ellipse at 50% 0%, rgba(56, 139, 253, 0.04) 0%, transparent 60%);
+            color: var(--text-primary);
             margin: 0;
             padding: 20px;
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
+            -webkit-font-smoothing: antialiased;
+            line-height: 1.5;
         }
 
         .reset-container {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 12px;
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-elevated);
+            border: 1px solid var(--border-color);
             padding: 40px;
             width: 100%;
             max-width: 450px;
@@ -163,9 +195,11 @@ if ($_POST) {
 
         h1 {
             text-align: center;
-            color: #333;
+            color: var(--text-primary);
             margin: 0 0 30px 0;
             font-size: 28px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
         }
 
         .form-group {
@@ -175,104 +209,120 @@ if ($_POST) {
         label {
             display: block;
             margin-bottom: 8px;
-            color: #555;
+            color: var(--text-secondary);
             font-weight: 500;
+            font-size: 0.9rem;
         }
 
         input[type="text"],
         input[type="password"] {
             width: 100%;
             padding: 12px 15px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
             font-size: 16px;
+            font-family: 'Outfit', sans-serif;
             box-sizing: border-box;
-            transition: border-color 0.3s ease;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            background-color: var(--bg-elevated);
+            color: var(--text-primary);
         }
 
         input:focus {
             outline: none;
-            border-color: #2196F3;
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px var(--accent-blue-dim);
+        }
+
+        input::placeholder {
+            color: var(--text-muted);
         }
 
         .help-text {
-            font-size: 14px;
-            color: #666;
-            margin-top: 5px;
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 6px;
         }
 
         .submit-btn {
             width: 100%;
-            background: linear-gradient(135deg, #2196F3, #1976D2);
+            background: linear-gradient(135deg, var(--accent-blue), #1a6ddb);
             color: white;
             padding: 14px 20px;
             border: none;
-            border-radius: 8px;
+            border-radius: var(--radius-md);
             font-size: 16px;
             font-weight: 600;
+            font-family: 'Outfit', sans-serif;
             cursor: pointer;
-            transition: transform 0.2s ease;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
             margin-top: 10px;
         }
 
         .submit-btn:hover {
             transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(56, 139, 253, 0.3);
         }
 
         .message {
             padding: 12px 15px;
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             margin-bottom: 20px;
             text-align: center;
+            font-size: 0.92rem;
         }
 
         .message.success {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
+            background-color: rgba(63, 185, 80, 0.12);
+            color: var(--accent-green);
+            border: 1px solid rgba(63, 185, 80, 0.25);
         }
 
         .message.error {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
+            background-color: rgba(248, 81, 73, 0.12);
+            color: var(--accent-red);
+            border: 1px solid rgba(248, 81, 73, 0.25);
         }
 
         .password-strength {
             margin-top: 10px;
-            padding: 8px;
-            border-radius: 4px;
-            font-size: 14px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
             display: none;
         }
 
         .password-strength.weak {
-            background-color: #f8d7da;
-            color: #721c24;
+            background-color: rgba(248, 81, 73, 0.12);
+            color: var(--accent-red);
+            border: 1px solid rgba(248, 81, 73, 0.2);
         }
 
         .password-strength.medium {
-            background-color: #fff3cd;
-            color: #856404;
+            background-color: rgba(210, 153, 34, 0.12);
+            color: var(--accent-orange);
+            border: 1px solid rgba(210, 153, 34, 0.2);
         }
 
         .password-strength.strong {
-            background-color: #d4edda;
-            color: #155724;
+            background-color: rgba(63, 185, 80, 0.12);
+            color: var(--accent-green);
+            border: 1px solid rgba(63, 185, 80, 0.2);
         }
 
         .links {
             text-align: center;
             margin-top: 20px;
             padding-top: 20px;
-            border-top: 1px solid #e0e0e0;
+            border-top: 1px solid var(--border-color);
         }
 
         .links a {
-            color: #2196F3;
+            color: var(--accent-blue);
             text-decoration: none;
             font-weight: 500;
             margin: 0 10px;
+            font-size: 0.92rem;
         }
 
         .links a:hover {
@@ -286,27 +336,33 @@ if ($_POST) {
 
         .success-actions a {
             display: inline-block;
-            background: linear-gradient(135deg, #4CAF50, #45a049);
+            background: linear-gradient(135deg, var(--accent-green), #2ea043);
             color: white;
             padding: 12px 30px;
-            border-radius: 8px;
+            border-radius: var(--radius-md);
             text-decoration: none;
             font-weight: 600;
             margin: 10px;
-            transition: transform 0.2s ease;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
         }
 
         .success-actions a:hover {
             transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(63, 185, 80, 0.3);
         }
 
         .info-box {
-            background-color: #e3f2fd;
-            border: 1px solid #bbdefb;
-            border-radius: 6px;
+            background-color: var(--accent-blue-dim);
+            border: 1px solid rgba(56, 139, 253, 0.2);
+            border-radius: var(--radius-md);
             padding: 15px;
             margin-bottom: 20px;
             font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .info-box p {
+            margin: 0;
         }
 
         @media (max-width: 500px) {
@@ -326,7 +382,7 @@ if ($_POST) {
 
         <?php if (!$resetSuccess): ?>
             <div class="info-box">
-                <p><i class="fas fa-info-circle"></i> Enter the reset code you received and choose a new password.</p>
+                <p><i class="fas fa-info-circle" style="color: var(--accent-blue); margin-right: 6px;"></i> Enter the reset code you received and choose a new password.</p>
             </div>
 
             <?php if ($message): ?>
@@ -381,7 +437,7 @@ if ($_POST) {
             </div>
 
             <div class="info-box">
-                <p><i class="fas fa-info-circle"></i> Your password has been successfully updated. All existing sessions have been cleared for security.</p>
+                <p><i class="fas fa-info-circle" style="color: var(--accent-blue); margin-right: 6px;"></i> Your password has been successfully updated. All existing sessions have been cleared for security.</p>
             </div>
         <?php endif; ?>
     </div>
@@ -428,9 +484,9 @@ if ($_POST) {
             }
             
             if (password === confirmPassword) {
-                matchDiv.innerHTML = '<span style="color: #155724;"><i class="fas fa-check"></i> Passwords match</span>';
+                matchDiv.innerHTML = '<span style="color: var(--accent-green);"><i class="fas fa-check"></i> Passwords match</span>';
             } else {
-                matchDiv.innerHTML = '<span style="color: #721c24;"><i class="fas fa-times"></i> Passwords do not match</span>';
+                matchDiv.innerHTML = '<span style="color: var(--accent-red);"><i class="fas fa-times"></i> Passwords do not match</span>';
             }
         }
         

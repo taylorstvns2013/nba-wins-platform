@@ -42,18 +42,13 @@ if ($currentHour < 3) {
     }
 }
 
-$stmt = $pdo->prepare("
-    SELECT COUNT(*) as count 
-    FROM games 
-    WHERE date = ? 
-    AND status_long NOT IN ('Final', 'Finished')
-");
-$stmt->execute([$effectiveToday]);
-$has_incomplete_games = $stmt->fetch()['count'] > 0;
-
-if ($has_incomplete_games) {
-    exec('python3 /data/www/default/nba-wins-platform/tasks/get_games.py --write > /dev/null 2>&1 &');
-}
+// =============================================================================
+// SYNC FINAL GAMES — updates DB BEFORE standings are read
+// This fires the MySQL trigger so the leaderboard reflects wins immediately.
+// Also returns API scores so we don't call the API twice.
+// =============================================================================
+require_once '/data/www/default/nba-wins-platform/core/game_scores_helper.php';
+$cached_api_scores = syncFinalGames($pdo, $effectiveToday);
 
 $currentLeagueId = $leagueContext['league_id'];
 
@@ -81,8 +76,6 @@ $widgetEditMode = !$isGuest && isset($_GET['edit_widgets']) && $_GET['edit_widge
 $stmt = $pdo->prepare("SELECT display_name FROM leagues WHERE id = ?");
 $stmt->execute([$currentLeagueId]);
 $leagueDisplayName = $stmt->fetchColumn() ?: 'NBA Wins Pool';
-
-require_once '/data/www/default/nba-wins-platform/core/game_scores_helper.php';
 
 function getTeamLogo($teamName) {
     $logoMap = [
@@ -278,7 +271,12 @@ foreach ($participants as $name => $participant_data) {
 }
 
 usort($standings, function($a, $b) {
-    return $b['total_wins'] - $a['total_wins'];
+    // Primary sort: total wins (descending)
+    if ($b['total_wins'] !== $a['total_wins']) {
+        return $b['total_wins'] - $a['total_wins'];
+    }
+    // Tiebreaker: higher win percentage ranks first
+    return $b['win_percentage'] <=> $a['win_percentage'];
 });
 
 $nbaCupDates = [
@@ -322,7 +320,8 @@ $stmt = $pdo->prepare("
 $stmt->execute([$currentLeagueId, $currentLeagueId, $selectedDate, $selectedDate]);
 $games = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-$api_scores = getAPIScores();
+// Reuse API scores from syncFinalGames (already fetched above)
+$api_scores = $cached_api_scores;
 $latest_scores = getLatestGameScores($games, $api_scores);
 
 $stmt = $pdo->prepare("
@@ -406,7 +405,7 @@ while ($current <= $rangeEnd) {
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
     :root {
-        --bg-primary: #121a23;
+        --bg-primary: #151d28;
         --bg-secondary: #1a222c;
         --bg-card: #202a38;
         --bg-card-hover: #273140;
@@ -681,7 +680,7 @@ while ($current <= $rangeEnd) {
     }
     .standings-row.animate-bars::after {
         width: var(--progress, 0%);
-        opacity: 0.45;
+        opacity: 0.25;
     }
     .rank-1::after {
         background: linear-gradient(to right, var(--accent-gold), rgba(240, 198, 68, 0.15));
@@ -759,6 +758,34 @@ while ($current <= $rangeEnd) {
         color: var(--accent-green);
     }
 
+    /* Selective refresh flash — uses box-shadow inset so it doesn't conflict with rowSlideIn animation */
+    .standings-row.wins-flash {
+        box-shadow: inset 0 0 0 100px var(--accent-green-dim);
+        transition: box-shadow 1.4s ease-out;
+    }
+    .standings-row.wins-flash-fade {
+        box-shadow: inset 0 0 0 100px transparent;
+    }
+    .standings-row.wins-flash .wins-number {
+        color: var(--accent-green) !important;
+        transition: color 1.2s ease;
+    }
+    .standings-row.wins-flash-fade .wins-number {
+        color: var(--text-primary);
+    }
+
+    /* Name pulse on score change */
+    @keyframes namePulse {
+        0%   { transform: scale(1); opacity: 1; }
+        30%  { transform: scale(0.7); opacity: 0; }
+        60%  { transform: scale(0.7); opacity: 0; }
+        100% { transform: scale(1); opacity: 1; }
+    }
+    .standings-row.wins-flash .participant-name-text {
+        display: inline-block;
+        animation: namePulse 0.7s ease-in-out;
+    }
+
     /* Expanded team detail */
     .team-detail-panel {
         display: none;
@@ -826,7 +853,7 @@ while ($current <= $rangeEnd) {
         color: var(--text-secondary);
     }
 
-    .streak-icon { margin-left: 4px; font-size: 11px; }
+    .streak-icon { margin-left: 4px; font-size: 11px; position: relative; }
     .streak-icon.hot { color: #f59e0b; }
     .streak-icon.cold { color: #60a5fa; }
 
@@ -855,6 +882,36 @@ while ($current <= $rangeEnd) {
     .team-detail-panel.show .streak-icon.cold {
         animation: iceBurst 1.5s ease-out both;
         animation-delay: calc(var(--cascade-i, 0) * 60ms + 100ms);
+    }
+
+    /* Streak number flash — shows count after icon burst starts */
+    .streak-icon[data-streak]::after {
+        content: attr(data-streak);
+        position: absolute;
+        top: 50%; left: 50%;
+        transform: translate(-50%, -50%) scale(0);
+        font-family: 'Outfit', sans-serif;
+        font-weight: 800;
+        font-style: normal;
+        font-size: 14.5px;
+        opacity: 0;
+        pointer-events: none;
+        z-index: 2;
+    }
+    .streak-icon.hot[data-streak]::after { color: #ff5e00; text-shadow: 0 0 9px rgba(255, 94, 0, 0.55); }
+    .streak-icon.cold[data-streak]::after { color: #93c5fd; text-shadow: 0 0 9px rgba(96, 165, 250, 0.55); }
+
+    @keyframes streakNumberFlash {
+        0%   { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+        12%  { transform: translate(-50%, -50%) scale(2.4); opacity: 1; }
+        40%  { transform: translate(-50%, -50%) scale(2.0); opacity: 1; }
+        65%  { transform: translate(-50%, -50%) scale(1.6); opacity: 0.7; }
+        85%  { transform: translate(-50%, -50%) scale(1.2); opacity: 0.3; }
+        100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+    }
+    .team-detail-panel.show .streak-icon[data-streak]::after {
+        animation: streakNumberFlash 1.5s ease-out both;
+        animation-delay: calc(var(--cascade-i, 0) * 60ms + 700ms);
     }
 
     .team-detail-wins {
@@ -1851,31 +1908,105 @@ while ($current <= $rangeEnd) {
     /* ===== FLOATING PILL NAV ===== */
     .floating-pill {
         position: fixed;
-        bottom: 12px;
+        bottom: 18px;
         left: 50%;
         z-index: 9999;
         display: flex;
+        flex-direction: column;
         align-items: center;
-        gap: 2px;
-        background: rgba(32, 42, 56, 0.95);
-        border: 1px solid var(--border-color);
+        background: rgba(24, 33, 47, 0.82);
+        border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 999px;
-        padding: 5px;
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.04);
-        -webkit-backdrop-filter: blur(16px);
-        backdrop-filter: blur(16px);
-        /* iOS Safari fix: force GPU layer to keep fixed position stable */
+        padding: 6px;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03);
+        -webkit-backdrop-filter: blur(20px);
+        backdrop-filter: blur(20px);
         -webkit-transform: translateX(-50%) translateZ(0);
         transform: translateX(-50%) translateZ(0);
         will-change: transform;
+        transition: border-radius 0.35s ease, padding 0.35s ease;
     }
 
+    .floating-pill.expanded {
+        border-radius: 22px;
+        padding: 8px;
+    }
+
+    /* Main row (always visible) */
+    .pill-main-row {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+    }
+
+    /* Expanded row (hidden by default) */
+    .pill-expanded-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        max-height: 0;
+        opacity: 0;
+        overflow: hidden;
+        transition: max-height 0.35s ease, opacity 0.25s ease, margin 0.35s ease, padding 0.35s ease;
+        margin-bottom: 0;
+        padding: 0 4px;
+    }
+    .floating-pill.expanded .pill-expanded-row {
+        max-height: 60px;
+        opacity: 1;
+        margin-bottom: 6px;
+        padding: 0 4px 6px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .pill-expanded-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        width: 52px;
+        height: 44px;
+        border-radius: 12px;
+        text-decoration: none;
+        color: var(--text-muted);
+        font-size: 14px;
+        transition: all var(--transition-fast);
+        cursor: pointer;
+        border: none;
+        background: none;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .pill-expanded-item span {
+        font-size: 9px;
+        font-weight: 600;
+        font-family: 'Outfit', sans-serif;
+        letter-spacing: 0.02em;
+        line-height: 1;
+        white-space: nowrap;
+    }
+    .pill-expanded-item:hover {
+        color: var(--text-primary);
+        background: rgba(255, 255, 255, 0.08);
+    }
+    .pill-expanded-item.logout-item:hover {
+        color: var(--accent-red);
+    }
+
+    /* Hamburger to X morph */
+    .pill-menu-btn .fa-bars,
+    .pill-menu-btn .fa-xmark { transition: transform 0.3s ease, opacity 0.2s ease; }
+    .pill-menu-btn .fa-xmark { position: absolute; opacity: 0; transform: rotate(-90deg); }
+    .floating-pill.expanded .pill-menu-btn .fa-bars { opacity: 0; transform: rotate(90deg); }
+    .floating-pill.expanded .pill-menu-btn .fa-xmark { opacity: 1; transform: rotate(0deg); }
+
     /* Space at the bottom so content doesn't hide behind pill */
-    body { padding-bottom: 76px; }
+    body { padding-bottom: 84px; }
 
     @media (max-width: 600px) {
         .floating-pill {
-            bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+            bottom: calc(14px + env(safe-area-inset-bottom, 0px));
         }
     }
 
@@ -1883,12 +2014,12 @@ while ($current <= $rangeEnd) {
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 42px;
-        height: 42px;
+        width: 46px;
+        height: 46px;
         border-radius: 999px;
         text-decoration: none;
         color: var(--text-muted);
-        font-size: 16px;
+        font-size: 17px;
         transition: all var(--transition-fast);
         cursor: pointer;
         border: none;
@@ -1913,7 +2044,7 @@ while ($current <= $rangeEnd) {
 
     .pill-divider {
         width: 1px;
-        height: 24px;
+        height: 26px;
         background: var(--border-color);
         flex-shrink: 0;
     }
@@ -1944,6 +2075,9 @@ while ($current <= $rangeEnd) {
             opacity: 1;
             transform: translateX(-50%) scale(1);
         }
+
+        /* Hide tooltips when expanded (items have labels) */
+        .floating-pill.expanded .pill-item:hover::after { opacity: 0; }
     }
 </style>
 </head>
@@ -2028,9 +2162,9 @@ while ($current <= $rangeEnd) {
                                      onerror="this.style.opacity='0.3'">
                                 <span class="team-detail-name"><?php echo htmlspecialchars($team['name']); ?></span>
                                 <?php if ($team['streak'] >= 5 && $team['winstreak'] == 1): ?>
-                                    <i class="fas fa-fire streak-icon hot" title="Win streak: <?php echo $team['streak']; ?>"></i>
+                                    <i class="fas fa-fire streak-icon hot" data-streak="<?php echo $team['streak']; ?>" title="Win streak: <?php echo $team['streak']; ?>"></i>
                                 <?php elseif ($team['streak'] >= 5 && $team['winstreak'] == 0): ?>
-                                    <i class="fa-solid fa-snowflake streak-icon cold" title="Lose streak: <?php echo $team['streak']; ?>"></i>
+                                    <i class="fa-solid fa-snowflake streak-icon cold" data-streak="<?php echo $team['streak']; ?>" title="Lose streak: <?php echo $team['streak']; ?>"></i>
                                 <?php endif; ?>
                             </a>
                         </div>
@@ -2326,9 +2460,179 @@ while ($current <= $rangeEnd) {
         // Track currently displayed date
         let currentSelectedDate = '<?php echo $selectedDate; ?>';
 
-        // Refresh scores (AJAX, no full reload)
+        // Refresh scores (AJAX, no full reload) + selective leaderboard update
         function refreshScores() {
+            // Save current filter selection
+            const filterEl = document.getElementById('participant-filter');
+            if (filterEl && filterEl.value) window._savedFilterValue = filterEl.value;
+
+            // Snapshot current wins from the DOM before fetching
+            const oldWins = {};
+            document.querySelectorAll('.standings-row').forEach(row => {
+                const name = row.querySelector('.participant-name-text')?.textContent?.trim();
+                const winsEl = row.querySelector('.wins-number');
+                if (name && winsEl) {
+                    oldWins[name] = parseInt(winsEl.getAttribute('data-wins')) || 0;
+                }
+            });
+
+            // Store snapshot so loadDate callback can use it
+            window._preRefreshWins = oldWins;
+            window._isScoreRefresh = true;
             loadDate(currentSelectedDate);
+        }
+
+        // Selective leaderboard update after AJAX refresh
+        function updateLeaderboardSelective(fetchedDoc) {
+            const oldWins = window._preRefreshWins || {};
+            window._preRefreshWins = null;
+            window._isScoreRefresh = false;
+
+            // Parse new wins from the fetched page
+            const newRows = fetchedDoc.querySelectorAll('.standings-row');
+            const newWins = {};
+            newRows.forEach(row => {
+                const name = row.querySelector('.participant-name-text')?.textContent?.trim();
+                const winsEl = row.querySelector('.wins-number');
+                if (name && winsEl) {
+                    newWins[name] = parseInt(winsEl.getAttribute('data-wins')) || 0;
+                }
+            });
+
+            // Compare and animate only changed participants
+            let anyChanged = false;
+            document.querySelectorAll('.standings-row').forEach(row => {
+                const name = row.querySelector('.participant-name-text')?.textContent?.trim();
+                const winsEl = row.querySelector('.wins-number');
+                if (!name || !winsEl) return;
+
+                const oldVal = oldWins[name] ?? 0;
+                const newVal = newWins[name] ?? oldVal;
+
+                if (newVal !== oldVal) {
+                    anyChanged = true;
+                    // Update the data attribute
+                    winsEl.setAttribute('data-wins', newVal);
+
+                    // Also update win percentage if available
+                    const newRow = [...newRows].find(r => 
+                        r.querySelector('.participant-name-text')?.textContent?.trim() === name
+                    );
+                    if (newRow) {
+                        const newPct = newRow.querySelector('.wins-number')?.getAttribute('data-win-percentage');
+                        if (newPct) winsEl.setAttribute('data-win-percentage', newPct);
+                    }
+
+                    // Check if currently in percentage mode
+                    const isPercentageMode = localStorage.getItem('winsDisplayMode') === 'percentage';
+
+                    // Flash the row green — stays on through entire count-up
+                    row.classList.remove('wins-flash-fade');
+                    row.classList.add('wins-flash');
+
+                    // Delay count start until name is invisible (pulse is at 30-60%)
+                    // At 250ms the name is hidden, we start counting from 0.
+                    // By 420ms when name returns, count is ~15% through = well above 0.
+                    setTimeout(() => {
+                        const duration = 1100;
+                        const startTime = performance.now();
+
+                        function tick(now) {
+                            const elapsed = now - startTime;
+                            const progress = Math.min(elapsed / duration, 1);
+                            const eased = 1 - Math.pow(1 - progress, 3);
+                            const current = Math.round(newVal * eased);
+                            if (!isPercentageMode) winsEl.textContent = current || '';
+                            if (progress < 1) {
+                                requestAnimationFrame(tick);
+                            } else {
+                                winsEl.textContent = isPercentageMode
+                                    ? winsEl.getAttribute('data-win-percentage')
+                                    : newVal;
+                                // Hold flash a moment, then fade out
+                                setTimeout(() => {
+                                    row.classList.add('wins-flash-fade');
+                                    setTimeout(() => {
+                                        row.classList.remove('wins-flash', 'wins-flash-fade');
+                                    }, 1500);
+                                }, 800);
+                            }
+                        }
+                        requestAnimationFrame(tick);
+                    }, 250);
+
+                    // Update wins-change badge
+                    const winsCell = row.querySelector('.wins-cell');
+                    const existingBadge = winsCell?.querySelector('.wins-change-badge');
+                    const newRowMatch = [...newRows].find(r =>
+                        r.querySelector('.participant-name-text')?.textContent?.trim() === name
+                    );
+                    const newBadge = newRowMatch?.querySelector('.wins-change-badge');
+                    if (newBadge && winsCell) {
+                        if (existingBadge) existingBadge.remove();
+                        winsCell.insertBefore(newBadge.cloneNode(true), winsEl);
+                    }
+                }
+            });
+
+            // Update progress bar widths if max wins changed
+            if (anyChanged) {
+                const allWins = Object.values(newWins);
+                const maxWins = Math.max(...allWins, 1);
+                document.querySelectorAll('.standings-row').forEach(row => {
+                    const name = row.querySelector('.participant-name-text')?.textContent?.trim();
+                    const w = newWins[name] ?? 0;
+                    row.style.setProperty('--progress', (w / maxWins * 100).toFixed(1) + '%');
+                });
+
+                // Re-sort DOM rows and update rank numbers/classes
+                reRankLeaderboard(newWins);
+            }
+        }
+
+        // Re-sort leaderboard rows by wins (desc) and update rank numbers + classes
+        function reRankLeaderboard(newWins) {
+            const container = document.querySelector('.standings-card');
+            if (!container) return;
+
+            // Collect each standings-row paired with its following team-detail-panel
+            const pairs = [];
+            const rows = container.querySelectorAll('.standings-row');
+            rows.forEach(row => {
+                const name = row.querySelector('.participant-name-text')?.textContent?.trim();
+                const wins = newWins[name] ?? 0;
+                // The panel immediately follows the row in the DOM
+                const panel = row.nextElementSibling?.classList.contains('team-detail-panel')
+                    ? row.nextElementSibling : null;
+                pairs.push({ row, panel, name, wins });
+            });
+
+            // Sort descending by wins (stable — preserves original order for ties)
+            pairs.sort((a, b) => b.wins - a.wins);
+
+            // Re-append in new order (after the standings-header)
+            const header = container.querySelector('.standings-header');
+            pairs.forEach(({ row, panel }) => {
+                container.appendChild(row);
+                if (panel) container.appendChild(panel);
+            });
+
+            // Recalculate ranks with tie handling and update display
+            let rank = 1;
+            pairs.forEach((entry, index) => {
+                if (index > 0 && entry.wins < pairs[index - 1].wins) {
+                    rank = index + 1;
+                }
+
+                const row = entry.row;
+                // Update rank number text
+                const rankNum = row.querySelector('.rank-num');
+                if (rankNum) rankNum.textContent = rank;
+
+                // Update rank CSS classes
+                row.classList.remove('rank-1', 'rank-2', 'rank-3');
+                if (rank <= 3) row.classList.add('rank-' + rank);
+            });
         }
 
         /**
@@ -2371,6 +2675,11 @@ while ($current <= $rangeEnd) {
                         gamesSection.innerHTML = newGames.innerHTML;
                     }
 
+                    // If this was a score refresh, selectively update leaderboard
+                    if (window._isScoreRefresh) {
+                        updateLeaderboardSelective(doc);
+                    }
+
                     // Update date bar selection
                     document.querySelectorAll('.date-item').forEach(d => {
                         d.classList.toggle('selected', d.getAttribute('data-date') === dateStr);
@@ -2381,9 +2690,16 @@ while ($current <= $rangeEnd) {
                     history.pushState({ date: dateStr }, '', newUrl);
                     currentSelectedDate = dateStr;
 
-                    // Re-bind the participant filter dropdown
+                    // Re-bind the participant filter dropdown and restore selection
                     const newFilter = gamesSection.querySelector('#participant-filter');
-                    if (newFilter) newFilter.addEventListener('change', filterGames);
+                    if (newFilter) {
+                        newFilter.addEventListener('change', filterGames);
+                        if (window._savedFilterValue) {
+                            newFilter.value = window._savedFilterValue;
+                            window._savedFilterValue = null;
+                            filterGames();
+                        }
+                    }
 
                     // Re-attach swipe listeners
                     attachSwipeListeners();
@@ -2411,6 +2727,8 @@ while ($current <= $rangeEnd) {
                 })
                 .catch(err => {
                     console.error('Date load error:', err);
+                    window._isScoreRefresh = false;
+                    window._preRefreshWins = null;
                     gamesSection.classList.remove('loading-games');
                     // Fallback: full reload
                     window.location.href = window.location.pathname + '?date=' + dateStr;
@@ -2632,24 +2950,61 @@ while ($current <= $rangeEnd) {
     </script>
 
     <!-- Floating Pill Navigation -->
-    <nav class="floating-pill">
-        <a href="/index_new.php" class="pill-item active" data-label="Home">
-            <i class="fas fa-home"></i>
-        </a>
-        <a href="/nba-wins-platform/profiles/participant_profile_new.php?league_id=<?php echo $currentLeagueId; ?>&user_id=<?php echo $profileUserId ?? ($_SESSION['user_id'] ?? 0); ?>" class="pill-item" data-label="Profile">
-            <i class="fas fa-user"></i>
-        </a>
-        <a href="/analytics_new.php" class="pill-item" data-label="Analytics">
-            <i class="fas fa-chart-line"></i>
-        </a>
-        <a href="/claudes-column_new.php" class="pill-item" data-label="Column" style="position:relative">
-            <i class="fa-solid fa-newspaper"></i>
-            <?php if ($hasNewArticles): ?><span style="position:absolute;top:2px;right:2px;width:7px;height:7px;background:#f85149;border-radius:50%;box-shadow:0 0 4px rgba(248,81,73,0.5)"></span><?php endif; ?>
-        </a>
-        <div class="pill-divider"></div>
-        <button class="pill-item" data-label="Menu" onclick="toggleDarkNav()">
-            <i class="fas fa-bars"></i>
-        </button>
+    <nav class="floating-pill" id="floatingPill">
+        <!-- Expanded row (hidden until menu tap) -->
+        <div class="pill-expanded-row" id="pillExpandedRow">
+            <a href="/nba_standings_new.php" class="pill-expanded-item">
+                <i class="fas fa-basketball-ball"></i>
+                <span>Standings</span>
+            </a>
+            <a href="/draft_summary_new.php" class="pill-expanded-item">
+                <i class="fas fa-file-alt"></i>
+                <span>Draft</span>
+            </a>
+            <a href="https://buymeacoffee.com/taylorstvns" target="_blank" class="pill-expanded-item">
+                <i class="fas fa-mug-hot"></i>
+                <span>Tip Jar</span>
+            </a>
+            <?php if (!$isGuest): ?>
+            <a href="/nba-wins-platform/auth/logout.php" class="pill-expanded-item logout-item">
+                <i class="fas fa-sign-out-alt"></i>
+                <span>Logout</span>
+            </a>
+            <?php endif; ?>
+        </div>
+        <!-- Main row -->
+        <div class="pill-main-row">
+            <a href="/index_new.php" class="pill-item active" data-label="Home">
+                <i class="fas fa-home"></i>
+            </a>
+            <a href="/nba-wins-platform/profiles/participant_profile_new.php?league_id=<?php echo $currentLeagueId; ?>&user_id=<?php echo $profileUserId ?? ($_SESSION['user_id'] ?? 0); ?>" class="pill-item" data-label="Profile">
+                <i class="fas fa-user"></i>
+            </a>
+            <a href="/analytics_new.php" class="pill-item" data-label="Analytics">
+                <i class="fas fa-chart-line"></i>
+            </a>
+            <a href="/claudes-column_new.php" class="pill-item" data-label="Column" style="position:relative">
+                <i class="fa-solid fa-newspaper"></i>
+                <?php if ($hasNewArticles): ?><span style="position:absolute;top:2px;right:2px;width:7px;height:7px;background:#f85149;border-radius:50%;box-shadow:0 0 4px rgba(248,81,73,0.5)"></span><?php endif; ?>
+            </a>
+            <div class="pill-divider"></div>
+            <button class="pill-item pill-menu-btn" data-label="Menu" onclick="togglePillMenu()">
+                <i class="fas fa-bars"></i>
+                <i class="fas fa-xmark"></i>
+            </button>
+        </div>
     </nav>
+    <script>
+    function togglePillMenu() {
+        document.getElementById('floatingPill').classList.toggle('expanded');
+    }
+    // Close expanded pill when clicking outside
+    document.addEventListener('click', function(e) {
+        var pill = document.getElementById('floatingPill');
+        if (pill.classList.contains('expanded') && !pill.contains(e.target)) {
+            pill.classList.remove('expanded');
+        }
+    });
+    </script>
 </body>
 </html>

@@ -302,7 +302,7 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
     :root {
-        --bg-primary: #121a23;
+        --bg-primary: #151d28;
         --bg-secondary: #1a222c;
         --bg-card: #202a38;
         --bg-card-hover: #273140;
@@ -323,6 +323,7 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
         --radius-lg: 14px;
         --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--border-color);
         --transition-fast: 0.15s ease;
+        --border-cutoff: rgba(255, 255, 255, 0.15);
     }
 
     <?php if (($_SESSION['theme_preference'] ?? 'dark') === 'classic'): ?>
@@ -349,6 +350,7 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
         --accent-bronze: #b5651d;
         --shadow-card: 0 1px 4px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
         --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.06);
+        --border-cutoff: rgba(0, 0, 0, 0.25);
     }
     body {
         background-image: url('nba-wins-platform/public/assets/background/geometric_white.png');
@@ -374,7 +376,7 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
     .app-container {
         max-width: 1000px;
         margin: 0 auto;
-        padding: 0 12px 2rem;
+        padding: 16px 12px 2rem;
     }
 
     /* Header */
@@ -418,15 +420,6 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
         font-size: 1.35rem;
         font-weight: 700;
         letter-spacing: -0.02em;
-    }
-
-    /* Page title */
-    .page-title {
-        font-size: 1.35rem;
-        font-weight: 700;
-        letter-spacing: -0.02em;
-        text-align: center;
-        padding: 16px 0 12px;
     }
 
     /* Conference layout */
@@ -489,6 +482,7 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
 
     .team-records tbody tr {
         transition: background var(--transition-fast);
+        opacity: 0;
     }
 
     .team-records tbody tr:hover {
@@ -501,12 +495,12 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
 
     /* Playoff cutoff line after 6th */
     .team-records tbody tr:nth-child(6) td {
-        border-bottom: 1px dashed rgba(255, 255, 255, 0.15);
+        border-bottom: 1px dashed var(--border-cutoff);
     }
 
     /* Play-in cutoff after 10th */
     .team-records tbody tr.eliminated {
-        opacity: 0.4;
+        opacity: 0; /* starts hidden like all rows, JS sets to 0.4 after cascade */
     }
 
     /* Column widths */
@@ -569,6 +563,8 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
         font-variant-numeric: tabular-nums;
         font-weight: 500;
         color: var(--text-secondary);
+        position: relative;
+        display: inline-block;
     }
 
     .win-streak {
@@ -587,8 +583,9 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
         color: var(--accent-green);
         font-weight: 700;
         font-size: 10px;
-        margin-left: 4px;
-        vertical-align: super;
+        position: absolute;
+        top: -2px;
+        right: -18px;
     }
 
     .nba-cup-legend {
@@ -607,14 +604,80 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
         font-weight: 700;
     }
 
+    /* Conference Tabs (mobile only) */
+    .conference-tabs {
+        display: none; /* hidden on desktop */
+        margin-bottom: 12px;
+        padding-top: 12px;
+    }
+
+    .conf-tab {
+        flex: 1;
+        padding: 10px 0;
+        font-family: 'Outfit', sans-serif;
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        border: none;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        background: var(--bg-card);
+        color: var(--text-muted);
+        position: relative;
+    }
+
+    .conf-tab:first-child {
+        border-radius: var(--radius-md) 0 0 var(--radius-md);
+    }
+
+    .conf-tab:last-child {
+        border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    }
+
+    .conf-tab.active {
+        color: var(--text-primary);
+        background: var(--bg-elevated);
+    }
+
+    .conf-tab.active::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 20%;
+        right: 20%;
+        height: 2px;
+        border-radius: 2px;
+    }
+
+    .conf-tab[data-conf="east"].active::after {
+        background: #1d428a;
+    }
+
+    .conf-tab[data-conf="west"].active::after {
+        background: #c8102e;
+    }
+
     /* Responsive */
     @media (max-width: 700px) {
+        .conference-tabs {
+            display: flex;
+            gap: 2px;
+            box-shadow: var(--shadow-card);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+        }
+
         .conference-container {
             flex-direction: column;
             gap: 12px;
         }
 
         .conference { min-width: unset; }
+
+        /* Hide non-active conference on mobile */
+        .conference.mobile-hidden {
+            display: none;
+        }
 
         .team-records th,
         .team-records td {
@@ -634,30 +697,205 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
         .team-logo { width: 22px; height: 22px; margin-right: 6px; }
 
         .team-name a { font-size: 13px; }
+
+        /* Hide conference title on mobile since tabs handle it */
+        .conference-title { display: none; }
     }
 
     @media (min-width: 701px) {
-        .app-container { padding: 0 20px 2rem; }
+        .app-container { padding: 16px 20px 2rem; }
     }
     /* ===== FLOATING PILL NAV ===== */
-    .floating-pill { position: fixed; bottom: 12px; left: 50%; z-index: 9999; display: flex; align-items: center; gap: 2px; background: rgba(32, 42, 56, 0.95); border: 1px solid var(--border-color); border-radius: 999px; padding: 5px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.04); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); -webkit-transform: translateX(-50%) translateZ(0); transform: translateX(-50%) translateZ(0); will-change: transform; }
-    body { padding-bottom: 76px; }
-    @media (max-width: 600px) { .floating-pill { bottom: calc(8px + env(safe-area-inset-bottom, 0px)); } }
-    .pill-item { display: flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 999px; text-decoration: none; color: var(--text-muted); font-size: 16px; transition: all 0.15s ease; cursor: pointer; border: none; background: none; -webkit-tap-highlight-color: transparent; position: relative; }
-    .pill-item:hover { color: var(--text-primary); background: var(--bg-elevated); }
-    .pill-item.active { color: white; background: var(--accent-blue); }
-    .pill-item:active { transform: scale(0.92); }
-    .pill-divider { width: 1px; height: 24px; background: var(--border-color); flex-shrink: 0; }
-    @media (min-width: 601px) { .pill-item::after { content: attr(data-label); position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%) scale(0.9); background: var(--bg-elevated); color: var(--text-primary); font-size: 11px; font-weight: 600; font-family: 'Outfit', sans-serif; padding: 4px 10px; border-radius: 6px; white-space: nowrap; opacity: 0; pointer-events: none; transition: all 0.15s ease; border: 1px solid var(--border-color); } .pill-item:hover::after { opacity: 1; transform: translateX(-50%) scale(1); } }
+    .floating-pill {
+        position: fixed;
+        bottom: 18px;
+        left: 50%;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background: rgba(24, 33, 47, 0.82);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 999px;
+        padding: 6px;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03);
+        -webkit-backdrop-filter: blur(20px);
+        backdrop-filter: blur(20px);
+        -webkit-transform: translateX(-50%) translateZ(0);
+        transform: translateX(-50%) translateZ(0);
+        will-change: transform;
+        transition: border-radius 0.35s ease, padding 0.35s ease;
+    }
+
+    .floating-pill.expanded {
+        border-radius: 22px;
+        padding: 8px;
+    }
+
+    .pill-main-row {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+    }
+
+    .pill-expanded-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        max-height: 0;
+        opacity: 0;
+        overflow: hidden;
+        transition: max-height 0.35s ease, opacity 0.25s ease, margin 0.35s ease, padding 0.35s ease;
+        margin-bottom: 0;
+        padding: 0 4px;
+    }
+    .floating-pill.expanded .pill-expanded-row {
+        max-height: 60px;
+        opacity: 1;
+        margin-bottom: 6px;
+        padding: 0 4px 6px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .pill-expanded-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        width: 52px;
+        height: 44px;
+        border-radius: 12px;
+        text-decoration: none;
+        color: var(--text-muted);
+        font-size: 14px;
+        transition: all var(--transition-fast);
+        cursor: pointer;
+        border: none;
+        background: none;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .pill-expanded-item span {
+        font-size: 9px;
+        font-weight: 600;
+        font-family: 'Outfit', sans-serif;
+        letter-spacing: 0.02em;
+        line-height: 1;
+        white-space: nowrap;
+    }
+    .pill-expanded-item:hover {
+        color: var(--text-primary);
+        background: rgba(255, 255, 255, 0.08);
+    }
+    .pill-expanded-item.logout-item:hover {
+        color: var(--accent-red);
+    }
+
+    .pill-menu-btn .fa-bars,
+    .pill-menu-btn .fa-xmark { transition: transform 0.3s ease, opacity 0.2s ease; }
+    .pill-menu-btn .fa-xmark { position: absolute; opacity: 0; transform: rotate(-90deg); }
+    .floating-pill.expanded .pill-menu-btn .fa-bars { opacity: 0; transform: rotate(90deg); }
+    .floating-pill.expanded .pill-menu-btn .fa-xmark { opacity: 1; transform: rotate(0deg); }
+
+    body { padding-bottom: 84px; }
+
+    @media (max-width: 600px) {
+        .floating-pill {
+            bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+        }
+    }
+
+    .pill-item {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 46px;
+        height: 46px;
+        border-radius: 999px;
+        text-decoration: none;
+        color: var(--text-muted);
+        font-size: 17px;
+        transition: all var(--transition-fast);
+        cursor: pointer;
+        border: none;
+        background: none;
+        -webkit-tap-highlight-color: transparent;
+        position: relative;
+    }
+
+    .pill-item:hover {
+        color: var(--text-primary);
+        background: var(--bg-elevated);
+    }
+
+    .pill-item.active {
+        color: white;
+        background: var(--accent-blue);
+    }
+
+    .pill-item:active {
+        transform: scale(0.92);
+    }
+
+    .pill-divider {
+        width: 1px;
+        height: 26px;
+        background: var(--border-color);
+        flex-shrink: 0;
+    }
+
+    @media (min-width: 601px) {
+        .pill-item::after {
+            content: attr(data-label);
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%) scale(0.9);
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            font-size: 11px;
+            font-weight: 600;
+            font-family: 'Outfit', sans-serif;
+            padding: 4px 10px;
+            border-radius: var(--radius-sm);
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.15s ease;
+            border: 1px solid var(--border-color);
+        }
+
+        .pill-item:hover::after {
+            opacity: 1;
+            transform: translateX(-50%) scale(1);
+        }
+
+        .floating-pill.expanded .pill-item:hover::after { opacity: 0; }
+    }
+
+    /* Cascade animation */
+    @keyframes cascadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    .cascade-row {
+        opacity: 0;
+        animation: cascadeIn 0.35s ease-out forwards;
+    }
 </style>
 </head>
 <body>
 
     <?php include '/data/www/default/nba-wins-platform/components/navigation_menu_new.php'; ?>
-
+    <!-- DEBUG: hasNewArticles = <?php echo var_export($hasNewArticles, true); ?> | DOCUMENT_ROOT = <?php echo $_SERVER['DOCUMENT_ROOT']; ?> | dir_exists = <?php echo var_export(is_dir($_SERVER['DOCUMENT_ROOT'] . '/nba-wins-platform/claudes-column/'), true); ?> -->
     <div class="app-container">
 
-        <div class="page-title">NBA Standings</div>
+        <!-- Conference tabs (mobile only) -->
+        <div class="conference-tabs">
+            <button class="conf-tab active" data-conf="east" onclick="switchConference('east')">Eastern</button>
+            <button class="conf-tab" data-conf="west" onclick="switchConference('west')">Western</button>
+        </div>
 
         <div class="conference-container">
 
@@ -765,13 +1003,141 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
 
     </div>
 
-    <nav class="floating-pill">
-        <a href="/index_new.php" class="pill-item" data-label="Home"><i class="fas fa-home"></i></a>
-        <a href="/nba-wins-platform/profiles/participant_profile_new.php?league_id=<?php echo $currentLeagueId ?? ($_SESSION['current_league_id'] ?? 0); ?>&user_id=<?php echo $profileUserId ?? ($_SESSION['user_id'] ?? 0); ?>" class="pill-item" data-label="Profile"><i class="fas fa-user"></i></a>
-        <a href="/analytics_new.php" class="pill-item" data-label="Analytics"><i class="fas fa-chart-line"></i></a>
-        <a href="/claudes-column_new.php" class="pill-item" data-label="Column" style="position:relative"><i class="fa-solid fa-newspaper"></i><?php if ($hasNewArticles): ?><span style="position:absolute;top:2px;right:2px;width:7px;height:7px;background:#f85149;border-radius:50%;box-shadow:0 0 4px rgba(248,81,73,0.5)"></span><?php endif; ?></a>
-        <div class="pill-divider"></div>
-        <button class="pill-item" data-label="Menu" onclick="toggleDarkNav()"><i class="fas fa-bars"></i></button>
+    <script>
+    // Conference tab switching (mobile)
+    function switchConference(conf) {
+        // Update tab active state
+        document.querySelectorAll('.conf-tab').forEach(function(tab) {
+            tab.classList.toggle('active', tab.getAttribute('data-conf') === conf);
+        });
+
+        // Show/hide conferences
+        var eastern = document.querySelector('.conference.eastern');
+        var western = document.querySelector('.conference.western');
+
+        if (conf === 'east') {
+            eastern.classList.remove('mobile-hidden');
+            western.classList.add('mobile-hidden');
+        } else {
+            western.classList.remove('mobile-hidden');
+            eastern.classList.add('mobile-hidden');
+        }
+
+        // Re-run cascade animation on the now-visible table
+        var visibleConf = conf === 'east' ? eastern : western;
+        visibleConf.querySelectorAll('tbody tr').forEach(function(row, i) {
+            var finalOpacity = row.classList.contains('eliminated') ? 0.4 : 1;
+            row.style.opacity = '0';
+            row.style.animation = 'cascadeIn 0.35s ease-out ' + (i * 40) + 'ms forwards';
+            row.addEventListener('animationend', function() {
+                row.style.opacity = finalOpacity;
+                row.style.animation = '';
+            }, { once: true });
+        });
+    }
+
+    // Set initial mobile state
+    function initMobileConferences() {
+        if (window.innerWidth <= 700) {
+            document.querySelector('.conference.western').classList.add('mobile-hidden');
+        }
+    }
+
+    // Handle resize (switching between mobile/desktop)
+    var resizeTimer;
+    window.addEventListener('resize', function() {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(function() {
+            if (window.innerWidth > 700) {
+                // Desktop: show both
+                document.querySelector('.conference.eastern').classList.remove('mobile-hidden');
+                document.querySelector('.conference.western').classList.remove('mobile-hidden');
+            } else {
+                // Mobile: respect current tab
+                var activeTab = document.querySelector('.conf-tab.active');
+                var conf = activeTab ? activeTab.getAttribute('data-conf') : 'east';
+                switchConference(conf);
+            }
+        }, 150);
+    });
+
+    document.addEventListener('DOMContentLoaded', function() {
+        // Set initial mobile state
+        initMobileConferences();
+
+        // Cascade animation
+        document.querySelectorAll('.team-records tbody').forEach(function(tbody) {
+            // Skip hidden conference on mobile
+            if (tbody.closest('.mobile-hidden')) return;
+
+            var rows = tbody.querySelectorAll('tr');
+            rows.forEach(function(row, i) {
+                var finalOpacity = row.classList.contains('eliminated') ? 0.4 : 1;
+                row.style.animation = 'cascadeIn 0.35s ease-out ' + (i * 40) + 'ms forwards';
+                row.addEventListener('animationend', function() {
+                    row.style.opacity = finalOpacity;
+                    row.style.animation = '';
+                }, { once: true });
+            });
+        });
+    });
+    </script>
+
+    <!-- Floating Pill Navigation -->
+    <nav class="floating-pill" id="floatingPill">
+        <!-- Expanded row (hidden until menu tap) -->
+        <div class="pill-expanded-row" id="pillExpandedRow">
+            <a href="/nba_standings_new.php" class="pill-expanded-item">
+                <i class="fas fa-basketball-ball"></i>
+                <span>Standings</span>
+            </a>
+            <a href="/draft_summary_new.php" class="pill-expanded-item">
+                <i class="fas fa-file-alt"></i>
+                <span>Draft</span>
+            </a>
+            <a href="https://buymeacoffee.com/taylorstvns" target="_blank" class="pill-expanded-item">
+                <i class="fas fa-mug-hot"></i>
+                <span>Tip Jar</span>
+            </a>
+            <?php if (empty($is_guest)): ?>
+            <a href="/nba-wins-platform/auth/logout.php" class="pill-expanded-item logout-item">
+                <i class="fas fa-sign-out-alt"></i>
+                <span>Logout</span>
+            </a>
+            <?php endif; ?>
+        </div>
+        <!-- Main row -->
+        <div class="pill-main-row">
+            <a href="/index_new.php" class="pill-item" data-label="Home">
+                <i class="fas fa-home"></i>
+            </a>
+            <a href="/nba-wins-platform/profiles/participant_profile_new.php?league_id=<?php echo $currentLeagueId ?? ($_SESSION['current_league_id'] ?? 0); ?>&user_id=<?php echo $profileUserId ?? ($_SESSION['user_id'] ?? 0); ?>" class="pill-item" data-label="Profile">
+                <i class="fas fa-user"></i>
+            </a>
+            <a href="/analytics_new.php" class="pill-item" data-label="Analytics">
+                <i class="fas fa-chart-line"></i>
+            </a>
+            <a href="/claudes-column_new.php" class="pill-item" data-label="Column" style="position:relative">
+                <i class="fa-solid fa-newspaper"></i>
+                <?php if ($hasNewArticles): ?><span style="position:absolute;top:2px;right:2px;width:7px;height:7px;background:#f85149;border-radius:50%;box-shadow:0 0 4px rgba(248,81,73,0.5)"></span><?php endif; ?>
+            </a>
+            <div class="pill-divider"></div>
+            <button class="pill-item pill-menu-btn" data-label="Menu" onclick="togglePillMenu()">
+                <i class="fas fa-bars"></i>
+                <i class="fas fa-xmark"></i>
+            </button>
+        </div>
     </nav>
+    <script>
+    function togglePillMenu() {
+        document.getElementById('floatingPill').classList.toggle('expanded');
+    }
+    document.addEventListener('click', function(e) {
+        var pill = document.getElementById('floatingPill');
+        if (pill.classList.contains('expanded') && !pill.contains(e.target)) {
+            pill.classList.remove('expanded');
+        }
+    });
+    </script>
 </body>
 </html>

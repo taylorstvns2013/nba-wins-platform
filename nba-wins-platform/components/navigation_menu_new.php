@@ -30,9 +30,11 @@ if ($isGuest && $currentLeagueId && isset($pdo)) {
 
 $hasNewArticles = false;
 $column_dir = $_SERVER['DOCUMENT_ROOT'] . '/nba-wins-platform/claudes-column/';
-if (is_dir($column_dir)) {
+if (!$isGuest && isset($pdo) && $currentUserId && is_dir($column_dir)) {
+    // Find the most recent article by date meta tag
+    $latestArticleFile = null;
+    $latestArticleDate = 0;
     $files = scandir($column_dir);
-    $sevenDaysAgo = strtotime('-7 days');
     foreach ($files as $file) {
         if (pathinfo($file, PATHINFO_EXTENSION) === 'html') {
             $filepath = $column_dir . $file;
@@ -43,14 +45,29 @@ if (is_dir($column_dir)) {
                 $metas = $dom->getElementsByTagName('meta');
                 foreach ($metas as $meta) {
                     if ($meta->getAttribute('name') === 'date') {
-                        $articleDate = $meta->getAttribute('content');
-                        if ($articleDate && strtotime($articleDate) > $sevenDaysAgo) {
-                            $hasNewArticles = true;
-                            break 2;
+                        $articleDate = strtotime($meta->getAttribute('content'));
+                        if ($articleDate && $articleDate > $latestArticleDate) {
+                            $latestArticleDate = $articleDate;
+                            $latestArticleFile = $file;
                         }
                     }
                 }
             }
+        }
+    }
+
+    // Check if user has read the latest article
+    if ($latestArticleFile) {
+        try {
+            $stmt = $pdo->prepare("
+                SELECT 1 FROM user_article_reads 
+                WHERE user_id = ? AND article_filename = ?
+            ");
+            $stmt->execute([$currentUserId, $latestArticleFile]);
+            $hasNewArticles = !$stmt->fetch();
+        } catch (Exception $e) {
+            // Table might not exist yet — fall back to no dot
+            $hasNewArticles = false;
         }
     }
 }

@@ -131,17 +131,33 @@ class UserAuthentication {
                 $sessionId = $this->generateSecureToken();
                 $expiresAt = date('Y-m-d H:i:s', time() + $this->sessionLifetime);
                 
-                // Get user's first league as default
+                // Get user's default league, or fall back to first league
+                $defaultLeague = null;
+
+                // Check for user-configured default league
                 $stmt = $this->pdo->prepare("
-                    SELECT l.id 
-                    FROM leagues l
-                    JOIN league_participants lp ON l.id = lp.league_id
-                    WHERE lp.user_id = ? AND lp.status = 'active'
-                    ORDER BY l.league_number ASC
-                    LIMIT 1
+                    SELECT u.default_league_id
+                    FROM users u
+                    JOIN league_participants lp ON lp.league_id = u.default_league_id
+                        AND lp.user_id = u.id AND lp.status = 'active'
+                    WHERE u.id = ? AND u.default_league_id IS NOT NULL
                 ");
                 $stmt->execute([$user['id']]);
-                $defaultLeague = $stmt->fetchColumn();
+                $defaultLeague = $stmt->fetchColumn() ?: null;
+
+                // Fall back to first league by league_number
+                if (!$defaultLeague) {
+                    $stmt = $this->pdo->prepare("
+                        SELECT l.id 
+                        FROM leagues l
+                        JOIN league_participants lp ON l.id = lp.league_id
+                        WHERE lp.user_id = ? AND lp.status = 'active'
+                        ORDER BY l.league_number ASC
+                        LIMIT 1
+                    ");
+                    $stmt->execute([$user['id']]);
+                    $defaultLeague = $stmt->fetchColumn();
+                }
                 
                 // Store session in database
                 $stmt = $this->pdo->prepare("

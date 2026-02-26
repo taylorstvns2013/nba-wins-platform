@@ -156,30 +156,62 @@ if ($_POST) {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="theme-color" content="#121a23">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Forgot Password - NBA Wins Pool</title>
     <link rel="apple-touch-icon" type="image/png" href="../public/assets/favicon/favicon.png">
     <link rel="icon" type="image/png" href="../public/assets/favicon/favicon.png">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg-primary: #151d28;
+            --bg-secondary: #1a222c;
+            --bg-card: #202a38;
+            --bg-card-hover: #273140;
+            --bg-elevated: #2a3446;
+            --border-color: rgba(255, 255, 255, 0.08);
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-muted: #545d68;
+            --accent-blue: #388bfd;
+            --accent-blue-dim: rgba(56, 139, 253, 0.15);
+            --accent-green: #3fb950;
+            --accent-red: #f85149;
+            --accent-orange: #d29922;
+            --radius-md: 10px;
+            --radius-lg: 14px;
+            --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--border-color);
+            --shadow-elevated: 0 8px 25px rgba(0, 0, 0, 0.5);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { background: var(--bg-primary); }
+
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-image: url('../public/assets/background/geometric_white.png');
-            background-repeat: repeat;
-            background-attachment: fixed;
-            background-color: #f5f5f5;
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg-primary);
+            background-image: radial-gradient(ellipse at 50% 0%, rgba(56, 139, 253, 0.04) 0%, transparent 60%);
+            color: var(--text-primary);
             margin: 0;
             padding: 20px;
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
+            -webkit-font-smoothing: antialiased;
+            line-height: 1.5;
         }
 
         .reset-container {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 12px;
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-elevated);
+            border: 1px solid var(--border-color);
             padding: 40px;
             width: 100%;
             max-width: 450px;
@@ -198,9 +230,11 @@ if ($_POST) {
 
         h1 {
             text-align: center;
-            color: #333;
+            color: var(--text-primary);
             margin: 0 0 30px 0;
             font-size: 28px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
         }
 
         .form-group {
@@ -210,97 +244,112 @@ if ($_POST) {
         label {
             display: block;
             margin-bottom: 8px;
-            color: #555;
+            color: var(--text-secondary);
             font-weight: 500;
+            font-size: 0.9rem;
         }
 
         input[type="text"],
         input[type="email"] {
             width: 100%;
             padding: 12px 15px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
             font-size: 16px;
+            font-family: 'Outfit', sans-serif;
             box-sizing: border-box;
-            transition: border-color 0.3s ease;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            background-color: var(--bg-elevated);
+            color: var(--text-primary);
         }
 
         input:focus {
             outline: none;
-            border-color: #2196F3;
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px var(--accent-blue-dim);
+        }
+
+        input::placeholder {
+            color: var(--text-muted);
         }
 
         .help-text {
-            font-size: 14px;
-            color: #666;
-            margin-top: 5px;
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 6px;
         }
 
         .submit-btn {
             width: 100%;
-            background: linear-gradient(135deg, #2196F3, #1976D2);
+            background: linear-gradient(135deg, var(--accent-blue), #1a6ddb);
             color: white;
             padding: 14px 20px;
             border: none;
-            border-radius: 8px;
+            border-radius: var(--radius-md);
             font-size: 16px;
             font-weight: 600;
+            font-family: 'Outfit', sans-serif;
             cursor: pointer;
-            transition: transform 0.2s ease;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
             margin-top: 10px;
         }
 
         .submit-btn:hover {
             transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(56, 139, 253, 0.3);
         }
 
         .message {
             padding: 12px 15px;
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             margin-bottom: 20px;
             text-align: center;
+            font-size: 0.92rem;
         }
 
         .message.success {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
+            background-color: rgba(63, 185, 80, 0.12);
+            color: var(--accent-green);
+            border: 1px solid rgba(63, 185, 80, 0.25);
         }
 
         .message.error {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
+            background-color: rgba(248, 81, 73, 0.12);
+            color: var(--accent-red);
+            border: 1px solid rgba(248, 81, 73, 0.25);
         }
 
         .message.info {
-            background-color: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
+            background-color: var(--accent-blue-dim);
+            color: var(--accent-blue);
+            border: 1px solid rgba(56, 139, 253, 0.25);
         }
 
         .reset-code {
-            background-color: #fff3cd;
-            border: 2px solid #ffc107;
-            border-radius: 8px;
+            background-color: rgba(210, 153, 34, 0.1);
+            border: 1px solid rgba(210, 153, 34, 0.35);
+            border-radius: var(--radius-md);
             padding: 20px;
             margin: 20px 0;
             text-align: center;
         }
 
         .reset-code h3 {
-            color: #856404;
+            color: var(--accent-orange);
             margin: 0 0 15px 0;
+            font-size: 1rem;
+            font-weight: 600;
         }
 
         .code-display {
-            background-color: #fff;
-            border: 2px dashed #ffc107;
+            background-color: var(--bg-elevated);
+            border: 2px dashed rgba(210, 153, 34, 0.4);
             padding: 15px;
+            border-radius: 8px;
             font-family: 'Courier New', monospace;
-            font-size: 16px;
+            font-size: 14px;
             font-weight: bold;
-            color: #333;
+            color: var(--text-primary);
             word-break: break-all;
             user-select: all;
             cursor: text;
@@ -308,26 +357,29 @@ if ($_POST) {
         }
 
         .copy-btn {
-            background: #ffc107;
-            color: #333;
+            background: var(--accent-orange);
+            color: #1a1a1a;
             padding: 10px 20px;
             border: none;
-            border-radius: 5px;
+            border-radius: var(--radius-md);
             margin: 15px 5px 10px 5px;
             cursor: pointer;
             font-weight: 600;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.9rem;
+            transition: opacity 0.2s;
         }
 
         .copy-btn:hover {
-            background: #ffb300;
+            opacity: 0.85;
         }
 
         .continue-btn {
             display: inline-block;
-            background: linear-gradient(135deg, #2196F3, #1976D2);
+            background: linear-gradient(135deg, var(--accent-blue), #1a6ddb);
             color: white;
             padding: 12px 25px;
-            border-radius: 8px;
+            border-radius: var(--radius-md);
             text-decoration: none;
             font-weight: 600;
             margin: 5px;
@@ -342,14 +394,15 @@ if ($_POST) {
             text-align: center;
             margin-top: 20px;
             padding-top: 20px;
-            border-top: 1px solid #e0e0e0;
+            border-top: 1px solid var(--border-color);
         }
 
         .links a {
-            color: #2196F3;
+            color: var(--accent-blue);
             text-decoration: none;
             font-weight: 500;
             margin: 0 10px;
+            font-size: 0.92rem;
         }
 
         .links a:hover {
@@ -357,17 +410,32 @@ if ($_POST) {
         }
 
         .info-box {
-            background-color: #e3f2fd;
-            border: 1px solid #bbdefb;
-            border-radius: 6px;
+            background-color: var(--accent-blue-dim);
+            border: 1px solid rgba(56, 139, 253, 0.2);
+            border-radius: var(--radius-md);
             padding: 15px;
             margin-bottom: 20px;
             font-size: 14px;
+            color: var(--text-secondary);
         }
 
         .info-box h4 {
             margin: 0 0 10px 0;
-            color: #1565c0;
+            color: var(--accent-blue);
+            font-weight: 600;
+        }
+
+        .info-box p {
+            margin: 0;
+        }
+
+        .security-question-box {
+            background: rgba(210, 153, 34, 0.08);
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border-left: 4px solid var(--accent-orange);
+            color: var(--text-primary);
         }
 
         @media (max-width: 500px) {
@@ -424,7 +492,7 @@ if ($_POST) {
                 <div class="info-box">
                     <h4><i class="fas fa-question-circle"></i> Step 2: Security Question</h4>
                     <p><strong>Your Security Question:</strong></p>
-                    <div style="background: #fff3cd; padding: 15px; border-radius: 6px; margin: 10px 0; border-left: 4px solid #ffc107;">
+                    <div class="security-question-box">
                         <strong><?php echo htmlspecialchars($userInfo['security_question']); ?></strong>
                     </div>
                 </div>
@@ -454,7 +522,7 @@ if ($_POST) {
                 </form>
 
                 <div style="text-align: center; margin-top: 15px;">
-                    <a href="forgot_password.php" style="color: #2196F3; text-decoration: none; font-size: 14px;">
+                    <a href="forgot_password.php" style="color: var(--accent-blue); text-decoration: none; font-size: 14px;">
                         <i class="fas fa-arrow-left"></i> Back to Step 1
                     </a>
                 </div>
@@ -477,7 +545,7 @@ if ($_POST) {
                     </a>
                 </div>
                 
-                <p style="margin-top: 15px; color: #856404; font-size: 14px;">
+                <p style="margin-top: 15px; color: var(--accent-orange); font-size: 13px;">
                     This code is valid for 1 hour. Save it now as it won't be shown again!
                 </p>
             </div>
