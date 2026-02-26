@@ -1,6 +1,7 @@
 <?php
 // /data/www/default/nba-wins-platform/core/DashboardWidget.php
-// Renders individual widgets on the homepage dashboard
+// Renders individual widgets on the homepage dashboard - DARK THEME VERSION
+// Matches the dark UI of index.php
 
 class DashboardWidget {
     private $pdo;
@@ -14,233 +15,114 @@ class DashboardWidget {
     
     /**
      * Render a widget based on its type
-     * 
-     * @param string $widget_type - The type of widget to render
-     * @param int $user_id - The user ID
-     * @param int $league_id - The league ID
-     * @param bool $edit_mode - Whether edit mode is active
-     * @param string $selected_date - Optional date selected on index page (for upcoming games widget)
-     * @return string - HTML for the widget
      */
     public function render($widget_type, $user_id, $league_id, $edit_mode = false, $selected_date = null) {
         switch ($widget_type) {
-            // Participant Profile Widgets
             case 'upcoming_games':
                 return $this->renderUpcomingGames($user_id, $league_id, $edit_mode, $selected_date);
             case 'last_10_games':
                 return $this->renderLastGames($user_id, $league_id, $edit_mode);
             case 'league_stats':
                 return $this->renderLeagueStats($user_id, $league_id, $edit_mode);
-                
-            // Vegas Over/Under Widgets
             case 'exceeding_expectations':
                 return $this->renderExceedingExpectations($user_id, $league_id, $edit_mode);
             case 'falling_short':
                 return $this->renderFallingShort($user_id, $league_id, $edit_mode);
-                
-            // Analytics Widgets - NOW WITH REAL DATA!
             case 'platform_leaderboard':
                 return $this->renderPlatformLeaderboard($edit_mode);
             case 'draft_steals':
                 return $this->renderDraftSteals($edit_mode);
-                
-            // Enhanced Analytics Widgets
             case 'weekly_rankings':
                 return $this->renderWeeklyRankings($user_id, $league_id, $edit_mode);
             case 'strength_of_schedule':
                 return $this->renderStrengthOfSchedule($user_id, $league_id, $edit_mode);
-            
-            // Complex Analytics Widgets - Still placeholders (require heavy JS/charting)
             case 'tracking_graph':
             case 'h2h_comparison':
                 return $this->renderAnalyticsPlaceholder($widget_type, $edit_mode);
-                
             default:
                 return '';
         }
     }
     
     /**
-     * Render Platform Leaderboard widget with EXPANDABLE TEAMS
+     * Shared edit controls markup
+     */
+    private function renderEditControls($widget_type, $edit_mode) {
+        if (!$edit_mode) return '';
+        ob_start();
+        ?>
+        <div class="dw-controls show">
+            <button class="dw-ctrl-btn" onclick="moveWidget('<?php echo $widget_type; ?>', 'up')" title="Move Up">
+                <i class="fas fa-arrow-up"></i>
+            </button>
+            <button class="dw-ctrl-btn" onclick="moveWidget('<?php echo $widget_type; ?>', 'down')" title="Move Down">
+                <i class="fas fa-arrow-down"></i>
+            </button>
+            <button class="dw-ctrl-btn dw-ctrl-remove" onclick="removeWidget('<?php echo $widget_type; ?>')" title="Remove Widget">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <?php
+        return ob_get_clean();
+    }
+    
+    /**
+     * Platform Leaderboard with expandable teams
      */
     private function renderPlatformLeaderboard($edit_mode) {
         $leaderboard = $this->widgetFetcher->getPlatformLeaderboardWithTeams();
         
         ob_start();
         ?>
-        <div class="stats-card dashboard-widget" data-widget-type="platform_leaderboard">
-            <div class="widget-header">
-                <h2 class="section-title">
-                    <i class="fas fa-globe"></i>
-                    Platform Leaderboard
-                </h2>
-                <?php if ($edit_mode): ?>
-                <div class="widget-controls">
-                    <button class="widget-control-btn" onclick="moveWidget('platform_leaderboard', 'up')" title="Move Up">
-                        <i class="fas fa-arrow-up"></i>
-                    </button>
-                    <button class="widget-control-btn" onclick="moveWidget('platform_leaderboard', 'down')" title="Move Down">
-                        <i class="fas fa-arrow-down"></i>
-                    </button>
-                    <button class="widget-control-btn widget-remove-btn" onclick="removeWidget('platform_leaderboard')" title="Remove Widget">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <?php endif; ?>
+        <div class="dw-card" data-widget-type="platform_leaderboard">
+            <div class="dw-header">
+                <h3 class="dw-title"><i class="fas fa-globe"></i> Platform Leaderboard</h3>
+                <?php echo $this->renderEditControls('platform_leaderboard', $edit_mode); ?>
             </div>
             
             <?php if (!empty($leaderboard)): ?>
-            <style>
-            .leaderboard-expandable-row {
-                cursor: pointer;
-                transition: background-color 0.2s;
-            }
-            .leaderboard-expandable-row:hover {
-                background-color: rgba(0,0,0,0.02);
-            }
-            .leaderboard-expandable-row.expanded .expand-indicator {
-                transform: rotate(180deg);
-            }
-            .expand-indicator {
-                transition: transform 0.3s;
-                margin-left: 5px;
-                color: #666;
-                font-size: 0.8rem;
-            }
-            .team-list-expanded {
-                display: none;
-                background-color: #f9fafb;
-                padding: 12px;
-                border-top: 1px solid #e0e0e0;
-            }
-            .team-list-table {
-                width: 100%;
-                border-collapse: collapse;
-            }
-            .team-list-table th {
-                text-align: left;
-                padding: 8px;
-                font-size: 0.85rem;
-                color: #666;
-                border-bottom: 1px solid #e0e0e0;
-            }
-            .team-list-table td {
-                padding: 8px;
-                font-size: 0.9rem;
-                border-bottom: 1px solid #f0f0f0;
-            }
-            .team-list-table td:last-child {
-                text-align: right;
-                font-weight: bold;
-                color: var(--primary-color);
-            }
-            @media (max-width: 768px) {
-                .team-row {
-                    padding: 10px 8px !important;
-                }
-                .team-info {
-                    font-size: 0.85rem;
-                    min-width: 0;
-                    overflow: hidden;
-                }
-                .team-info > div {
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                    white-space: nowrap;
-                }
-                .team-info a {
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                    white-space: nowrap;
-                    max-width: 180px;
-                }
-                .expand-indicator {
-                    font-size: 0.7rem;
-                }
-                .fa-trophy {
-                    font-size: 0.75rem !important;
-                    margin-left: 3px !important;
-                }
-                .team-record {
-                    font-size: 1.1rem !important;
-                    padding-right: 4px !important;
-                }
-            }
-            </style>
-            
-            <div>
+            <div class="dw-body">
                 <?php 
-                $rank = 1;
-                $prevWins = null;
-                $nextRank = 1;
+                $rank = 1; $prevWins = null; $nextRank = 1;
                 foreach ($leaderboard as $index => $entry): 
-                    // Proper tie handling
-                    if ($prevWins !== null && $entry['total_wins'] < $prevWins) {
-                        $rank = $nextRank;
-                    }
+                    if ($prevWins !== null && $entry['total_wins'] < $prevWins) $rank = $nextRank;
                     $prevWins = $entry['total_wins'];
                     $nextRank = $index + 2;
-                    
-                    $rowId = 'leaderboard-row-' . $entry['participant_id'];
-                    $teamListId = 'leaderboard-teams-' . $entry['participant_id'];
+                    $rowId = 'lb-row-' . $entry['participant_id'];
+                    $teamListId = 'lb-teams-' . $entry['participant_id'];
                 ?>
-                <div class="leaderboard-expandable-row" id="<?php echo $rowId; ?>" 
+                <div class="dw-lb-row" id="<?php echo $rowId; ?>" 
                      onclick="toggleLeaderboardTeams('<?php echo $teamListId; ?>', this)">
-                    <div class="team-row" style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                    <div class="team-info" style="display: flex; align-items: center; flex: 1; min-width: 0; gap: 8px;">
-                    <span class="participant-rank" style="font-weight: bold; color: #666; min-width: 30px; display: inline-flex; align-items: center; font-size: 0.9rem; flex-shrink: 0;">
-                    <?php echo $rank; ?>.
-                    <i class="fas fa-chevron-down expand-indicator"></i>
-                    <?php if ($rank === 1 && $entry['total_wins'] > 0): ?>
-                    <i class="fa-solid fa-trophy" style="color: gold; margin-left: 5px;" title="1st Place"></i>
-                    <?php elseif ($rank === 2): ?>
-                    <i class="fa-solid fa-trophy" style="color: silver; margin-left: 5px;" title="2nd Place"></i>
-                    <?php elseif ($rank === 3): ?>
-                    <i class="fa-solid fa-trophy" style="color: #CD7F32; margin-left: 5px;" title="3rd Place"></i>
-                    <?php endif; ?>
-                    </span>
-                    <div style="flex: 1; min-width: 0; overflow: hidden;">
-                    <div class="participant-name-text" style="font-weight: 600; font-size: 0.9rem; display: block; word-wrap: break-word; overflow-wrap: break-word; white-space: normal; line-height: 1.3;">
-                    <?php echo htmlspecialchars($entry['display_name']); ?>
+                    <div class="dw-lb-rank">
+                        <?php echo $rank; ?>.
+                        <i class="fas fa-chevron-down dw-lb-arrow"></i>
+                        <?php if ($rank === 1 && $entry['total_wins'] > 0): ?>
+                            <i class="fa-solid fa-trophy" style="color: var(--accent-gold); margin-left: 4px;"></i>
+                        <?php elseif ($rank === 2): ?>
+                            <i class="fa-solid fa-trophy" style="color: var(--accent-silver); margin-left: 4px;"></i>
+                        <?php elseif ($rank === 3): ?>
+                            <i class="fa-solid fa-trophy" style="color: var(--accent-bronze); margin-left: 4px;"></i>
+                        <?php endif; ?>
                     </div>
-                    <div class="participant-league-text" style="font-size: 0.75rem; color: #666; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                    <?php echo htmlspecialchars($entry['league_name']); ?>
+                    <div class="dw-lb-info">
+                        <div class="dw-lb-name"><?php echo htmlspecialchars($entry['display_name']); ?></div>
+                        <div class="dw-lb-league"><?php echo htmlspecialchars($entry['league_name']); ?></div>
                     </div>
-                    </div>
-                    </div>
-                    <div class="team-record" style="font-size: 1rem; font-weight: bold; color: var(--primary-color); padding-right: 8px; flex-shrink: 0;">
-                    <?php echo $entry['total_wins']; ?>
-                    </div>
-                    </div>
+                    <div class="dw-lb-wins"><?php echo $entry['total_wins']; ?></div>
                 </div>
                 
-                <!-- Expandable Team List -->
-                <div class="team-list-expanded" id="<?php echo $teamListId; ?>">
-                    <table class="team-list-table">
-                        <thead>
-                            <tr>
-                                <th>Team</th>
-                                <th style="text-align: right;">Wins</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($entry['teams'] as $team): ?>
-                            <tr>
-                                <td>
-                                    <a href="/nba-wins-platform/stats/team_data.php?team=<?php echo urlencode($team['team_name']); ?>" 
-                                       style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 8px;">
-                                        <img src="<?php echo htmlspecialchars($this->getTeamLogo($team['team_name'])); ?>" 
-                                             alt="<?php echo htmlspecialchars($team['team_name']); ?>" 
-                                             style="width: 20px; height: 20px;"
-                                             onerror="this.style.display='none'">
-                                        <span><?php echo htmlspecialchars($team['team_name']); ?></span>
-                                    </a>
-                                </td>
-                                <td><?php echo $team['wins']; ?></td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
+                <div class="dw-lb-teams" id="<?php echo $teamListId; ?>">
+                    <?php foreach ($entry['teams'] as $team): ?>
+                    <div class="dw-lb-team-row">
+                        <a href="/nba-wins-platform/stats/team_data.php?team=<?php echo urlencode($team['team_name']); ?>" 
+                           class="dw-lb-team-link">
+                            <img src="<?php echo htmlspecialchars($this->getTeamLogo($team['team_name'])); ?>" 
+                                 alt="" class="dw-team-logo" onerror="this.style.opacity='0.3'">
+                            <span><?php echo htmlspecialchars($team['team_name']); ?></span>
+                        </a>
+                        <span class="dw-lb-team-wins"><?php echo $team['wins']; ?></span>
+                    </div>
+                    <?php endforeach; ?>
                 </div>
                 <?php endforeach; ?>
             </div>
@@ -249,7 +131,6 @@ class DashboardWidget {
             function toggleLeaderboardTeams(teamListId, rowElement) {
                 const teamList = document.getElementById(teamListId);
                 const isExpanded = rowElement.classList.contains('expanded');
-                
                 if (isExpanded) {
                     teamList.style.display = 'none';
                     rowElement.classList.remove('expanded');
@@ -260,9 +141,7 @@ class DashboardWidget {
             }
             </script>
             <?php else: ?>
-            <div class="no-data">
-                <p>No leaderboard data available yet</p>
-            </div>
+            <div class="dw-empty"><p>No leaderboard data available yet</p></div>
             <?php endif; ?>
         </div>
         <?php
@@ -270,172 +149,82 @@ class DashboardWidget {
     }
     
     /**
-     * Render Draft Steals widget with LEAGUE COLUMN
+     * Draft Steals widget
      */
     private function renderDraftSteals($edit_mode) {
         $draftSteals = $this->widgetFetcher->getBestDraftSteals();
         
         ob_start();
         ?>
-        <div class="stats-card dashboard-widget" data-widget-type="draft_steals">
-            <div class="widget-header">
-                <h2 class="section-title">
-                    <i class="fas fa-gem"></i>
-                    Draft Steals
-                </h2>
-                <?php if ($edit_mode): ?>
-                <div class="widget-controls">
-                    <button class="widget-control-btn" onclick="moveWidget('draft_steals', 'up')" title="Move Up">
-                        <i class="fas fa-arrow-up"></i>
-                    </button>
-                    <button class="widget-control-btn" onclick="moveWidget('draft_steals', 'down')" title="Move Down">
-                        <i class="fas fa-arrow-down"></i>
-                    </button>
-                    <button class="widget-control-btn widget-remove-btn" onclick="removeWidget('draft_steals')" title="Remove Widget">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <?php endif; ?>
+        <div class="dw-card" data-widget-type="draft_steals">
+            <div class="dw-header">
+                <h3 class="dw-title"><i class="fas fa-gem"></i> Draft Steals</h3>
+                <?php echo $this->renderEditControls('draft_steals', $edit_mode); ?>
             </div>
             
             <?php if (!empty($draftSteals)): ?>
-            <style>
-            .draft-steals-table {
-                width: 100%;
-                border-collapse: collapse;
-                font-size: 0.9rem;
-            }
-            .draft-steals-table th {
-                background-color: #f8f9fa;
-                padding: 10px 8px;
-                text-align: left;
-                font-weight: 600;
-                border-bottom: 2px solid #dee2e6;
-            }
-            .draft-steals-table td {
-                padding: 10px 8px;
-                border-bottom: 1px solid #e0e0e0;
-            }
-            .draft-steals-table .rank-col {
-                width: 60px;
-                text-align: center;
-            }
-            .draft-steals-table .value-col {
-                text-align: center;
-                width: 90px;
-            }
-            .draft-steals-table .team-logo-small {
-                width: 20px;
-                height: 20px;
-                flex-shrink: 0;
-            }
-            .show-mobile-only {
-                display: none;
-            }
-            .draft-steal-team-name {
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-            }
-            @media (max-width: 768px) {
-                .draft-steals-table .hide-mobile {
-                    display: none;
-                }
-                .show-mobile-only {
-                    display: block;
-                }
-                .draft-steals-table {
-                    font-size: 0.8rem;
-                }
-                .draft-steals-table th,
-                .draft-steals-table td {
-                    padding: 8px 4px;
-                }
-                .draft-steals-table .rank-col {
-                    width: 45px;
-                    font-size: 0.75rem;
-                }
-                .draft-steals-table .value-col {
-                    width: 70px;
-                }
-                .draft-steals-table .team-logo-small {
-                    width: 16px;
-                    height: 16px;
-                }
-                .draft-steal-team-name {
-                    max-width: 100px;
-                }
-            }
-            </style>
-            
-            <table class="draft-steals-table">
-                <thead>
-                    <tr>
-                        <th class="rank-col">Rank</th>
-                        <th>Team</th>
-                        <th class="hide-mobile">Owner</th>
-                        <th class="hide-mobile">League</th>
-                        <th class="value-col">Value</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($draftSteals as $steal): ?>
-                    <tr>
-                        <td class="rank-col">
-                            <strong><?php echo $steal['rank']; ?>.</strong>
-                            <?php if ($steal['rank'] === 1): ?>
-                                <i class="fa-solid fa-trophy" style="color: gold;" title="Best Steal"></i>
-                            <?php elseif ($steal['rank'] === 2): ?>
-                                <i class="fa-solid fa-trophy" style="color: silver;" title="2nd Best"></i>
-                            <?php elseif ($steal['rank'] === 3): ?>
-                                <i class="fa-solid fa-trophy" style="color: #CD7F32;" title="3rd Best"></i>
-                            <?php endif; ?>
-                        </td>
-                        <td>
-                            <a href="/nba-wins-platform/stats/team_data.php?team=<?php echo urlencode($steal['team_name']); ?>" 
-                               style="text-decoration: none; color: inherit; font-weight: 600; display: flex; align-items: center; gap: 6px;">
-                                <img src="<?php echo htmlspecialchars($this->getTeamLogo($steal['team_name'])); ?>" 
-                                     alt="<?php echo htmlspecialchars($steal['team_name']); ?>" 
-                                     class="team-logo-small"
-                                     onerror="this.style.display='none'">
-                                <span class="draft-steal-team-name"><?php echo htmlspecialchars($steal['team_name']); ?></span>
-                            </a>
-                            <div style="font-size: 0.75rem; color: #666; margin-top: 4px;">
-                                <span class="hide-mobile"><?php echo htmlspecialchars($steal['owner_name']); ?> • </span>
-                                Pick #<?php echo $steal['pick_number']; ?>, Rnd <?php echo $steal['round_number']; ?> • <?php echo $steal['actual_wins']; ?>W
-                            </div>
-                            <div class="show-mobile-only" style="font-size: 0.72rem; color: #666; margin-top: 2px; font-weight: 500;">
-                                <?php echo htmlspecialchars($steal['owner_name']); ?>
-                            </div>
-                            <div class="show-mobile-only" style="font-size: 0.7rem; color: #999; margin-top: 2px;">
+            <div class="dw-body">
+                <table class="dw-steals-table">
+                    <thead>
+                        <tr>
+                            <th class="dw-steals-rank-col">#</th>
+                            <th>Team</th>
+                            <th class="dw-steals-hide-mobile">Owner</th>
+                            <th class="dw-steals-hide-mobile">League</th>
+                            <th class="dw-steals-value-col">Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($draftSteals as $steal): ?>
+                        <tr>
+                            <td class="dw-steals-rank-col">
+                                <strong><?php echo $steal['rank']; ?>.</strong>
+                                <?php if ($steal['rank'] === 1): ?>
+                                    <i class="fa-solid fa-trophy" style="color: var(--accent-gold);"></i>
+                                <?php elseif ($steal['rank'] === 2): ?>
+                                    <i class="fa-solid fa-trophy" style="color: var(--accent-silver);"></i>
+                                <?php elseif ($steal['rank'] === 3): ?>
+                                    <i class="fa-solid fa-trophy" style="color: var(--accent-bronze);"></i>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <a href="/nba-wins-platform/stats/team_data.php?team=<?php echo urlencode($steal['team_name']); ?>" class="dw-steals-team-link">
+                                    <img src="<?php echo htmlspecialchars($this->getTeamLogo($steal['team_name'])); ?>" alt="" class="dw-team-logo" onerror="this.style.opacity='0.3'">
+                                    <span class="dw-steals-team-name"><?php echo htmlspecialchars($steal['team_name']); ?></span>
+                                </a>
+                                <div class="dw-steals-meta">
+                                    <span class="dw-steals-hide-mobile"><?php echo htmlspecialchars($steal['owner_name']); ?> · </span>
+                                    Pick #<?php echo $steal['pick_number']; ?>, Rnd <?php echo $steal['round_number']; ?> · <?php echo $steal['actual_wins']; ?>W
+                                </div>
+                                <div class="dw-steals-show-mobile">
+                                    <div style="color: var(--text-secondary); margin-top: 2px;"><?php echo htmlspecialchars($steal['owner_name']); ?></div>
+                                    <div style="color: var(--text-muted); margin-top: 1px;"><?php echo htmlspecialchars($steal['league_name']); ?></div>
+                                </div>
+                            </td>
+                            <td class="dw-steals-hide-mobile">
+                                <a href="/nba-wins-platform/profiles/participant_profile.php?league_id=<?php echo $steal['league_id']; ?>&user_id=<?php echo $steal['user_id']; ?>" 
+                                   style="color: var(--accent-blue); text-decoration: none;">
+                                    <?php echo htmlspecialchars($steal['owner_name']); ?>
+                                </a>
+                            </td>
+                            <td class="dw-steals-hide-mobile" style="color: var(--text-secondary);">
                                 <?php echo htmlspecialchars($steal['league_name']); ?>
-                            </div>
-                        </td>
-                        <td class="hide-mobile">
-                            <a href="/nba-wins-platform/profiles/participant_profile.php?league_id=<?php echo $steal['league_id']; ?>&user_id=<?php echo $steal['user_id']; ?>" 
-                               style="text-decoration: none; color: inherit;">
-                                <?php echo htmlspecialchars($steal['owner_name']); ?>
-                            </a>
-                        </td>
-                        <td class="hide-mobile">
-                            <?php echo htmlspecialchars($steal['league_name']); ?>
-                        </td>
-                        <td class="value-col">
-                            <div style="font-weight: bold; font-size: 1.05rem; color: <?php echo $steal['grade_color']; ?>;">
-                                +<?php echo number_format($steal['steal_score'], 2); ?>
-                            </div>
-                            <div style="font-size: 0.65rem; color: <?php echo $steal['grade_color']; ?>; font-weight: bold;">
-                                <?php echo $steal['steal_grade']; ?>
-                            </div>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-            <?php else: ?>
-            <div class="no-data">
-                <p>No draft steal data available yet</p>
+                            </td>
+                            <td class="dw-steals-value-col">
+                                <div style="font-weight: 700; font-size: 1.05rem; color: <?php echo $steal['grade_color']; ?>;">
+                                    +<?php echo number_format($steal['steal_score'], 2); ?>
+                                </div>
+                                <div style="font-size: 0.65rem; color: <?php echo $steal['grade_color']; ?>; font-weight: 700;">
+                                    <?php echo $steal['steal_grade']; ?>
+                                </div>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
             </div>
+            <?php else: ?>
+            <div class="dw-empty"><p>No draft steal data available yet</p></div>
             <?php endif; ?>
         </div>
         <?php
@@ -443,53 +232,7 @@ class DashboardWidget {
     }
     
     /**
-     * Render a placeholder for complex analytics widgets
-     */
-    private function renderAnalyticsPlaceholder($widget_type, $edit_mode) {
-        $widgetTitles = [
-            'tracking_graph' => ['title' => 'Tracking Graph', 'icon' => 'fa-chart-line'],
-            'h2h_comparison' => ['title' => 'Head-to-Head Comparison', 'icon' => 'fa-users'],
-            'weekly_rankings' => ['title' => 'Weekly Rankings', 'icon' => 'fa-trophy'],
-            'strength_of_schedule' => ['title' => 'Strength of Schedule', 'icon' => 'fa-calendar-check']
-        ];
-        
-        $info = $widgetTitles[$widget_type] ?? ['title' => 'Widget', 'icon' => 'fa-info-circle'];
-        
-        ob_start();
-        ?>
-        <div class="stats-card dashboard-widget" data-widget-type="<?php echo $widget_type; ?>" style="padding: 30px;">
-            <div class="widget-header">
-                <h2 class="section-title">
-                    <i class="fas <?php echo $info['icon']; ?>"></i>
-                    <?php echo $info['title']; ?>
-                </h2>
-                <?php if ($edit_mode): ?>
-                <div class="widget-controls">
-                    <button class="widget-control-btn" onclick="moveWidget('<?php echo $widget_type; ?>', 'up')" title="Move Up">
-                        <i class="fas fa-arrow-up"></i>
-                    </button>
-                    <button class="widget-control-btn" onclick="moveWidget('<?php echo $widget_type; ?>', 'down')" title="Move Down">
-                        <i class="fas fa-arrow-down"></i>
-                    </button>
-                    <button class="widget-control-btn widget-remove-btn" onclick="removeWidget('<?php echo $widget_type; ?>')" title="Remove Widget">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <?php endif; ?>
-            </div>
-            <div style="text-align: center; padding: 40px 20px;">
-                <i class="fas <?php echo $info['icon']; ?>" style="font-size: 3rem; color: #ddd; margin-bottom: 15px;"></i>
-                <p style="color: #666; margin: 10px 0;">
-                    View this content on the <a href="analytics.php" style="color: #007bff; text-decoration: none; font-weight: 600;">Analytics page</a>
-                </p>
-            </div>
-        </div>
-        <?php
-        return ob_get_clean();
-    }
-    
-    /**
-     * Render Exceeding Expectations widget (Vegas Over/Under overperformers)
+     * Exceeding Expectations (Vegas overperformers)
      */
     private function renderExceedingExpectations($user_id, $league_id, $edit_mode) {
         $vegasData = $this->widgetFetcher->getVegasOverUnderPerformance($league_id);
@@ -497,60 +240,37 @@ class DashboardWidget {
         
         ob_start();
         ?>
-        <div class="stats-card dashboard-widget" data-widget-type="exceeding_expectations">
-            <div class="widget-header">
-                <h2 class="section-title">
-                    <i class="fa-solid fa-dice"></i>
-                    Exceeding Expectations
-                </h2>
-                <?php if ($edit_mode): ?>
-                <div class="widget-controls">
-                    <button class="widget-control-btn" onclick="moveWidget('exceeding_expectations', 'up')" title="Move Up">
-                        <i class="fas fa-arrow-up"></i>
-                    </button>
-                    <button class="widget-control-btn" onclick="moveWidget('exceeding_expectations', 'down')" title="Move Down">
-                        <i class="fas fa-arrow-down"></i>
-                    </button>
-                    <button class="widget-control-btn widget-remove-btn" onclick="removeWidget('exceeding_expectations')" title="Remove Widget">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <?php endif; ?>
+        <div class="dw-card" data-widget-type="exceeding_expectations">
+            <div class="dw-header">
+                <h3 class="dw-title"><i class="fa-solid fa-dice"></i> Exceeding Expectations</h3>
+                <?php echo $this->renderEditControls('exceeding_expectations', $edit_mode); ?>
             </div>
             
             <?php if (!empty($overperformers)): ?>
-            <div>
+            <div class="dw-body">
                 <?php foreach ($overperformers as $index => $team): ?>
-                <div class="team-row">
-                    <div class="team-info">
-                        <span style="font-weight: bold; color: #666; min-width: 25px; display: inline-block;"><?php echo $index + 1; ?>.</span>
-                        <img src="<?php echo htmlspecialchars($this->getTeamLogo($team['team_name'])); ?>" 
-                             alt="<?php echo htmlspecialchars($team['team_name']); ?>" 
-                             style="width: 24px; height: 24px; margin-right: 8px;"
-                             onerror="this.style.display='none'">
+                <div class="dw-team-stat-row">
+                    <div class="dw-team-stat-left">
+                        <span class="dw-team-stat-rank"><?php echo $index + 1; ?>.</span>
+                        <img src="<?php echo htmlspecialchars($this->getTeamLogo($team['team_name'])); ?>" alt="" class="dw-team-logo" onerror="this.style.opacity='0.3'">
                         <div>
-                            <a href="/nba-wins-platform/stats/team_data.php?team=<?php echo urlencode($team['team_name']); ?>" 
-                               style="text-decoration: none; color: inherit; font-weight: 600;">
+                            <a href="/nba-wins-platform/stats/team_data.php?team=<?php echo urlencode($team['team_name']); ?>" class="dw-team-stat-name">
                                 <?php echo htmlspecialchars($team['team_name']); ?>
                             </a>
                             <?php if ($team['owner']): ?>
-                            <div style="font-size: 0.85rem; color: #666;">
-                                <?php echo htmlspecialchars($team['owner']); ?> • <?php echo $team['current_record']; ?>
-                            </div>
+                            <div class="dw-team-stat-sub"><?php echo htmlspecialchars($team['owner']); ?> · <?php echo $team['current_record']; ?></div>
                             <?php endif; ?>
                         </div>
                     </div>
-                    <div class="team-record">
-                        <div style="font-size: 0.9rem; color: #666;">Pace: <?php echo number_format($team['current_pace'], 1); ?></div>
-                        <div style="color: #28a745; font-weight: bold;">+<?php echo number_format($team['variance'], 1); ?></div>
+                    <div class="dw-team-stat-right">
+                        <div class="dw-team-stat-secondary">Pace: <?php echo number_format($team['current_pace'], 1); ?></div>
+                        <div style="color: var(--accent-green); font-weight: 700;">+<?php echo number_format($team['variance'], 1); ?></div>
                     </div>
                 </div>
                 <?php endforeach; ?>
             </div>
             <?php else: ?>
-            <div class="no-data">
-                <p>No teams currently exceeding Vegas expectations in your league</p>
-            </div>
+            <div class="dw-empty"><p>No teams currently exceeding Vegas expectations in your league</p></div>
             <?php endif; ?>
         </div>
         <?php
@@ -558,7 +278,7 @@ class DashboardWidget {
     }
     
     /**
-     * Render Falling Short widget (Vegas Over/Under underperformers)
+     * Falling Short (Vegas underperformers)
      */
     private function renderFallingShort($user_id, $league_id, $edit_mode) {
         $vegasData = $this->widgetFetcher->getVegasOverUnderPerformance($league_id);
@@ -566,60 +286,37 @@ class DashboardWidget {
         
         ob_start();
         ?>
-        <div class="stats-card dashboard-widget" data-widget-type="falling_short">
-            <div class="widget-header">
-                <h2 class="section-title">
-                    <i class="fa-solid fa-dice"></i>
-                    Falling Short of Expectations
-                </h2>
-                <?php if ($edit_mode): ?>
-                <div class="widget-controls">
-                    <button class="widget-control-btn" onclick="moveWidget('falling_short', 'up')" title="Move Up">
-                        <i class="fas fa-arrow-up"></i>
-                    </button>
-                    <button class="widget-control-btn" onclick="moveWidget('falling_short', 'down')" title="Move Down">
-                        <i class="fas fa-arrow-down"></i>
-                    </button>
-                    <button class="widget-control-btn widget-remove-btn" onclick="removeWidget('falling_short')" title="Remove Widget">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <?php endif; ?>
+        <div class="dw-card" data-widget-type="falling_short">
+            <div class="dw-header">
+                <h3 class="dw-title"><i class="fa-solid fa-dice"></i> Falling Short of Expectations</h3>
+                <?php echo $this->renderEditControls('falling_short', $edit_mode); ?>
             </div>
             
             <?php if (!empty($underperformers)): ?>
-            <div>
+            <div class="dw-body">
                 <?php foreach ($underperformers as $index => $team): ?>
-                <div class="team-row">
-                    <div class="team-info">
-                        <span style="font-weight: bold; color: #666; min-width: 25px; display: inline-block;"><?php echo $index + 1; ?>.</span>
-                        <img src="<?php echo htmlspecialchars($this->getTeamLogo($team['team_name'])); ?>" 
-                             alt="<?php echo htmlspecialchars($team['team_name']); ?>" 
-                             style="width: 24px; height: 24px; margin-right: 8px;"
-                             onerror="this.style.display='none'">
+                <div class="dw-team-stat-row">
+                    <div class="dw-team-stat-left">
+                        <span class="dw-team-stat-rank"><?php echo $index + 1; ?>.</span>
+                        <img src="<?php echo htmlspecialchars($this->getTeamLogo($team['team_name'])); ?>" alt="" class="dw-team-logo" onerror="this.style.opacity='0.3'">
                         <div>
-                            <a href="/nba-wins-platform/stats/team_data.php?team=<?php echo urlencode($team['team_name']); ?>" 
-                               style="text-decoration: none; color: inherit; font-weight: 600;">
+                            <a href="/nba-wins-platform/stats/team_data.php?team=<?php echo urlencode($team['team_name']); ?>" class="dw-team-stat-name">
                                 <?php echo htmlspecialchars($team['team_name']); ?>
                             </a>
                             <?php if ($team['owner']): ?>
-                            <div style="font-size: 0.85rem; color: #666;">
-                                <?php echo htmlspecialchars($team['owner']); ?> • <?php echo $team['current_record']; ?>
-                            </div>
+                            <div class="dw-team-stat-sub"><?php echo htmlspecialchars($team['owner']); ?> · <?php echo $team['current_record']; ?></div>
                             <?php endif; ?>
                         </div>
                     </div>
-                    <div class="team-record">
-                        <div style="font-size: 0.9rem; color: #666;">Pace: <?php echo number_format($team['current_pace'], 1); ?></div>
-                        <div style="color: #dc3545; font-weight: bold;"><?php echo number_format($team['variance'], 1); ?></div>
+                    <div class="dw-team-stat-right">
+                        <div class="dw-team-stat-secondary">Pace: <?php echo number_format($team['current_pace'], 1); ?></div>
+                        <div style="color: var(--accent-red); font-weight: 700;"><?php echo number_format($team['variance'], 1); ?></div>
                     </div>
                 </div>
                 <?php endforeach; ?>
             </div>
             <?php else: ?>
-            <div class="no-data">
-                <p>No teams currently falling short of Vegas expectations in your league</p>
-            </div>
+            <div class="dw-empty"><p>No teams currently falling short of Vegas expectations in your league</p></div>
             <?php endif; ?>
         </div>
         <?php
@@ -627,60 +324,35 @@ class DashboardWidget {
     }
     
     /**
-     * Render the Upcoming 5 Games widget
+     * Upcoming Games widget
      */
     private function renderUpcomingGames($user_id, $league_id, $edit_mode, $selected_date = null) {
         $upcomingGames = $this->widgetFetcher->getUpcomingGames($user_id, $league_id, $selected_date);
         
         ob_start();
         ?>
-        <div class="stats-card dashboard-widget" data-widget-type="upcoming_games">
-            <div class="widget-header">
-                <h2 class="section-title">
-                    <i class="fas fa-calendar-alt"></i>
-                    Upcoming Games
-                </h2>
-                <?php if ($edit_mode): ?>
-                <div class="widget-controls">
-                    <button class="widget-control-btn" onclick="moveWidget('upcoming_games', 'up')" title="Move Up">
-                        <i class="fas fa-arrow-up"></i>
-                    </button>
-                    <button class="widget-control-btn" onclick="moveWidget('upcoming_games', 'down')" title="Move Down">
-                        <i class="fas fa-arrow-down"></i>
-                    </button>
-                    <button class="widget-control-btn widget-remove-btn" onclick="removeWidget('upcoming_games')" title="Remove Widget">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <?php endif; ?>
+        <div class="dw-card" data-widget-type="upcoming_games">
+            <div class="dw-header">
+                <h3 class="dw-title"><i class="fas fa-calendar-alt"></i> Upcoming Games</h3>
+                <?php echo $this->renderEditControls('upcoming_games', $edit_mode); ?>
             </div>
             
             <?php if (!empty($upcomingGames)): ?>
-            <div class="games-list">
+            <div class="dw-body dw-game-list">
                 <?php foreach ($upcomingGames as $game): 
                     $comparisonUrl = "/nba-wins-platform/stats/team_comparison.php?home_team=" . urlencode($game['home_team_code']) . "&away_team=" . urlencode($game['away_team_code']) . "&date=" . urlencode($game['game_date']);
                 ?>
-                <a href="<?php echo $comparisonUrl; ?>" class="game-list-item clickable" style="display: flex;">
-                    <div class="game-list-info">
-                        <div class="game-list-date">
-                            <?php echo date('M j, Y', strtotime($game['game_date'])); ?>
-                        </div>
-                        <div class="game-list-matchup">
-                            <img src="<?php echo htmlspecialchars($this->getTeamLogo($game['my_team'])); ?>" 
-                                 alt="<?php echo htmlspecialchars($game['my_team']); ?>" 
-                                 style="width: 20px; height: 20px; vertical-align: middle; margin-right: 5px;"
-                                 onerror="this.style.display='none'">
+                <a href="<?php echo $comparisonUrl; ?>" class="dw-game-item">
+                    <div class="dw-game-info">
+                        <div class="dw-game-date"><?php echo date('M j, Y', strtotime($game['game_date'])); ?></div>
+                        <div class="dw-game-matchup">
+                            <img src="<?php echo htmlspecialchars($this->getTeamLogo($game['my_team'])); ?>" alt="" class="dw-team-logo-sm" onerror="this.style.opacity='0.3'">
                             <?php echo htmlspecialchars($game['my_team']); ?>
                             <?php echo $game['team_location'] === 'home' ? 'vs' : '@'; ?>
-                            <img src="<?php echo htmlspecialchars($this->getTeamLogo($game['opponent'])); ?>" 
-                                 alt="<?php echo htmlspecialchars($game['opponent']); ?>" 
-                                 style="width: 20px; height: 20px; vertical-align: middle; margin: 0 5px;"
-                                 onerror="this.style.display='none'">
+                            <img src="<?php echo htmlspecialchars($this->getTeamLogo($game['opponent'])); ?>" alt="" class="dw-team-logo-sm" onerror="this.style.opacity='0.3'">
                             <?php echo htmlspecialchars($game['opponent']); ?>
                             <?php if (!empty($game['opponent_owner'])): ?>
-                                <span style="font-size: 0.85rem; color: #666; font-weight: normal;">
-                                    (<?php echo htmlspecialchars($game['opponent_owner']); ?>)
-                                </span>
+                                <span class="dw-game-owner">(<?php echo htmlspecialchars($game['opponent_owner']); ?>)</span>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -688,9 +360,7 @@ class DashboardWidget {
                 <?php endforeach; ?>
             </div>
             <?php else: ?>
-            <div class="no-data">
-                <p>No upcoming games scheduled</p>
-            </div>
+            <div class="dw-empty"><p>No upcoming games scheduled</p></div>
             <?php endif; ?>
         </div>
         <?php
@@ -698,94 +368,63 @@ class DashboardWidget {
     }
     
     /**
-     * Render the Last 10 Games widget
+     * Last 10 Games widget
      */
     private function renderLastGames($user_id, $league_id, $edit_mode) {
         $lastGames = $this->widgetFetcher->getLastGames($user_id, $league_id);
         
-        // Calculate W-L record from last 10 games
-        $last10_wins = 0;
-        $last10_losses = 0;
+        $last10_wins = 0; $last10_losses = 0;
         foreach ($lastGames as $game) {
-            if ($game['result'] === 'W') {
-                $last10_wins++;
-            } else if ($game['result'] === 'L') {
-                $last10_losses++;
-            }
+            if ($game['result'] === 'W') $last10_wins++;
+            elseif ($game['result'] === 'L') $last10_losses++;
         }
         
         ob_start();
         ?>
-        <div class="stats-card dashboard-widget" data-widget-type="last_10_games">
-            <div class="widget-header">
-                <h2 class="section-title">
-                    <i class="fas fa-history"></i>
-                    Last 10 Games
+        <div class="dw-card" data-widget-type="last_10_games">
+            <div class="dw-header">
+                <h3 class="dw-title">
+                    <i class="fas fa-history"></i> Last 10 Games
                     <?php if (!empty($lastGames)): ?>
-                        <span style="font-size: 0.9rem; color: #666; margin-left: 10px;">
+                        <span style="font-size: 0.85rem; color: var(--text-muted); margin-left: 8px;">
                             (<?php echo $last10_wins; ?>-<?php echo $last10_losses; ?>)
                         </span>
                     <?php endif; ?>
-                </h2>
-                <?php if ($edit_mode): ?>
-                <div class="widget-controls">
-                    <button class="widget-control-btn" onclick="moveWidget('last_10_games', 'up')" title="Move Up">
-                        <i class="fas fa-arrow-up"></i>
-                    </button>
-                    <button class="widget-control-btn" onclick="moveWidget('last_10_games', 'down')" title="Move Down">
-                        <i class="fas fa-arrow-down"></i>
-                    </button>
-                    <button class="widget-control-btn widget-remove-btn" onclick="removeWidget('last_10_games')" title="Remove Widget">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <?php endif; ?>
+                </h3>
+                <?php echo $this->renderEditControls('last_10_games', $edit_mode); ?>
             </div>
             
             <?php if (!empty($lastGames)): ?>
-            <div class="games-list">
+            <div class="dw-body dw-game-list">
                 <?php foreach (array_reverse($lastGames) as $game): 
                     $teamScore = ($game['team_location'] === 'home') ? $game['home_points'] : $game['away_points'];
                     $oppScore = ($game['team_location'] === 'home') ? $game['away_points'] : $game['home_points'];
                     $gameUrl = "/nba-wins-platform/stats/game_details.php?home_team=" . urlencode($game['home_team_code']) . "&away_team=" . urlencode($game['away_team_code']) . "&date=" . urlencode($game['game_date']);
+                    $isWin = $game['result'] === 'W';
                 ?>
-                <a href="<?php echo $gameUrl; ?>" class="game-list-item clickable <?php echo strtolower($game['result']); ?>" style="display: flex;">
-                    <div class="game-list-info">
-                        <div class="game-list-date">
-                            <?php echo date('M j, Y', strtotime($game['game_date'])); ?>
-                        </div>
-                        <div class="game-list-matchup">
-                            <img src="<?php echo htmlspecialchars($this->getTeamLogo($game['my_team'])); ?>" 
-                                 alt="<?php echo htmlspecialchars($game['my_team']); ?>" 
-                                 style="width: 20px; height: 20px; vertical-align: middle; margin-right: 5px;"
-                                 onerror="this.style.display='none'">
+                <a href="<?php echo $gameUrl; ?>" class="dw-game-item dw-game-<?php echo $isWin ? 'win' : 'loss'; ?>">
+                    <div class="dw-game-info">
+                        <div class="dw-game-date"><?php echo date('M j, Y', strtotime($game['game_date'])); ?></div>
+                        <div class="dw-game-matchup">
+                            <img src="<?php echo htmlspecialchars($this->getTeamLogo($game['my_team'])); ?>" alt="" class="dw-team-logo-sm" onerror="this.style.opacity='0.3'">
                             <?php echo htmlspecialchars($game['my_team']); ?>
                             <?php echo $game['team_location'] === 'home' ? 'vs' : '@'; ?>
-                            <img src="<?php echo htmlspecialchars($this->getTeamLogo($game['opponent'])); ?>" 
-                                 alt="<?php echo htmlspecialchars($game['opponent']); ?>" 
-                                 style="width: 20px; height: 20px; vertical-align: middle; margin: 0 5px;"
-                                 onerror="this.style.display='none'">
+                            <img src="<?php echo htmlspecialchars($this->getTeamLogo($game['opponent'])); ?>" alt="" class="dw-team-logo-sm" onerror="this.style.opacity='0.3'">
                             <?php echo htmlspecialchars($game['opponent']); ?>
                             <?php if (!empty($game['opponent_owner'])): ?>
-                                <span style="font-size: 0.85rem; color: #666; font-weight: normal;">
-                                    (<?php echo htmlspecialchars($game['opponent_owner']); ?>)
-                                </span>
+                                <span class="dw-game-owner">(<?php echo htmlspecialchars($game['opponent_owner']); ?>)</span>
                             <?php endif; ?>
                         </div>
                     </div>
-                    <div class="game-list-result">
-                        <div class="game-list-score"><?php echo $teamScore . '-' . $oppScore; ?></div>
-                        <div class="game-list-outcome" style="color: <?php echo $game['result'] === 'W' ? '#4CAF50' : '#F44336'; ?>; font-weight: bold;">
-                            <?php echo $game['result']; ?>
-                        </div>
+                    <div class="dw-game-result">
+                        <div class="dw-game-score"><?php echo $teamScore . '-' . $oppScore; ?></div>
+                        <div class="dw-game-outcome <?php echo $isWin ? 'win' : 'loss'; ?>"><?php echo $game['result']; ?></div>
                     </div>
                 </a>
                 <?php endforeach; ?>
             </div>
             <?php else: ?>
-            <div class="no-data">
-                <p>No recent games to display</p>
-            </div>
+            <div class="dw-empty"><p>No recent games to display</p></div>
             <?php endif; ?>
         </div>
         <?php
@@ -793,114 +432,54 @@ class DashboardWidget {
     }
     
     /**
-     * Render the League Stats widget
+     * League Stats widget
      */
     private function renderLeagueStats($user_id, $league_id, $edit_mode) {
         $stats = $this->widgetFetcher->getLeagueStatsAndRivals($user_id, $league_id);
+        if (!$stats) return '';
         
-        if (!$stats) {
-            return '';
-        }
+        // Get display name for header
+        $nameStmt = $this->pdo->prepare("SELECT display_name FROM users WHERE id = ?");
+        $nameStmt->execute([$user_id]);
+        $dwDisplayName = $nameStmt->fetchColumn() ?: 'My';
         
         ob_start();
         ?>
-        <div class="stats-card dashboard-widget" data-widget-type="league_stats">
-            <div class="widget-header">
-                <h2 class="section-title">League Stats</h2>
-                <?php if ($edit_mode): ?>
-                <div class="widget-controls">
-                    <button class="widget-control-btn" onclick="moveWidget('league_stats', 'up')" title="Move Up">
-                        <i class="fas fa-arrow-up"></i>
-                    </button>
-                    <button class="widget-control-btn" onclick="moveWidget('league_stats', 'down')" title="Move Down">
-                        <i class="fas fa-arrow-down"></i>
-                    </button>
-                    <button class="widget-control-btn widget-remove-btn" onclick="removeWidget('league_stats')" title="Remove Widget">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <?php endif; ?>
+        <div class="dw-card" data-widget-type="league_stats">
+            <div class="dw-header">
+                <h3 class="dw-title"><?php echo htmlspecialchars($dwDisplayName); ?> Stats</h3>
+                <?php echo $this->renderEditControls('league_stats', $edit_mode); ?>
             </div>
             
-            <div>
-                <div class="team-row">
-                    <div class="team-info">
-                        <span>Total Games Played</span>
-                    </div>
-                    <div class="team-record">
-                        <?php echo $stats['total_games_played']; ?>
-                    </div>
+            <div class="dw-body">
+                <div class="dw-team-stat-row">
+                    <div class="dw-team-stat-left"><span>Total Games Played</span></div>
+                    <div class="dw-team-stat-value"><?php echo $stats['total_games_played']; ?></div>
                 </div>
-                <div class="team-row">
-                    <div class="team-info">
-                        <span>Average Team Record</span>
-                    </div>
-                    <div class="team-record">
-                        <?php echo $stats['avg_wins'] . '-' . $stats['avg_losses']; ?>
-                    </div>
+                <div class="dw-team-stat-row">
+                    <div class="dw-team-stat-left"><span>Average Team Record</span></div>
+                    <div class="dw-team-stat-value"><?php echo $stats['avg_wins'] . '-' . $stats['avg_losses']; ?></div>
                 </div>
-                <div class="team-row">
-                    <div class="team-info">
-                        <span>Best Team</span>
-                    </div>
-                    <div class="team-record">
+                <div class="dw-team-stat-row">
+                    <div class="dw-team-stat-left"><span>Win %</span></div>
+                    <div class="dw-team-stat-value">
                         <?php 
-                        if ($stats['best_team']) {
-                            echo htmlspecialchars($stats['best_team']['team_name']) . ' (' . $stats['best_team']['wins'] . '-' . $stats['best_team']['losses'] . ')';
-                        } else {
-                            echo 'N/A';
-                        }
+                        $totalW = floatval($stats['avg_wins']);
+                        $totalL = floatval($stats['avg_losses']);
+                        $totalG = $totalW + $totalL;
+                        echo $totalG > 0 
+                            ? number_format(($totalW / $totalG) * 100, 1) . '%'
+                            : '0.0%';
                         ?>
                     </div>
                 </div>
-                
-                <!-- Rivals Section -->
-                <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e0e0e0;">
-                    <h3 style="margin: 0 0 15px 0; font-size: 1.1rem; color: var(--primary-color); display: flex; align-items: center;">
-                        <i class="fas fa-trophy" style="margin-right: 8px;"></i>Rivals
-                    </h3>
-                    <?php if ($stats['biggest_rival']): ?>
-                    <div class="team-row">
-                        <div class="team-info">
-                            <i class="fas fa-fire" style="color: #ff4444; margin-right: 8px;"></i>
-                            <span>Most Wins Against</span>
-                        </div>
-                        <div class="team-record">
-                            <a href="/nba-wins-platform/profiles/participant_profile.php?league_id=<?php echo $league_id; ?>&user_id=<?php echo $stats['biggest_rival']['opponent_user_id']; ?>" 
-                               style="text-decoration: none; color: #007bff; font-weight: 600;">
-                                <?php echo htmlspecialchars($stats['biggest_rival']['opponent_name']); ?>
-                            </a>
-                            <div style="font-size: 0.9em; color: #28a745; margin-top: 2px;">
-                                <?php echo $stats['biggest_rival']['wins_against_opponent']; ?>-<?php echo $stats['biggest_rival']['losses_against_opponent']; ?>
-                            </div>
-                        </div>
+                <div class="dw-team-stat-row">
+                    <div class="dw-team-stat-left"><span>Best Team</span></div>
+                    <div class="dw-team-stat-value">
+                        <?php echo $stats['best_team'] 
+                            ? htmlspecialchars($stats['best_team']['team_name']) . ' (' . $stats['best_team']['wins'] . '-' . $stats['best_team']['losses'] . ')'
+                            : 'N/A'; ?>
                     </div>
-                    <?php endif; ?>
-                    
-                    <?php if ($stats['nemesis']): ?>
-                    <div class="team-row">
-                        <div class="team-info">
-                            <i class="fas fa-skull-crossbones" style="color: #721c24; margin-right: 8px;"></i>
-                            <span>Most Losses Against</span>
-                        </div>
-                        <div class="team-record">
-                            <a href="/nba-wins-platform/profiles/participant_profile.php?league_id=<?php echo $league_id; ?>&user_id=<?php echo $stats['nemesis']['opponent_user_id']; ?>" 
-                               style="text-decoration: none; color: #007bff; font-weight: 600;">
-                                <?php echo htmlspecialchars($stats['nemesis']['opponent_name']); ?>
-                            </a>
-                            <div style="font-size: 0.9em; color: #dc3545; margin-top: 2px;">
-                                <?php echo $stats['nemesis']['wins_against_opponent']; ?>-<?php echo $stats['nemesis']['losses_against_opponent']; ?>
-                            </div>
-                        </div>
-                    </div>
-                    <?php endif; ?>
-                    
-                    <?php if (!$stats['biggest_rival'] && !$stats['nemesis']): ?>
-                    <div class="no-data">
-                        <i class="fas fa-handshake" style="margin-right: 8px;"></i>
-                        No head-to-head games yet
-                    </div>
-                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -909,41 +488,25 @@ class DashboardWidget {
     }
     
     /**
-     * NEW: Weekly Rankings widget with dropdown
+     * Weekly Rankings with dropdown
      */
     private function renderWeeklyRankings($user_id, $league_id, $edit_mode) {
         $weeklyData = $this->widgetFetcher->getWeeklyRankings($league_id);
         
-        // Process weeks
         $weeks = [];
         foreach ($weeklyData as $record) {
             $weekNum = $record['week_num'];
             if (!isset($weeks[$weekNum])) {
-                $weeks[$weekNum] = [
-                    'weekNum' => $weekNum,
-                    'label' => $record['week_label'],
-                    'participants' => []
-                ];
+                $weeks[$weekNum] = ['weekNum' => $weekNum, 'label' => $record['week_label'], 'participants' => []];
             }
-            $weeks[$weekNum]['participants'][] = [
-                'name' => $record['display_name'],
-                'wins' => (int)$record['weekly_wins']
-            ];
+            $weeks[$weekNum]['participants'][] = ['name' => $record['display_name'], 'wins' => (int)$record['weekly_wins']];
         }
         
-        // Sort and rank participants within each week
         foreach ($weeks as &$week) {
-            usort($week['participants'], function($a, $b) {
-                return $b['wins'] - $a['wins'];
-            });
-            
-            $rank = 1;
-            $prevWins = null;
-            $nextRank = 1;
+            usort($week['participants'], function($a, $b) { return $b['wins'] - $a['wins']; });
+            $rank = 1; $prevWins = null; $nextRank = 1;
             foreach ($week['participants'] as $idx => &$p) {
-                if ($prevWins !== null && $p['wins'] < $prevWins) {
-                    $rank = $nextRank;
-                }
+                if ($prevWins !== null && $p['wins'] < $prevWins) $rank = $nextRank;
                 $p['rank'] = $rank;
                 $prevWins = $p['wins'];
                 $nextRank = $idx + 2;
@@ -951,73 +514,46 @@ class DashboardWidget {
         }
         unset($week, $p);
         
-        // Sort weeks descending
-        usort($weeks, function($a, $b) {
-            return $b['weekNum'] - $a['weekNum'];
-        });
-        
+        usort($weeks, function($a, $b) { return $b['weekNum'] - $a['weekNum']; });
         $latestWeek = !empty($weeks) ? $weeks[0]['weekNum'] : null;
         
         ob_start();
         ?>
-        <div class="stats-card dashboard-widget" data-widget-type="weekly_rankings" id="weekly-rankings-widget">
-            <div class="widget-header">
-                <h2 class="section-title">
-                    <i class="fas fa-trophy"></i>
-                    Weekly Rankings
-                </h2>
-                <?php if ($edit_mode): ?>
-                <div class="widget-controls">
-                    <button class="widget-control-btn" onclick="moveWidget('weekly_rankings', 'up')" title="Move Up">
-                        <i class="fas fa-arrow-up"></i>
-                    </button>
-                    <button class="widget-control-btn" onclick="moveWidget('weekly_rankings', 'down')" title="Move Down">
-                        <i class="fas fa-arrow-down"></i>
-                    </button>
-                    <button class="widget-control-btn widget-remove-btn" onclick="removeWidget('weekly_rankings')" title="Remove Widget">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <?php endif; ?>
+        <div class="dw-card" data-widget-type="weekly_rankings" id="weekly-rankings-widget">
+            <div class="dw-header">
+                <h3 class="dw-title"><i class="fas fa-trophy"></i> Weekly Rankings</h3>
+                <?php echo $this->renderEditControls('weekly_rankings', $edit_mode); ?>
             </div>
             
             <?php if (!empty($weeks)): ?>
-            <div style="text-align: center; margin-bottom: 20px;">
-                <select id="weekSelector" onchange="changeWeek()" 
-                        style="padding: 10px 15px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1rem; cursor: pointer; min-width: 200px;">
-                    <?php foreach ($weeks as $week): ?>
-                    <option value="<?php echo $week['weekNum']; ?>"><?php echo htmlspecialchars($week['label']); ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            
-            <?php foreach ($weeks as $week): ?>
-            <div class="week-data" data-week="<?php echo $week['weekNum']; ?>" 
-                 style="<?php echo $week['weekNum'] === $latestWeek ? '' : 'display: none;'; ?>">
-                <?php foreach ($week['participants'] as $p): ?>
-                <div class="weekly-rank-row" style="display: flex; justify-content: space-between; align-items: center; 
-                            padding: 12px; border-bottom: 1px solid #e0e0e0;
-                            <?php if ($p['rank'] === 1): ?>background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%); font-weight: bold;
-                            <?php elseif ($p['rank'] === 2): ?>background: linear-gradient(135deg, #c0c0c0 0%, #e8e8e8 100%); font-weight: bold;
-                            <?php elseif ($p['rank'] === 3): ?>background: linear-gradient(135deg, #cd7f32 0%, #d4a76a 100%); font-weight: bold;
-                            <?php else: ?>background: #f5f7fa;
-                            <?php endif; ?>
-                            border-radius: 4px; margin-bottom: 8px;">
-                    <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0;">
-                        <span class="weekly-rank-number" style="font-size: 1rem; font-weight: bold; color: var(--primary-color); min-width: 30px; flex-shrink: 0;">
-                            <?php echo $p['rank']; ?>.
-                        </span>
-                        <span class="weekly-participant-name" style="font-size: 0.9rem; word-wrap: break-word; overflow-wrap: break-word; white-space: normal; line-height: 1.3;">
-                            <?php echo htmlspecialchars($p['name']); ?>
-                        </span>
+            <div class="dw-body">
+                <div style="text-align: center; margin-bottom: 14px;">
+                    <select id="weekSelector" onchange="changeWeek()" class="dw-select">
+                        <?php foreach ($weeks as $week): ?>
+                        <option value="<?php echo $week['weekNum']; ?>"><?php echo htmlspecialchars($week['label']); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                
+                <?php foreach ($weeks as $week): ?>
+                <div class="week-data" data-week="<?php echo $week['weekNum']; ?>" 
+                     style="<?php echo $week['weekNum'] === $latestWeek ? '' : 'display: none;'; ?>">
+                    <?php foreach ($week['participants'] as $p): ?>
+                    <div class="dw-weekly-row <?php 
+                        if ($p['rank'] === 1) echo 'dw-weekly-gold';
+                        elseif ($p['rank'] === 2) echo 'dw-weekly-silver';
+                        elseif ($p['rank'] === 3) echo 'dw-weekly-bronze';
+                    ?>">
+                        <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;">
+                            <span class="dw-weekly-rank"><?php echo $p['rank']; ?>.</span>
+                            <span class="dw-weekly-name"><?php echo htmlspecialchars($p['name']); ?></span>
+                        </div>
+                        <span class="dw-weekly-wins"><?php echo $p['wins']; ?></span>
                     </div>
-                    <span class="weekly-wins" style="font-size: 1rem; font-weight: bold; color: var(--primary-color); flex-shrink: 0; margin-left: 8px;">
-                        <?php echo $p['wins']; ?>
-                    </span>
+                    <?php endforeach; ?>
                 </div>
                 <?php endforeach; ?>
             </div>
-            <?php endforeach; ?>
             
             <script>
             function changeWeek() {
@@ -1028,9 +564,7 @@ class DashboardWidget {
             }
             </script>
             <?php else: ?>
-            <div class="no-data">
-                <p>No weekly ranking data available yet</p>
-            </div>
+            <div class="dw-empty"><p>No weekly ranking data available yet</p></div>
             <?php endif; ?>
         </div>
         <?php
@@ -1038,132 +572,85 @@ class DashboardWidget {
     }
     
     /**
-     * NEW: Strength of Schedule widget with sorting
+     * Strength of Schedule widget
      */
     private function renderStrengthOfSchedule($user_id, $league_id, $edit_mode) {
         $sosData = $this->widgetFetcher->getStrengthOfSchedule($league_id);
         
         ob_start();
         ?>
-        <div class="stats-card dashboard-widget" data-widget-type="strength_of_schedule" id="sos-widget">
-            <div class="widget-header">
-                <h2 class="section-title">
-                    <i class="fas fa-calendar-check"></i>
-                    Strength of Schedule
-                </h2>
-                <?php if ($edit_mode): ?>
-                <div class="widget-controls">
-                    <button class="widget-control-btn" onclick="moveWidget('strength_of_schedule', 'up')" title="Move Up">
-                        <i class="fas fa-arrow-up"></i>
-                    </button>
-                    <button class="widget-control-btn" onclick="moveWidget('strength_of_schedule', 'down')" title="Move Down">
-                        <i class="fas fa-arrow-down"></i>
-                    </button>
-                    <button class="widget-control-btn widget-remove-btn" onclick="removeWidget('strength_of_schedule')" title="Remove Widget">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <?php endif; ?>
+        <div class="dw-card" data-widget-type="strength_of_schedule" id="sos-widget">
+            <div class="dw-header">
+                <h3 class="dw-title"><i class="fas fa-calendar-check"></i> Strength of Schedule</h3>
+                <?php echo $this->renderEditControls('strength_of_schedule', $edit_mode); ?>
             </div>
             
             <?php if (!empty($sosData)): ?>
-            <div style="display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
-                <button onclick="sortSOSWidget('opponent_win_pct')" id="sos-sort-pct" 
-                        class="sos-sort-btn active"
-                        style="padding: 10px 20px; background-color: var(--primary-color); color: white; border: 2px solid var(--primary-color); 
-                               border-radius: 6px; cursor: pointer; font-size: 0.9rem; font-weight: 500; transition: all 0.2s;">
-                    <i class="fas fa-percentage"></i> Sort by Opp Win %
-                </button>
-                <button onclick="sortSOSWidget('total_games')" id="sos-sort-games"
-                        class="sos-sort-btn"
-                        style="padding: 10px 20px; background-color: #f8f9fa; color: var(--text-color); border: 2px solid #e0e0e0; 
-                               border-radius: 6px; cursor: pointer; font-size: 0.9rem; font-weight: 500; transition: all 0.2s;">
-                    <i class="fas fa-hashtag"></i> Sort by Games Played
-                </button>
+            <div class="dw-body">
+                <div style="display: flex; justify-content: center; gap: 8px; margin-bottom: 14px; flex-wrap: wrap;">
+                    <button onclick="sortSOSWidget('opponent_win_pct')" id="sos-sort-pct" class="dw-sort-btn dw-sort-active">
+                        <i class="fas fa-percentage"></i> Opp Win %
+                    </button>
+                    <button onclick="sortSOSWidget('total_games')" id="sos-sort-games" class="dw-sort-btn">
+                        <i class="fas fa-hashtag"></i> Games Played
+                    </button>
+                </div>
+                
+                <table class="dw-sos-table">
+                    <thead>
+                        <tr>
+                            <th style="text-align: left;">Participant</th>
+                            <th style="text-align: center;">Games</th>
+                            <th style="text-align: center;">Opp Win %</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sos-table-body">
+                        <?php foreach ($sosData as $entry): ?>
+                        <tr data-games="<?php echo $entry['total_games']; ?>" 
+                            data-pct="<?php echo $entry['opponent_win_pct']; ?>" 
+                            data-name="<?php echo htmlspecialchars($entry['display_name']); ?>">
+                            <td>
+                                <a href="/nba-wins-platform/profiles/participant_profile.php?league_id=<?php echo $league_id; ?>&user_id=<?php echo $entry['user_id']; ?>" 
+                                   style="color: var(--accent-blue); text-decoration: none; font-weight: 600;">
+                                    <?php echo htmlspecialchars($entry['display_name']); ?>
+                                </a>
+                            </td>
+                            <td style="text-align: center; font-weight: 700; font-size: 1.05rem;">
+                                <?php echo $entry['total_games']; ?>
+                            </td>
+                            <td style="text-align: center;">
+                                <div style="font-weight: 700; font-size: 1.05rem; color: <?php echo $entry['opponent_win_pct'] >= 50 ? 'var(--accent-red)' : 'var(--accent-green)'; ?>;">
+                                    <?php echo number_format($entry['opponent_win_pct'], 1); ?>%
+                                </div>
+                                <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 1px;">
+                                    <?php echo $entry['opponent_win_pct'] >= 50 ? 'Tough' : 'Easy'; ?>
+                                </div>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
             </div>
-            
-            <table id="sos-table" style="width: 100%; border-collapse: collapse;">
-                <thead style="background-color: #f8f9fa; border-bottom: 2px solid #dee2e6;">
-                    <tr>
-                        <th style="padding: 12px 8px; text-align: left; font-weight: 600;">Participant</th>
-                        <th style="padding: 12px 8px; text-align: center; font-weight: 600;">Games</th>
-                        <th style="padding: 12px 8px; text-align: center; font-weight: 600;">Opp Win %</th>
-                    </tr>
-                </thead>
-                <tbody id="sos-table-body">
-                    <?php foreach ($sosData as $entry): ?>
-                    <tr data-games="<?php echo $entry['total_games']; ?>" 
-                        data-pct="<?php echo $entry['opponent_win_pct']; ?>" 
-                        data-name="<?php echo htmlspecialchars($entry['display_name']); ?>"
-                        style="border-bottom: 1px solid #e0e0e0;">
-                        <td style="padding: 12px 8px;">
-                            <a href="/nba-wins-platform/profiles/participant_profile.php?league_id=<?php echo $league_id; ?>&user_id=<?php echo $entry['user_id']; ?>" 
-                               style="text-decoration: none; color: inherit; font-weight: 600;">
-                                <?php echo htmlspecialchars($entry['display_name']); ?>
-                            </a>
-                        </td>
-                        <td style="padding: 12px 8px; text-align: center; font-weight: bold; font-size: 1.1rem;">
-                            <?php echo $entry['total_games']; ?>
-                        </td>
-                        <td style="padding: 12px 8px; text-align: center;">
-                            <div style="font-weight: bold; font-size: 1.1rem; color: <?php echo $entry['opponent_win_pct'] >= 50 ? '#dc3545' : '#28a745'; ?>;">
-                                <?php echo number_format($entry['opponent_win_pct'], 1); ?>%
-                            </div>
-                            <div style="font-size: 0.8rem; color: #666; margin-top: 2px;">
-                                <?php echo $entry['opponent_win_pct'] >= 50 ? 'Tough' : 'Easy'; ?>
-                            </div>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
             
             <script>
             function sortSOSWidget(sortBy) {
                 const tbody = document.getElementById('sos-table-body');
                 const rows = Array.from(tbody.getElementsByTagName('tr'));
                 
-                // Update button styles
-                document.querySelectorAll('.sos-sort-btn').forEach(btn => {
-                    btn.classList.remove('active');
-                    btn.style.backgroundColor = '#f8f9fa';
-                    btn.style.color = 'var(--text-color)';
-                    btn.style.borderColor = '#e0e0e0';
-                });
+                document.querySelectorAll('.dw-sort-btn').forEach(btn => btn.classList.remove('dw-sort-active'));
+                document.getElementById(sortBy === 'opponent_win_pct' ? 'sos-sort-pct' : 'sos-sort-games').classList.add('dw-sort-active');
                 
-                const activeBtn = document.getElementById(sortBy === 'opponent_win_pct' ? 'sos-sort-pct' : 'sos-sort-games');
-                activeBtn.classList.add('active');
-                activeBtn.style.backgroundColor = 'var(--primary-color)';
-                activeBtn.style.color = 'white';
-                activeBtn.style.borderColor = 'var(--primary-color)';
-                
-                // Sort rows
                 rows.sort((a, b) => {
-                    if (sortBy === 'opponent_win_pct') {
-                        const aVal = parseFloat(a.dataset.pct);
-                        const bVal = parseFloat(b.dataset.pct);
-                        if (bVal !== aVal) {
-                            return bVal - aVal;
-                        }
-                        return a.dataset.name.localeCompare(b.dataset.name);
-                    } else {
-                        const aVal = parseInt(a.dataset.games);
-                        const bVal = parseInt(b.dataset.games);
-                        if (bVal !== aVal) {
-                            return bVal - aVal;
-                        }
-                        return a.dataset.name.localeCompare(b.dataset.name);
-                    }
+                    const key = sortBy === 'opponent_win_pct' ? 'pct' : 'games';
+                    const aVal = parseFloat(a.dataset[key]);
+                    const bVal = parseFloat(b.dataset[key]);
+                    return bVal !== aVal ? bVal - aVal : a.dataset.name.localeCompare(b.dataset.name);
                 });
-                
-                // Reorder rows
                 rows.forEach(row => tbody.appendChild(row));
             }
             </script>
             <?php else: ?>
-            <div class="no-data">
-                <p>No strength of schedule data available yet for your league</p>
-            </div>
+            <div class="dw-empty"><p>No strength of schedule data available yet for your league</p></div>
             <?php endif; ?>
         </div>
         <?php
@@ -1171,7 +658,35 @@ class DashboardWidget {
     }
     
     /**
-     * Helper function to get team logo path
+     * Placeholder for complex analytics widgets
+     */
+    private function renderAnalyticsPlaceholder($widget_type, $edit_mode) {
+        $widgetTitles = [
+            'tracking_graph' => ['title' => 'Tracking Graph', 'icon' => 'fa-chart-line'],
+            'h2h_comparison' => ['title' => 'Head-to-Head Comparison', 'icon' => 'fa-users'],
+        ];
+        $info = $widgetTitles[$widget_type] ?? ['title' => 'Widget', 'icon' => 'fa-info-circle'];
+        
+        ob_start();
+        ?>
+        <div class="dw-card" data-widget-type="<?php echo $widget_type; ?>">
+            <div class="dw-header">
+                <h3 class="dw-title"><i class="fas <?php echo $info['icon']; ?>"></i> <?php echo $info['title']; ?></h3>
+                <?php echo $this->renderEditControls($widget_type, $edit_mode); ?>
+            </div>
+            <div style="text-align: center; padding: 40px 20px;">
+                <i class="fas <?php echo $info['icon']; ?>" style="font-size: 2.5rem; color: var(--text-muted); opacity: 0.4; margin-bottom: 12px; display: block;"></i>
+                <p style="color: var(--text-secondary); margin: 8px 0;">
+                    View this content on the <a href="analytics.php" style="color: var(--accent-blue); text-decoration: none; font-weight: 600;">Analytics page</a>
+                </p>
+            </div>
+        </div>
+        <?php
+        return ob_get_clean();
+    }
+    
+    /**
+     * Helper: get team logo path
      */
     private function getTeamLogo($teamName) {
         $logoMap = [
@@ -1209,11 +724,10 @@ class DashboardWidget {
         ];
         
         if (isset($logoMap[$teamName])) {
-            return '../nba-wins-platform/public/assets/team_logos/' . $logoMap[$teamName];
+            return '/nba-wins-platform/public/assets/team_logos/' . $logoMap[$teamName];
         }
-        
         $filename = strtolower(str_replace(' ', '_', $teamName)) . '.png';
-        return '../nba-wins-platform/public/assets/team_logos/' . $filename;
+        return '/nba-wins-platform/public/assets/team_logos/' . $filename;
     }
 }
 ?>

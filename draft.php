@@ -115,16 +115,16 @@ if ($draft_status['status'] !== 'not_started') {
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="theme-color" content="#f5f5f5">
+    <meta name="theme-color" content="<?= ($_SESSION['theme_preference'] ?? 'dark') === 'classic' ? '#f5f5f5' : '#0d1117' ?>">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Live Draft - <?= htmlspecialchars($league['display_name']) ?></title>
     <link rel="apple-touch-icon" type="image/png" href="nba-wins-platform/public/assets/favicon/favicon.png">
     <link rel="icon" type="image/png" href="nba-wins-platform/public/assets/favicon/favicon.png">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     
     <!-- React and Babel for Navigation Component -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -132,46 +132,103 @@ if ($draft_status['status'] !== 'not_started') {
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
         :root {
-            --primary-color: #212121;
-            --secondary-color: #424242;
-            --background-color: rgba(245, 245, 245, 0.8);
-            --text-color: #333333;
-            --border-color: #e0e0e0;
-            --hover-color: #757575;
-            --basketball-orange: #FF7F00;
-            --basketball-brown: #8B4513;
-            --success-color: #4CAF50;
-            --warning-color: #ff9800;
-            --error-color: #f44336;
-            --info-color: #2196F3;
+            /* Core backgrounds */
+            --bg-primary: #151d28;
+            --bg-secondary: #1a222c;
+            --bg-card: #161e28;
+            --bg-elevated: #1c2634;
+            --bg-card-hover: #1e2a3a;
+
+            /* Text */
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-muted: #546070;
+
+            /* Borders */
+            --border-color: rgba(255, 255, 255, 0.08);
+            --border-subtle: rgba(255, 255, 255, 0.04);
+
+            /* Accents */
+            --accent-blue: #388bfd;
+            --accent-blue-dim: rgba(56, 139, 253, 0.10);
+            --accent-green: #3fb950;
+            --accent-green-dim: rgba(63, 185, 80, 0.10);
+            --accent-red: #f85149;
+            --accent-red-dim: rgba(248, 81, 73, 0.10);
+            --accent-orange: #d29922;
+            --accent-orange-dim: rgba(210, 153, 34, 0.12);
+            --accent-gold: #f0c644;
+            --accent-silver: #a0aec0;
+            --accent-bronze: #cd7f32;
+
+            /* Shadows */
+            --shadow-card: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px var(--border-color);
+            --shadow-elevated: 0 4px 12px rgba(0,0,0,0.5);
+
+            /* Radius & Transitions */
+            --radius-sm: 6px;
+            --radius-md: 8px;
+            --radius-lg: 10px;
+            --transition-fast: 0.15s ease;
+            --transition-normal: 0.25s ease;
         }
-        
+
+        <?php if (($_SESSION['theme_preference'] ?? 'dark') === 'classic'): ?>
+        :root {
+            --bg-primary: #f5f5f5;
+            --bg-secondary: rgba(245, 245, 245, 0.95);
+            --bg-card: #ffffff;
+            --bg-elevated: #f0f0f2;
+            --bg-card-hover: #f8f9fa;
+            --text-primary: #333333;
+            --text-secondary: #666666;
+            --text-muted: #999999;
+            --border-color: #e0e0e0;
+            --border-subtle: rgba(0, 0, 0, 0.06);
+            --accent-blue: #0066ff;
+            --accent-blue-dim: rgba(0, 102, 255, 0.08);
+            --accent-green: #28a745;
+            --accent-green-dim: rgba(40, 167, 69, 0.08);
+            --accent-red: #dc3545;
+            --accent-red-dim: rgba(220, 53, 69, 0.08);
+            --accent-orange: #d4a017;
+            --accent-orange-dim: rgba(212, 160, 23, 0.08);
+            --accent-gold: #d4a017;
+            --accent-silver: #8a8a8a;
+            --accent-bronze: #b5651d;
+            --shadow-card: 0 1px 4px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
+            --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.06);
+        }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.6;
-            margin: 0;
-            padding: 10px;
             background-image: url('nba-wins-platform/public/assets/background/geometric_white.png');
             background-repeat: repeat;
             background-attachment: fixed;
-            color: var(--text-color);
-            background-color: #f5f5f5;
-            min-height: 100vh;
-            min-height: -webkit-fill-available;
         }
+        <?php endif; ?>
+
+        * { box-sizing: border-box; }
 
         html {
             height: -webkit-fill-available;
-            background-color: #f5f5f5;
+            background-color: var(--bg-primary);
+        }
+        
+        body {
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 10px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
+            -webkit-font-smoothing: antialiased;
         }
         
         .container {
             max-width: 1400px;
             margin: 0 auto;
             padding: 20px;
-            background-color: var(--background-color);
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
         
         .header {
@@ -180,113 +237,115 @@ if ($draft_status['status'] !== 'not_started') {
             align-items: center;
             justify-content: center;
             text-align: center;
-            margin-bottom: 15px;
-            background-color: rgba(255,255,255,0.8);
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-bottom: 16px;
+            background: var(--bg-card);
+            padding: 20px;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-card);
         }
         
         .basketball-logo {
-            max-width: 60px;
+            max-width: 56px;
             margin-bottom: 10px;
         }
         
         h1 {
-            margin: 10px 0;
-            font-size: 28px;
-            color: var(--primary-color);
+            margin: 8px 0;
+            font-size: 1.6rem;
+            font-weight: 800;
+            color: var(--text-primary);
+            letter-spacing: -0.02em;
         }
         
         h2 {
-            margin: 5px 0;
-            font-size: 20px;
-            color: var(--secondary-color);
+            margin: 4px 0;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        .header p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin: 4px 0 0;
         }
         
+        /* Draft Controls */
         .draft-controls {
             display: flex;
             justify-content: center;
-            gap: 15px;
-            margin-bottom: 20px;
+            gap: 10px;
+            margin-bottom: 16px;
             flex-wrap: wrap;
         }
         
         .btn {
             padding: 10px 20px;
             border: none;
-            border-radius: 6px;
-            font-weight: 500;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: all var(--transition-fast);
             text-decoration: none;
             display: inline-block;
-            font-size: 14px;
-            font-family: inherit;
+            font-size: 0.9rem;
+            font-family: 'Outfit', sans-serif;
         }
         
-        .btn-primary { 
-            background-color: var(--success-color); 
-            color: white; 
-        }
-        .btn-danger { 
-            background-color: var(--error-color); 
-            color: white; 
-        }
-        .btn-warning { 
-            background-color: var(--warning-color); 
-            color: white; 
-        }
-        .btn-secondary { 
-            background-color: var(--secondary-color); 
-            color: white; 
-        }
-        .btn-success { 
-            background-color: var(--success-color); 
-            color: white; 
-        }
+        .btn-primary { background: var(--accent-green); color: #fff; }
+        .btn-danger  { background: var(--accent-red); color: #fff; }
+        .btn-warning { background: var(--accent-orange); color: #fff; }
+        .btn-secondary { background: var(--bg-elevated); color: var(--text-primary); border: 1px solid var(--border-color); }
+        .btn-success { background: var(--accent-green); color: #fff; }
         
         .btn:hover { 
             transform: translateY(-1px); 
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2); 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4); 
+            filter: brightness(1.1);
         }
         .btn:disabled { 
-            opacity: 0.6; 
+            opacity: 0.5; 
             cursor: not-allowed; 
             transform: none; 
+            filter: none;
         }
         
+        /* Draft Status Bar */
         .draft-status {
-            background-color: rgba(255,255,255,0.8);
-            padding: 10px;
-            border-radius: 8px;
-            margin-bottom: 15px;
+            background: var(--bg-card);
+            padding: 14px;
+            border-radius: var(--radius-lg);
+            margin-bottom: 16px;
             text-align: center;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            box-shadow: var(--shadow-card);
         }
         
         .draft-status h2 {
-            font-size: 1.2em; /* Add this to make "Now Picking:" smaller */
-            margin: 5px 0; /* Add this to reduce spacing */
+            font-size: 1.1rem;
+            margin: 4px 0;
+            color: var(--text-secondary);
         }
 
         .draft-status h3 {
-            font-size: 1.1em; /* Add this to make player name smaller */
-            margin: 5px 0; /* Add this to reduce spacing */
+            font-size: 1.05rem;
+            margin: 4px 0;
+            color: var(--text-primary);
+            font-weight: 700;
         }
         
         .current-pick {
-            font-size: 1.2em;
-            margin-bottom: 10px;
-            color: var(--basketball-orange);
-            font-weight: bold;
+            font-size: 1.15rem;
+            margin-bottom: 8px;
+            color: var(--accent-orange);
+            font-weight: 700;
         }
         
+        /* Draft Board Grid */
         .draft-board {
             display: grid;
             grid-template-columns: 2fr 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 30px;
+            gap: 16px;
+            margin-bottom: 24px;
         }
         
         @media (max-width: 768px) {
@@ -294,57 +353,80 @@ if ($draft_status['status'] !== 'not_started') {
         }
         
         .available-teams, .draft-order, .recent-picks {
-            background-color: rgba(255,255,255,0.8);
-            border-radius: 8px;
-            padding: 20px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            padding: 16px;
+            box-shadow: var(--shadow-card);
         }
         
-        .available-teams {
-            max-height: 600px;
-            overflow-y: auto;
-        }
+        .available-teams { max-height: 600px; overflow-y: auto; }
         
         .available-teams h3, .draft-order h3, .recent-picks h3 {
-            color: var(--primary-color);
-            margin-bottom: 15px;
-            font-size: 18px;
+            color: var(--text-primary);
+            margin: 0 0 14px;
+            font-size: 1rem;
+            font-weight: 700;
+        }
+
+        /* Custom scrollbar for dark theme */
+        .available-teams::-webkit-scrollbar,
+        .order-list::-webkit-scrollbar,
+        .picks-list::-webkit-scrollbar {
+            width: 6px;
+        }
+        .available-teams::-webkit-scrollbar-track,
+        .order-list::-webkit-scrollbar-track,
+        .picks-list::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .available-teams::-webkit-scrollbar-thumb,
+        .order-list::-webkit-scrollbar-thumb,
+        .picks-list::-webkit-scrollbar-thumb {
+            background: var(--text-muted);
+            border-radius: 3px;
         }
         
+        /* Team Grid */
         .team-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
             gap: 10px;
-            margin-top: 15px;
+            margin-top: 12px;
         }
         
         .team-card {
-            background: rgba(255,255,255,0.9);
+            background: var(--bg-elevated);
             padding: 12px;
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: all var(--transition-fast);
             text-align: center;
             border: 2px solid var(--border-color);
             position: relative;
-            min-height: 120px;
+            min-height: 115px;
         }
         
         .team-card:hover {
-            background: rgba(255,255,255,1);
+            background: var(--bg-card-hover);
             transform: translateY(-1px);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            box-shadow: var(--shadow-elevated);
+            border-color: rgba(56, 139, 253, 0.25);
         }
         
         .team-card.selected {
-            border-color: var(--success-color);
-            background: rgba(76, 175, 80, 0.1);
-            padding-bottom: 55px; /* Make room for buttons */
+            border-color: var(--accent-green);
+            background: var(--accent-green-dim);
+            padding-bottom: 55px;
         }
         
         .team-card.disabled {
-            opacity: 0.5;
+            opacity: 0.4;
             cursor: not-allowed;
+        }
+        .team-card.disabled:hover {
+            transform: none;
+            box-shadow: var(--shadow-card);
+            border-color: var(--border-color);
         }
         
         .team-logo {
@@ -356,17 +438,17 @@ if ($draft_status['status'] !== 'not_started') {
         }
         
         .team-name { 
-            font-weight: bold; 
-            margin-bottom: 5px;
-            color: var(--text-color);
-            font-size: 14px;
+            font-weight: 600; 
+            margin-bottom: 3px;
+            color: var(--text-primary);
+            font-size: 0.85rem;
         }
         .team-abbr { 
-            font-size: 0.85em; 
-            color: var(--secondary-color);
+            font-size: 0.8rem; 
+            color: var(--text-muted);
         }
         
-        /* Team selection buttons that appear directly on selected cards */
+        /* Selection buttons on card */
         .team-selection-buttons {
             position: absolute;
             bottom: 8px;
@@ -384,31 +466,31 @@ if ($draft_status['status'] !== 'not_started') {
         .team-selection-btn {
             padding: 6px 12px;
             border: none;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 500;
+            border-radius: var(--radius-sm);
+            font-size: 0.75rem;
+            font-weight: 600;
             cursor: pointer;
-            transition: all 0.2s ease;
-            text-decoration: none;
-            display: inline-block;
-            font-family: inherit;
+            transition: all var(--transition-fast);
+            font-family: 'Outfit', sans-serif;
         }
         
         .team-selection-btn.confirm {
-            background-color: var(--success-color);
-            color: white;
+            background: var(--accent-green);
+            color: #fff;
         }
         
         .team-selection-btn.clear {
-            background-color: var(--secondary-color);
-            color: white;
+            background: var(--bg-elevated);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
         }
         
         .team-selection-btn:hover {
+            filter: brightness(1.15);
             transform: translateY(-1px);
-            box-shadow: 0 1px 4px rgba(0,0,0,0.2);
         }
         
+        /* Order & Picks Lists */
         .order-list, .picks-list {
             list-style: none;
             padding: 0;
@@ -418,76 +500,84 @@ if ($draft_status['status'] !== 'not_started') {
         }
         
         .recent-picks {
-            background-color: rgba(255,255,255,0.9);
-            border-radius: 8px;
-            padding: 25px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-            border: 2px solid rgba(33, 33, 33, 0.1);
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            padding: 16px;
+            box-shadow: var(--shadow-card);
         }
         
         .recent-picks h3 {
-            color: var(--basketball-orange) !important;
-            font-size: 20px !important;
-            margin-bottom: 20px !important;
+            color: var(--accent-orange) !important;
+            font-size: 1.05rem !important;
+            margin-bottom: 14px !important;
             text-align: center;
-            font-weight: bold;
+            font-weight: 700;
         }
         
         .order-item, .pick-item {
-            padding: 12px;
-            margin: 8px 0;
-            background: rgba(255,255,255,0.9);
-            border-radius: 6px;
+            padding: 10px 12px;
+            margin: 6px 0;
+            background: var(--bg-elevated);
+            border-radius: var(--radius-sm);
             display: flex;
             justify-content: space-between;
             align-items: center;
             border: 1px solid var(--border-color);
+            font-size: 0.9rem;
+            color: var(--text-primary);
         }
         
         .order-item.current {
-            background: rgba(255, 152, 0, 0.1);
-            border: 2px solid var(--basketball-orange);
+            background: var(--accent-orange-dim);
+            border: 2px solid var(--accent-orange);
             animation: currentGlow 2s infinite;
         }
         
         @keyframes currentGlow {
-            0%, 100% { box-shadow: 0 0 5px rgba(255, 152, 0, 0.3); }
-            50% { box-shadow: 0 0 15px rgba(255, 152, 0, 0.5); }
+            0%, 100% { box-shadow: 0 0 5px rgba(210, 153, 34, 0.2); }
+            50% { box-shadow: 0 0 14px rgba(210, 153, 34, 0.4); }
         }
         
         .pick-number {
-            background: var(--info-color);
-            color: white;
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 0.8em;
-            font-weight: bold;
-        }
-        
-        .pick-item {
-            align-items: center;
+            background: var(--accent-blue);
+            color: #fff;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 0.75rem;
+            font-weight: 700;
         }
         
         .pick-team-info {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
         }
         
         .pick-team-logo {
-            width: 30px;
-            height: 30px;
+            width: 28px;
+            height: 28px;
             border-radius: 50%;
         }
+
+        .pick-team-info strong {
+            color: var(--text-primary);
+            font-size: 0.85rem;
+        }
+
+        .pick-team-info small {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+        }
         
+        /* Last Pick Banner */
         .last-pick-display {
-            background-color: rgba(255,255,255,0.9);
-            border: 2px solid var(--basketball-orange);
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
+            background: var(--bg-card);
+            border: 2px solid var(--accent-orange);
+            border-radius: var(--radius-lg);
+            padding: 16px;
+            margin-bottom: 16px;
             text-align: center;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            box-shadow: var(--shadow-card);
             display: none;
         }
         
@@ -497,81 +587,80 @@ if ($draft_status['status'] !== 'not_started') {
         }
         
         @keyframes fadeInSlide {
-            from { 
-                opacity: 0; 
-                transform: translateY(-20px); 
-            }
-            to { 
-                opacity: 1; 
-                transform: translateY(0); 
-            }
+            from { opacity: 0; transform: translateY(-16px); }
+            to { opacity: 1; transform: translateY(0); }
         }
         
         .last-pick-content {
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 15px;
+            gap: 14px;
         }
         
         .last-pick-logo {
-            width: 60px;
-            height: 60px;
+            width: 56px;
+            height: 56px;
             border-radius: 50%;
         }
         
         .last-pick-info h4 {
-            margin: 0 0 5px 0;
-            color: var(--basketball-orange);
-            font-size: 18px;
+            margin: 0 0 4px;
+            color: var(--accent-orange);
+            font-size: 1rem;
+            font-weight: 700;
         }
         
         .last-pick-info .team-name {
-            font-size: 16px;
-            font-weight: bold;
-            margin-bottom: 3px;
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 2px;
         }
         
         .last-pick-info .participant-name {
-            font-size: 14px;
-            color: var(--secondary-color);
+            font-size: 0.85rem;
+            color: var(--text-secondary);
         }
         
+        /* Notification toasts */
         .notification {
             position: fixed;
             top: 20px;
             right: 20px;
             padding: 12px 20px;
-            border-radius: 6px;
-            color: white;
-            font-weight: 500;
+            border-radius: var(--radius-md);
+            color: #fff;
+            font-weight: 600;
+            font-family: 'Outfit', sans-serif;
             z-index: 1000;
             transform: translateX(400px);
             transition: transform 0.3s ease;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            box-shadow: var(--shadow-elevated);
         }
         
         .notification.show { transform: translateX(0); }
-        .notification.success { background: var(--success-color); }
-        .notification.error { background: var(--error-color); }
-        .notification.warning { background: var(--warning-color); }
-        .notification.info { background: var(--info-color); }
+        .notification.success { background: var(--accent-green); }
+        .notification.error   { background: var(--accent-red); }
+        .notification.warning { background: var(--accent-orange); }
+        .notification.info    { background: var(--accent-blue); }
         
+        /* Loading state */
         .loading {
             text-align: center;
             padding: 40px;
-            font-size: 1.1em;
-            color: var(--secondary-color);
+            font-size: 1rem;
+            color: var(--text-muted);
         }
         
         .spinner {
             border: 3px solid var(--border-color);
-            border-top: 3px solid var(--basketball-orange);
+            border-top: 3px solid var(--accent-orange);
             border-radius: 50%;
-            width: 40px;
-            height: 40px;
+            width: 36px;
+            height: 36px;
             animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
+            margin: 0 auto 16px;
         }
         
         @keyframes spin {
@@ -579,36 +668,23 @@ if ($draft_status['status'] !== 'not_started') {
             100% { transform: rotate(360deg); }
         }
         
-        .back-link {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            color: var(--text-color);
-            text-decoration: none;
-            font-size: 1.1em;
-            font-weight: 500;
-        }
-        
-        .back-link:hover { 
-            color: var(--basketball-orange);
-            text-decoration: underline; 
-        }
-        
+        /* Commissioner Controls */
         .commissioner-controls {
-            background: rgba(255, 193, 7, 0.1);
-            border: 1px solid #ffc107;
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 20px;
+            background: var(--accent-orange-dim);
+            border: 1px solid rgba(210, 153, 34, 0.3);
+            border-radius: var(--radius-lg);
+            padding: 16px;
+            margin-top: 30px;
         }
         
         .commissioner-controls h3 {
-            color: #e65100;
-            margin-bottom: 15px;
-            font-size: 18px;
+            color: var(--accent-orange);
+            margin: 0 0 14px;
+            font-size: 1rem;
+            font-weight: 700;
         }
         
-        /* Menu styling to match index.php */
+        /* Navigation overrides for dark theme */
         .menu-container {
             position: fixed;
             top: 0;
@@ -620,10 +696,10 @@ if ($draft_status['status'] !== 'not_started') {
             position: fixed;
             top: 5.5rem;
             left: 1rem;
-            background-color: var(--primary-color);
-            color: white;
-            border: none;
-            border-radius: 4px;
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
             padding: 0.5rem;
             cursor: pointer;
             z-index: 1002;
@@ -632,20 +708,15 @@ if ($draft_status['status'] !== 'not_started') {
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: var(--shadow-card);
         }
         
-        .menu-button:hover {
-            background-color: var(--secondary-color);
-        }
+        .menu-button:hover { background: var(--bg-card-hover); }
         
         .menu-overlay {
             position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: rgba(0, 0, 0, 0.5);
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
             z-index: 1001;
         }
         
@@ -655,15 +726,13 @@ if ($draft_status['status'] !== 'not_started') {
             left: -300px;
             width: 300px;
             height: 100vh;
-            background-color: white;
-            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+            background: var(--bg-card);
+            box-shadow: 4px 0 20px rgba(0,0,0,0.5);
             transition: left 0.3s ease;
             z-index: 1002;
         }
         
-        .menu-panel.menu-open {
-            left: 0;
-        }
+        .menu-panel.menu-open { left: 0; }
         
         .menu-header {
             padding: 1rem;
@@ -675,113 +744,163 @@ if ($draft_status['status'] !== 'not_started') {
         .close-button {
             background: none;
             border: none;
-            color: var(--text-color);
+            color: var(--text-secondary);
             cursor: pointer;
             padding: 0.5rem;
         }
+        .close-button:hover { color: var(--text-primary); }
         
-        .close-button:hover {
-            color: var(--hover-color);
-        }
-        
-        .menu-content {
-            padding: 1rem;
-        }
-        
-        .menu-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
+        .menu-content { padding: 1rem; }
+        .menu-list { list-style: none; padding: 0; margin: 0; }
         
         .menu-link {
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            padding: 1rem;
-            color: var(--text-color);
+            padding: 0.85rem 1rem;
+            color: var(--text-secondary);
             text-decoration: none;
-            transition: background-color 0.2s;
-            border-radius: 4px;
+            transition: all var(--transition-fast);
+            border-radius: var(--radius-sm);
         }
         
         .menu-link:hover {
-            background-color: var(--background-color);
-            color: var(--secondary-color);
+            background: var(--bg-elevated);
+            color: var(--text-primary);
         }
         
-        .menu-link i {
-            width: 20px;
-        }
+        .menu-link i { width: 20px; }
         
+        /* Mobile adjustments */
         @media (max-width: 600px) {
-            .container {
-                padding: 15px;
-            }
+            .container { padding: 12px; }
             
-            h1 {
-                font-size: 24px;
-            }
+            h1 { font-size: 1.35rem; }
             
-            .current-pick {
-                font-size: 1.4em;
+            .current-pick { font-size: 1.1rem; }
+            
+            .team-grid {
+                grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+                gap: 8px;
             }
             
             .team-card {
                 padding: 10px;
-                min-height: 110px;
+                min-height: 105px;
             }
             
-            .team-card.selected {
-                padding-bottom: 50px;
-            }
+            .team-card.selected { padding-bottom: 50px; }
             
-            .team-name {
-                font-size: 12px;
-            }
-            
-            .team-abbr {
-                font-size: 11px;
-            }
+            .team-name { font-size: 0.78rem; }
+            .team-abbr { font-size: 0.72rem; }
             
             .order-item, .pick-item {
-                padding: 10px;
-                font-size: 14px;
+                padding: 8px 10px;
+                font-size: 0.82rem;
             }
             
-            .btn {
-                padding: 8px 16px;
-                font-size: 13px;
-            }
+            .btn { padding: 8px 16px; font-size: 0.82rem; }
+            .team-selection-btn { padding: 5px 10px; font-size: 0.7rem; }
             
-            .team-selection-btn {
-                padding: 5px 10px;
-                font-size: 11px;
-            }
-            
-            .last-pick-content {
-                flex-direction: column;
-                gap: 10px;
-            }
-            
-            .last-pick-logo {
-                width: 50px;
-                height: 50px;
-            }
+            .last-pick-content { flex-direction: column; gap: 8px; }
+            .last-pick-logo { width: 48px; height: 48px; }
         }
         
         @media (min-width: 601px) {
-            .container {
-                max-width: 1200px;
-                padding: 30px;
+            .container { max-width: 1200px; padding: 24px; }
+        }
+
+        /* ===== FLOATING PILL NAV ===== */
+        .floating-pill {
+            position: fixed;
+            bottom: 18px;
+            left: 50%;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: rgba(24, 33, 47, 0.82);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 999px;
+            padding: 6px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03);
+            -webkit-backdrop-filter: blur(20px);
+            backdrop-filter: blur(20px);
+            -webkit-transform: translateX(-50%) translateZ(0);
+            transform: translateX(-50%) translateZ(0);
+            will-change: transform;
+            transition: border-radius 0.35s ease, padding 0.35s ease;
+        }
+        .floating-pill.expanded { border-radius: 22px; padding: 8px; }
+        .pill-main-row { display: flex; align-items: center; gap: 2px; }
+        .pill-expanded-row {
+            display: flex; align-items: center; justify-content: center; gap: 4px;
+            max-height: 0; opacity: 0; overflow: hidden;
+            transition: max-height 0.35s ease, opacity 0.25s ease, margin 0.35s ease, padding 0.35s ease;
+            margin-bottom: 0; padding: 0 4px;
+        }
+        .floating-pill.expanded .pill-expanded-row {
+            max-height: 60px; opacity: 1; margin-bottom: 6px;
+            padding: 0 4px 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        .pill-expanded-item {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 2px; width: 52px; height: 44px; border-radius: 12px;
+            text-decoration: none; color: var(--text-muted); font-size: 14px;
+            transition: all var(--transition-fast); cursor: pointer;
+            border: none; background: none; -webkit-tap-highlight-color: transparent;
+        }
+        .pill-expanded-item span {
+            font-size: 9px; font-weight: 600; font-family: 'Outfit', sans-serif;
+            letter-spacing: 0.02em; line-height: 1; white-space: nowrap;
+        }
+        .pill-expanded-item:hover { color: var(--text-primary); background: rgba(255, 255, 255, 0.08); }
+        .pill-expanded-item.logout-item:hover { color: var(--accent-red); }
+        .pill-menu-btn .fa-bars,
+        .pill-menu-btn .fa-xmark { transition: transform 0.3s ease, opacity 0.2s ease; }
+        .pill-menu-btn .fa-xmark { position: absolute; opacity: 0; transform: rotate(-90deg); }
+        .floating-pill.expanded .pill-menu-btn .fa-bars { opacity: 0; transform: rotate(90deg); }
+        .floating-pill.expanded .pill-menu-btn .fa-xmark { opacity: 1; transform: rotate(0deg); }
+        body { padding-bottom: 84px; }
+        @media (max-width: 600px) {
+            .floating-pill { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
+        }
+        .pill-item {
+            display: flex; align-items: center; justify-content: center;
+            width: 46px; height: 46px; border-radius: 999px;
+            text-decoration: none; color: var(--text-muted); font-size: 17px;
+            transition: all var(--transition-fast); cursor: pointer;
+            border: none; background: none; -webkit-tap-highlight-color: transparent;
+            position: relative;
+        }
+        .pill-item:hover { color: var(--text-primary); background: var(--bg-elevated); }
+        .pill-item.active { color: white; background: var(--accent-blue); }
+        .pill-item:active { transform: scale(0.92); }
+        .pill-divider { width: 1px; height: 26px; background: var(--border-color); flex-shrink: 0; }
+        @media (min-width: 601px) {
+            .pill-item::after {
+                content: attr(data-label); position: absolute; bottom: calc(100% + 8px);
+                left: 50%; transform: translateX(-50%) scale(0.9);
+                background: var(--bg-elevated); color: var(--text-primary);
+                font-size: 11px; font-weight: 600; font-family: 'Outfit', sans-serif;
+                padding: 4px 10px; border-radius: var(--radius-sm);
+                white-space: nowrap; opacity: 0; pointer-events: none;
+                transition: all 0.15s ease; border: 1px solid var(--border-color);
             }
+            .pill-item:hover::after { opacity: 1; transform: translateX(-50%) scale(1); }
+            .floating-pill.expanded .pill-item:hover::after { opacity: 0; }
         }
     </style>
 </head>
 <body>
     <?php 
-    // Include the navigation menu component
-    include $_SERVER['DOCUMENT_ROOT'] . '/nba-wins-platform/components/navigation_menu.php'; 
+    // Include the navigation menu component (dark theme version)
+    $navFile = $_SERVER['DOCUMENT_ROOT'] . '/nba-wins-platform/components/navigation_menu.php';
+    if (file_exists($navFile)) {
+        include $navFile;
+    } else {
+        include $_SERVER['DOCUMENT_ROOT'] . '/nba-wins-platform/components/navigation_menu.php';
+    }
     ?>
     
     <div class="container">
@@ -793,7 +912,7 @@ if ($draft_status['status'] !== 'not_started') {
         </div>
         
         <div class="last-pick-display" id="lastPickDisplay">
-            <h4 style="color: var(--basketball-orange); margin-bottom: 10px;">Latest Pick</h4>
+            <h4 style="color: var(--accent-orange); margin-bottom: 8px; font-weight: 700;">Latest Pick</h4>
             <div class="last-pick-content" id="lastPickContent">
                 <!-- Last pick info will be populated here -->
             </div>
@@ -808,21 +927,21 @@ if ($draft_status['status'] !== 'not_started') {
         
         <div class="draft-board" id="draftBoard" style="display: none;">
             <div class="available-teams">
-                <h3>Available Teams</h3>
+                <h3><i class="fas fa-basketball-ball" style="color: var(--accent-orange); margin-right: 6px;"></i>Available Teams</h3>
                 <div class="team-grid" id="teamGrid">
                     <!-- Teams loaded via JavaScript -->
                 </div>
             </div>
             
             <div class="draft-order">
-                <h3>Draft Order</h3>
+                <h3><i class="fas fa-list-ol" style="color: var(--accent-blue); margin-right: 6px;"></i>Draft Order</h3>
                 <ul class="order-list" id="draftOrderList">
                     <!-- Order loaded via JavaScript -->
                 </ul>
             </div>
             
             <div class="recent-picks">
-                <h3>Draft Picks</h3>
+                <h3><i class="fas fa-check-circle" style="color: var(--accent-orange); margin-right: 6px;"></i>Draft Picks</h3>
                 <ul class="picks-list" id="recentPicksList">
                     <!-- Picks loaded via JavaScript -->
                 </ul>
@@ -830,8 +949,8 @@ if ($draft_status['status'] !== 'not_started') {
         </div>
         
         <?php if ($is_commissioner): ?>
-        <div class="commissioner-controls" style="margin-top: 40px;">
-            <h3>Commissioner Controls</h3>
+        <div class="commissioner-controls">
+            <h3><i class="fas fa-shield-alt" style="margin-right: 6px;"></i>Commissioner Controls</h3>
             <div class="draft-controls">
                 <button id="startDraftBtn" class="btn btn-primary">Start Draft</button>
                 <button id="pauseDraftBtn" class="btn btn-warning" style="display: none;">Pause Draft</button>
@@ -906,8 +1025,6 @@ if ($draft_status['status'] !== 'not_started') {
         function hasTeamsChanged(newTeams) {
             if (!lastTeamsData || !newTeams) return true;
             if (lastTeamsData.length !== newTeams.length) return true;
-            
-            // Only update if team count changed (teams rarely change during draft)
             return false;
         }
         
@@ -916,7 +1033,6 @@ if ($draft_status['status'] !== 'not_started') {
             if (lastOrderData.length !== newOrder.length) return true;
             
             try {
-                // Check if current participant changed
                 const lastCurrent = lastOrderData.find(p => p.is_current);
                 const newCurrent = newOrder.find(p => p.is_current);
                 
@@ -932,18 +1048,14 @@ if ($draft_status['status'] !== 'not_started') {
         
         function hasPicksChanged(newPicks) {
             if (!lastPicksData || !newPicks) return true;
-            
-            // Always update if pick count changed
             if (lastPicksData.length !== newPicks.length) return true;
             
-            // If same length but we have picks, check if newest pick changed
             if (newPicks.length > 0 && lastPicksData.length > 0) {
                 const lastFirstPick = lastPicksData[0];
                 const newFirstPick = newPicks[0];
                 
                 if (!lastFirstPick || !newFirstPick) return true;
                 
-                // Check if pick number or team changed
                 return (lastFirstPick.pick_number !== newFirstPick.pick_number ||
                        lastFirstPick.team_name !== newFirstPick.team_name ||
                        lastFirstPick.participant_name !== newFirstPick.participant_name);
@@ -952,19 +1064,13 @@ if ($draft_status['status'] !== 'not_started') {
             return false;
         }
         
-        // SIMPLIFIED: Check for completion using multiple indicators
+        // Check for completion
         function checkFor30PicksAndRedirect(status) {
-            // Check multiple completion indicators
             const pickCount = status.recent_picks ? status.recent_picks.length : 0;
             const apiPickCount = status.pick_count || 0;
             const isCompleted = status.status === 'completed';
             
-            console.log('Completion check:', {
-                pickCount,
-                apiPickCount,
-                isCompleted,
-                status: status.status
-            });
+            console.log('Completion check:', { pickCount, apiPickCount, isCompleted, status: status.status });
             
             if (pickCount >= 30 || apiPickCount >= 30 || isCompleted) {
                 console.log('Draft completed detected, redirecting to summary...');
@@ -983,10 +1089,7 @@ if ($draft_status['status'] !== 'not_started') {
                     if (data.success) {
                         const status = data.data;
                         
-                        // Simple check: if 30 picks, redirect immediately
-                        if (checkFor30PicksAndRedirect(status)) {
-                            return; // Exit early if redirecting
-                        }
+                        if (checkFor30PicksAndRedirect(status)) return;
                         
                         updateDraftDisplay(status);
                         currentDraftStatus = status;
@@ -1010,8 +1113,8 @@ if ($draft_status['status'] !== 'not_started') {
             if (status.status === 'not_started') {
                 statusDiv.innerHTML = `
                     <h2>Draft Not Started</h2>
-                    <p>Waiting for commissioner to start the draft...</p>
-                    ${userInfo.is_commissioner ? '<p><strong>You can start the draft when ready!</strong></p>' : ''}
+                    <p style="color: var(--text-muted);">Waiting for commissioner to start the draft...</p>
+                    ${userInfo.is_commissioner ? '<p style="color: var(--accent-green); font-weight: 600;">You can start the draft when ready!</p>' : ''}
                 `;
                 boardDiv.style.display = 'none';
                 updateCommissionerControls('not_started');
@@ -1019,11 +1122,8 @@ if ($draft_status['status'] !== 'not_started') {
             else if (status.status === 'active' || status.status === 'paused') {
                 const isPaused = status.status === 'paused';
                 
-                // Use API pick count for accurate display
                 const pickCount = status.pick_count || (status.recent_picks ? status.recent_picks.length : 0);
                 const currentPickNumber = pickCount + 1;
-                
-                console.log('Updating display - Pick count:', pickCount, 'Current pick:', currentPickNumber);
                 
                 statusDiv.innerHTML = `
                     <div class="current-pick">
@@ -1037,10 +1137,8 @@ if ($draft_status['status'] !== 'not_started') {
                 
                 boardDiv.style.display = 'block';
                 
-                // Always update team grid to reflect selection state
                 updateTeamGrid(status.available_teams, status.current_participant);
                 
-                // Only update other components if their data changed
                 if (status.draft_order && hasOrderChanged(status.draft_order)) {
                     updateDraftOrder(status.draft_order, status.current_participant);
                 }
@@ -1086,7 +1184,7 @@ if ($draft_status['status'] !== 'not_started') {
             const canPick = isMyTurn || userInfo.is_commissioner;
             
             console.log('Updating team grid - refreshing DOM');
-            lastTeamsData = teams; // Cache the data
+            lastTeamsData = teams;
             
             grid.innerHTML = teams.map(team => {
                 const teamDataStr = JSON.stringify(team).replace(/"/g, '&quot;');
@@ -1101,7 +1199,7 @@ if ($draft_status['status'] !== 'not_started') {
                     <img src="${getTeamLogoPath(team)}" 
                          alt="${team.team_name} logo" 
                          class="team-logo"
-                         onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMTgiIHN0cm9rZT0iIzMzMzMzMyIgc3Ryb2tlLXdpZHRoPSIyIi8+Cjx0ZXh0IHg9IjIwIiB5PSIyNSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIyMCIgZmlsbD0iIzMzMzMzMyI+Pz88L3RleHQ+Cjwvc3ZnPgo='">
+                         onerror="this.style.opacity='0.3'">
                     <div class="team-name">${team.team_name}</div>
                     <div class="team-abbr">${team.abbreviation}</div>
                     ${canPick ? `
@@ -1118,14 +1216,13 @@ if ($draft_status['status'] !== 'not_started') {
         function updateDraftOrder(order, currentParticipant = null) {
             const list = document.getElementById('draftOrderList');
             
-            // Add current participant info to order data for comparison
             const orderWithCurrent = order.map(participant => ({
                 ...participant,
                 is_current: currentParticipant && currentParticipant.participant_id == participant.participant_id
             }));
             
             console.log('Updating draft order - order changed');
-            lastOrderData = orderWithCurrent; // Cache the data
+            lastOrderData = orderWithCurrent;
             
             list.innerHTML = orderWithCurrent.map(participant => `
                 <li class="order-item ${participant.is_current ? 'current' : ''}">
@@ -1153,7 +1250,7 @@ if ($draft_status['status'] !== 'not_started') {
                             <img src="${getTeamLogoPath(teamObj)}" 
                                  alt="${pick.team_name} logo" 
                                  class="pick-team-logo"
-                                 onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIHZpZXdCb3g9IjAgMCAzMCAzMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTUiIGN5PSIxNSIgcj0iMTMiIHN0cm9rZT0iIzMzMzMzMyIgc3Ryb2tlLXdpZHRoPSIyIi8+Cjx0ZXh0IHg9IjE1IiB5PSIyMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1ساز: IjE1IiBmaWxsPSIjMzMzMzMzIj4/PC90ZXh0Pgo8L3N2Zz4K'">
+                                 onerror="this.style.opacity='0.3'">
                             <div>
                                 <strong>${pick.team_name}</strong><br>
                                 <small>Pick #${pick.pick_number}</small>
@@ -1163,13 +1260,12 @@ if ($draft_status['status'] !== 'not_started') {
                 `;
                 }).join('');
                 
-                // Show the most recent pick
                 updateLastPickDisplay(picks[0]);
             } else {
-                list.innerHTML = '<li style="text-align: center; opacity: 0.7; padding: 30px; font-style: italic;">No picks made yet...</li>';
+                list.innerHTML = '<li style="text-align: center; color: var(--text-muted); padding: 30px; font-style: italic;">No picks made yet...</li>';
             }
             
-            lastPicksData = picks; // Cache the data
+            lastPicksData = picks;
         }
         
         function updateLastPickDisplay(pick) {
@@ -1186,7 +1282,7 @@ if ($draft_status['status'] !== 'not_started') {
                 <img src="${getTeamLogoPath(teamObj)}" 
                      alt="${pick.team_name} logo" 
                      class="last-pick-logo"
-                     onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMjYiIHN0cm9rZT0iIzMzMzMzMyIgc3Ryb2tlLXdpZHRoPSI0Ii8+Cjx0ZXh0IHg9IjMwIiB5PSI0MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIzMCIgZmlsbD0iIzMzMzMzMyI+Pz48L3RleHQ+Cjwvc3ZnPgo='">
+                     onerror="this.style.opacity='0.3'">
                 <div class="last-pick-info">
                     <h4>Pick #${pick.pick_number}</h4>
                     <div class="team-name">${pick.team_name}</div>
@@ -1205,7 +1301,6 @@ if ($draft_status['status'] !== 'not_started') {
             const resumeBtn = document.getElementById('resumeDraftBtn');
             const commPickBtn = document.getElementById('commissionerPickBtn');
             
-            // Hide all first
             [startBtn, pauseBtn, resumeBtn, commPickBtn].forEach(btn => {
                 if (btn) btn.style.display = 'none';
             });
@@ -1225,38 +1320,30 @@ if ($draft_status['status'] !== 'not_started') {
             }
         }
         
-        // Updated selectTeam function - no longer needs to show separate selectedTeam div
+        // Select / clear team
         function selectTeam(team) {
             console.log('Selecting team:', team);
             
-            // Clear previous selection
             document.querySelectorAll('.team-card.selected').forEach(card => {
                 card.classList.remove('selected');
             });
             
-            // Select new team
             const teamCard = document.querySelector(`[data-team-id="${team.id}"]`);
-            if (teamCard) {
-                teamCard.classList.add('selected');
-            }
+            if (teamCard) teamCard.classList.add('selected');
             
             selectedTeamId = team.id;
             selectedTeamData = team;
             
-            // Force refresh of team grid to show buttons on selected card
             if (currentDraftStatus && currentDraftStatus.available_teams) {
                 updateTeamGrid(currentDraftStatus.available_teams, currentDraftStatus.current_participant);
             }
         }
         
         function clearSelection() {
-            document.querySelectorAll('.team-card.selected').forEach(card => {
-                card.classList.remove('selected');
-            });
+            document.querySelectorAll('.team-card.selected').forEach(card => card.classList.remove('selected'));
             selectedTeamId = null;
             selectedTeamData = null;
             
-            // Force refresh of team grid to hide buttons
             if (currentDraftStatus && currentDraftStatus.available_teams) {
                 updateTeamGrid(currentDraftStatus.available_teams, currentDraftStatus.current_participant);
             }
@@ -1337,12 +1424,10 @@ if ($draft_status['status'] !== 'not_started') {
                     showNotification('Pick confirmed!', 'success');
                     clearSelection();
                     
-                    // Clear cache to force fresh data after pick
                     lastTeamsData = null;
                     lastOrderData = null;
                     lastPicksData = null;
                     
-                    // Check for completion immediately after pick
                     if (data.pick_count >= 30) {
                         console.log('30 picks reached, redirecting...');
                         setTimeout(() => {
@@ -1385,12 +1470,10 @@ if ($draft_status['status'] !== 'not_started') {
                     showNotification('Commissioner pick made!', 'success');
                     clearSelection();
                     
-                    // Clear cache to force fresh data after pick
                     lastTeamsData = null;
                     lastOrderData = null;
                     lastPicksData = null;
                     
-                    // Check for completion immediately after pick
                     if (data.pick_count >= 30) {
                         console.log('30 picks reached, redirecting...');
                         setTimeout(() => {
@@ -1413,10 +1496,8 @@ if ($draft_status['status'] !== 'not_started') {
             
             document.body.appendChild(notification);
             
-            // Show notification
             setTimeout(() => notification.classList.add('show'), 100);
             
-            // Hide notification after 4 seconds
             setTimeout(() => {
                 notification.classList.remove('show');
                 setTimeout(() => {
@@ -1432,7 +1513,62 @@ if ($draft_status['status'] !== 'not_started') {
             stopPolling();
         });
         
-        console.log('Draft interface initialized with on-card selection buttons');
+        console.log('Draft interface initialized (dark theme)');
+    </script>
+
+    <!-- Floating Pill Navigation -->
+    <nav class="floating-pill" id="floatingPill">
+        <div class="pill-expanded-row" id="pillExpandedRow">
+            <a href="/nba_standings.php" class="pill-expanded-item">
+                <i class="fas fa-basketball-ball"></i>
+                <span>Standings</span>
+            </a>
+            <a href="/draft_summary.php" class="pill-expanded-item">
+                <i class="fas fa-file-alt"></i>
+                <span>Draft</span>
+            </a>
+            <a href="https://buymeacoffee.com/taylorstvns" target="_blank" class="pill-expanded-item">
+                <i class="fas fa-mug-hot"></i>
+                <span>Tip Jar</span>
+            </a>
+            <?php if (empty($is_guest)): ?>
+            <a href="/nba-wins-platform/auth/logout.php" class="pill-expanded-item logout-item">
+                <i class="fas fa-sign-out-alt"></i>
+                <span>Logout</span>
+            </a>
+            <?php endif; ?>
+        </div>
+        <div class="pill-main-row">
+            <a href="/index.php" class="pill-item" data-label="Home">
+                <i class="fas fa-home"></i>
+            </a>
+            <a href="/nba-wins-platform/profiles/participant_profile.php?league_id=<?php echo $currentLeagueId ?? ($_SESSION['current_league_id'] ?? 0); ?>&user_id=<?php echo $profileUserId ?? ($_SESSION['user_id'] ?? 0); ?>" class="pill-item" data-label="Profile">
+                <i class="fas fa-user"></i>
+            </a>
+            <a href="/analytics.php" class="pill-item" data-label="Analytics">
+                <i class="fas fa-chart-line"></i>
+            </a>
+            <a href="/claudes-column.php" class="pill-item" data-label="Column" style="position:relative">
+                <i class="fa-solid fa-newspaper"></i>
+                <?php if ($hasNewArticles): ?><span style="position:absolute;top:2px;right:2px;width:7px;height:7px;background:#f85149;border-radius:50%;box-shadow:0 0 4px rgba(248,81,73,0.5)"></span><?php endif; ?>
+            </a>
+            <div class="pill-divider"></div>
+            <button class="pill-item pill-menu-btn" data-label="Menu" onclick="togglePillMenu()">
+                <i class="fas fa-bars"></i>
+                <i class="fas fa-xmark"></i>
+            </button>
+        </div>
+    </nav>
+    <script>
+    function togglePillMenu() {
+        document.getElementById('floatingPill').classList.toggle('expanded');
+    }
+    document.addEventListener('click', function(e) {
+        var pill = document.getElementById('floatingPill');
+        if (pill.classList.contains('expanded') && !pill.contains(e.target)) {
+            pill.classList.remove('expanded');
+        }
+    });
     </script>
 </body>
 </html>
