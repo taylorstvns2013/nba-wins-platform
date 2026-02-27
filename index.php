@@ -48,7 +48,12 @@ if ($currentHour < 3) {
 // Also returns API scores so we don't call the API twice.
 // =============================================================================
 require_once '/data/www/default/nba-wins-platform/core/game_scores_helper.php';
-$cached_api_scores = syncFinalGames($pdo, $effectiveToday);
+try {
+    $cached_api_scores = syncFinalGames($pdo, $effectiveToday);
+} catch (Exception $e) {
+    error_log("syncFinalGames failed: " . $e->getMessage());
+    $cached_api_scores = ['scoreboard' => ['games' => []]];
+}
 
 $currentLeagueId = $leagueContext['league_id'];
 
@@ -229,11 +234,8 @@ foreach ($participants as $name => $participant_data) {
         }))[0] ?? null;
         
         if ($team_info) {
-            $stmt = $pdo->prepare("SELECT streak, winstreak FROM 2025_2026 WHERE name = ? OR name = ?");
-            $stmt->execute([$normalizedTeam, $team]);
-            $streakInfo = $stmt->fetch(PDO::FETCH_ASSOC);
-            $streak = $streakInfo['streak'] ?? 0;
-            $winstreak = $streakInfo['winstreak'] ?? 0;
+            $streak = $team_info['streak'] ?? 0;
+            $winstreak = $team_info['winstreak'] ?? 0;
             
             $total_wins += $team_info['win'];
             $total_losses += $team_info['losses'] ?? 0;
@@ -278,6 +280,69 @@ usort($standings, function($a, $b) {
     // Tiebreaker: higher win percentage ranks first
     return $b['win_percentage'] <=> $a['win_percentage'];
 });
+
+// Calculate participant win/loss streaks for leaderboard flame/ice icons
+try {
+    foreach ($standings as &$standing) {
+        $pTeams = array_column($standing['teams'], 'name');
+        $standing['win_streak'] = 0;
+        $standing['loss_streak'] = 0;
+        if (empty($pTeams)) continue;
+        
+        $ph = str_repeat('?,', count($pTeams) - 1) . '?';
+        
+        $streakStmt = $pdo->prepare("
+            SELECT 
+                CASE 
+                    WHEN (g.home_team IN ($ph) AND g.away_team IN ($ph)) THEN 'W'
+                    WHEN (g.home_team IN ($ph) AND g.home_points > g.away_points) THEN 'W'
+                    WHEN (g.away_team IN ($ph) AND g.away_points > g.home_points) THEN 'W'
+                    ELSE 'L'
+                END AS result
+            FROM games g
+            WHERE (g.home_team IN ($ph) OR g.away_team IN ($ph))
+              AND g.status_long IN ('Final', 'Finished')
+              AND g.date >= '2025-10-21'
+            ORDER BY g.date DESC, g.start_time DESC
+            LIMIT 50
+        ");
+        
+        $params = array_merge(
+            $pTeams, $pTeams,  // both-teams check
+            $pTeams,           // home win check
+            $pTeams,           // away win check
+            $pTeams, $pTeams   // WHERE clause
+        );
+        $streakStmt->execute($params);
+        $gameResults = $streakStmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        if (!empty($gameResults)) {
+            $streakType = $gameResults[0]['result'];
+            $streak = 0;
+            foreach ($gameResults as $game) {
+                if ($game['result'] === $streakType) {
+                    $streak++;
+                } else {
+                    break;
+                }
+            }
+            if ($streakType === 'W') {
+                $standing['win_streak'] = $streak;
+            } else {
+                $standing['loss_streak'] = $streak;
+            }
+        }
+    }
+    unset($standing);
+} catch (Exception $e) {
+    error_log("Streak calculation error: " . $e->getMessage());
+    // Ensure defaults are set even on failure
+    foreach ($standings as &$standing) {
+        if (!isset($standing['win_streak'])) $standing['win_streak'] = 0;
+        if (!isset($standing['loss_streak'])) $standing['loss_streak'] = 0;
+    }
+    unset($standing);
+}
 
 $nbaCupDates = [
     '2025-10-31','2025-11-07','2025-11-14','2025-11-21','2025-11-25',
@@ -912,6 +977,48 @@ while ($current <= $rangeEnd) {
     .team-detail-panel.show .streak-icon[data-streak]::after {
         animation: streakNumberFlash 1.5s ease-out both;
         animation-delay: calc(var(--cascade-i, 0) * 60ms + 700ms);
+    }
+
+    /* Leaderboard participant win streak flame */
+    .lb-streak-icon {
+        margin-left: 5px;
+        font-size: 11px;
+        position: relative;
+        display: inline-block;
+        color: #f59e0b;
+    }
+    .lb-streak-icon.animate {
+        animation: flameBurst 1.5s ease-out both;
+    }
+    .lb-streak-icon[data-streak]::after {
+        content: attr(data-streak);
+        position: absolute;
+        top: 50%; left: 50%;
+        transform: translate(-50%, -50%) scale(0);
+        font-family: 'Outfit', sans-serif;
+        font-weight: 800;
+        font-style: normal;
+        font-size: 14.5px;
+        color: #ff5e00;
+        text-shadow: 0 0 9px rgba(255, 94, 0, 0.55);
+        opacity: 0;
+        pointer-events: none;
+        z-index: 2;
+    }
+    .lb-streak-icon.animate[data-streak]::after {
+        animation: streakNumberFlash 1.5s ease-out both;
+        animation-delay: 700ms;
+    }
+    /* Leaderboard loss streak ice */
+    .lb-streak-icon.cold {
+        color: #60a5fa;
+    }
+    .lb-streak-icon.cold.animate {
+        animation: iceBurst 1.5s ease-out both;
+    }
+    .lb-streak-icon.cold[data-streak]::after {
+        color: #93c5fd;
+        text-shadow: 0 0 9px rgba(96, 165, 250, 0.55);
     }
 
     .team-detail-wins {
@@ -2131,6 +2238,8 @@ while ($current <= $rangeEnd) {
                 <div class="standings-row <?php echo $rankClass; ?>" 
                      onclick="toggleTeams('<?php echo htmlspecialchars($participant['name'], ENT_QUOTES); ?>', this)"
                      id="row-<?php echo htmlspecialchars($participant['name']); ?>"
+                     data-win-streak="<?php echo $participant['win_streak']; ?>"
+                     data-loss-streak="<?php echo $participant['loss_streak']; ?>"
                      style="animation-delay: <?php echo $staggerDelay; ?>ms; --progress: <?php echo $progressPct; ?>%">
                     <div class="rank-badge">
                         <span class="rank-num"><?php echo $rank; ?></span>
@@ -2138,6 +2247,11 @@ while ($current <= $rangeEnd) {
                     </div>
                     <div class="participant-info">
                         <span class="participant-name-text"><?php echo htmlspecialchars($participant['name']); ?></span>
+                        <?php if ($participant['win_streak'] >= 10): ?>
+                            <i class="fas fa-fire lb-streak-icon animate" data-streak="<?php echo $participant['win_streak']; ?>"></i>
+                        <?php elseif ($participant['loss_streak'] >= 10): ?>
+                            <i class="fa-solid fa-snowflake lb-streak-icon cold animate" data-streak="<?php echo $participant['loss_streak']; ?>"></i>
+                        <?php endif; ?>
                     </div>
                     <div class="wins-cell">
                         <?php if ($participant['wins_change'] > 0): ?>
@@ -2482,6 +2596,256 @@ while ($current <= $rangeEnd) {
             loadDate(currentSelectedDate);
         }
 
+        // Silent auto-refresh: updates scores and leaderboard in-place, no DOM replacement
+        let _autoRefreshInFlight = false;
+        function autoRefreshScores() {
+            if (_autoRefreshInFlight) return; // prevent stacking
+            _autoRefreshInFlight = true;
+
+            const oldWins = {};
+            document.querySelectorAll('.standings-row').forEach(row => {
+                const name = row.querySelector('.participant-name-text')?.textContent?.trim();
+                const winsEl = row.querySelector('.wins-number');
+                if (name && winsEl) {
+                    oldWins[name] = parseInt(winsEl.getAttribute('data-wins')) || 0;
+                }
+            });
+
+            fetch(window.location.pathname + '?date=' + currentSelectedDate)
+                .then(r => r.text())
+                .then(html => {
+                    const doc = new DOMParser().parseFromString(html, 'text/html');
+
+                    // --- Surgical game card updates (no DOM replacement) ---
+                    const existingCards = document.querySelectorAll('.games-grid .game-card');
+                    const newCards = doc.querySelectorAll('.games-grid .game-card');
+
+                    existingCards.forEach((card, i) => {
+                        const newCard = newCards[i];
+                        if (!newCard) return;
+
+                        // Update score numbers
+                        const oldScores = card.querySelectorAll('.game-team-score');
+                        const newScores = newCard.querySelectorAll('.game-team-score');
+                        oldScores.forEach((el, j) => {
+                            if (newScores[j] && el.textContent !== newScores[j].textContent) {
+                                el.textContent = newScores[j].textContent;
+                            }
+                        });
+
+                        // Update winner highlighting
+                        const oldRows = card.querySelectorAll('.game-team-row');
+                        const newRows = newCard.querySelectorAll('.game-team-row');
+                        oldRows.forEach((el, j) => {
+                            if (newRows[j]) {
+                                el.classList.toggle('winner', newRows[j].classList.contains('winner'));
+                            }
+                        });
+
+                        // Replace footer only (status badge, buttons)
+                        const oldFooter = card.querySelector('.game-footer');
+                        const newFooter = newCard.querySelector('.game-footer');
+                        if (oldFooter && newFooter) {
+                            oldFooter.innerHTML = newFooter.innerHTML;
+                        }
+                    });
+
+                    // --- Selective leaderboard update ---
+                    const newWins = {};
+                    doc.querySelectorAll('.standings-row').forEach(row => {
+                        const name = row.querySelector('.participant-name-text')?.textContent?.trim();
+                        const winsEl = row.querySelector('.wins-number');
+                        if (name && winsEl) {
+                            newWins[name] = parseInt(winsEl.getAttribute('data-wins')) || 0;
+                        }
+                    });
+
+                    document.querySelectorAll('.standings-row').forEach(row => {
+                        const name = row.querySelector('.participant-name-text')?.textContent?.trim();
+                        const winsEl = row.querySelector('.wins-number');
+                        if (!name || !winsEl) return;
+
+                        const oldVal = oldWins[name] ?? 0;
+                        const newVal = newWins[name] ?? oldVal;
+
+                        if (newVal !== oldVal) {
+                            winsEl.setAttribute('data-wins', newVal);
+                            // Update win percentage from fetched data
+                            const fetchedRow = [...doc.querySelectorAll('.standings-row')].find(r =>
+                                r.querySelector('.participant-name-text')?.textContent?.trim() === name
+                            );
+                            if (fetchedRow) {
+                                const newPct = fetchedRow.querySelector('.wins-number')?.getAttribute('data-win-percentage');
+                                if (newPct) winsEl.setAttribute('data-win-percentage', newPct);
+                            }
+
+                            const isPercentageMode = localStorage.getItem('winsDisplayMode') === 'percentage';
+                            if (!isPercentageMode) winsEl.textContent = newVal;
+
+                            row.classList.remove('wins-flash-fade');
+                            row.classList.add('wins-flash');
+                            setTimeout(() => {
+                                row.classList.remove('wins-flash');
+                                row.classList.add('wins-flash-fade');
+                            }, 1500);
+                        }
+                    });
+
+                    // Re-rank leaderboard after updating wins
+                    const updatedWins = {};
+                    document.querySelectorAll('.standings-row').forEach(row => {
+                        const name = row.querySelector('.participant-name-text')?.textContent?.trim();
+                        const winsEl = row.querySelector('.wins-number');
+                        if (!name || !winsEl) return;
+                        updatedWins[name] = parseInt(winsEl.getAttribute('data-wins')) || 0;
+                    });
+
+                    // Update progress bars
+                    const allWins = Object.values(updatedWins);
+                    const maxWins = Math.max(...allWins, 1);
+                    document.querySelectorAll('.standings-row').forEach(row => {
+                        const name = row.querySelector('.participant-name-text')?.textContent?.trim();
+                        const w = updatedWins[name] ?? 0;
+                        row.style.setProperty('--progress', (w / maxWins * 100).toFixed(1) + '%');
+                    });
+
+                    // --- Update win/loss streak flames/ice ---
+                    document.querySelectorAll('.standings-row').forEach(row => {
+                        const name = row.querySelector('.participant-name-text')?.textContent?.trim();
+                        const fetchedRow = [...doc.querySelectorAll('.standings-row')].find(r =>
+                            r.querySelector('.participant-name-text')?.textContent?.trim() === name
+                        );
+                        if (!fetchedRow) return;
+
+                        const oldWinStreak = parseInt(row.getAttribute('data-win-streak')) || 0;
+                        const oldLossStreak = parseInt(row.getAttribute('data-loss-streak')) || 0;
+                        const newWinStreak = parseInt(fetchedRow.getAttribute('data-win-streak')) || 0;
+                        const newLossStreak = parseInt(fetchedRow.getAttribute('data-loss-streak')) || 0;
+
+                        if (newWinStreak === oldWinStreak && newLossStreak === oldLossStreak) return;
+
+                        row.setAttribute('data-win-streak', newWinStreak);
+                        row.setAttribute('data-loss-streak', newLossStreak);
+                        const info = row.querySelector('.participant-info');
+                        const existingIcon = info?.querySelector('.lb-streak-icon');
+
+                        // Determine what icon should be showing
+                        const shouldShowFire = newWinStreak >= 10;
+                        const shouldShowIce = newLossStreak >= 10;
+
+                        if (!shouldShowFire && !shouldShowIce) {
+                            // No streak — remove any icon
+                            if (existingIcon) existingIcon.remove();
+                        } else if (shouldShowFire) {
+                            if (existingIcon && existingIcon.classList.contains('cold')) {
+                                // Was ice, now fire — swap
+                                existingIcon.remove();
+                            }
+                            const icon = info?.querySelector('.lb-streak-icon');
+                            if (icon) {
+                                // Update existing fire
+                                icon.setAttribute('data-streak', newWinStreak);
+                                if (newWinStreak !== oldWinStreak) {
+                                    icon.classList.remove('animate');
+                                    void icon.offsetWidth;
+                                    icon.classList.add('animate');
+                                }
+                            } else if (info) {
+                                // Add new fire
+                                const flame = document.createElement('i');
+                                flame.className = 'fas fa-fire lb-streak-icon animate';
+                                flame.setAttribute('data-streak', newWinStreak);
+                                info.appendChild(flame);
+                            }
+                        } else if (shouldShowIce) {
+                            if (existingIcon && !existingIcon.classList.contains('cold')) {
+                                // Was fire, now ice — swap
+                                existingIcon.remove();
+                            }
+                            const icon = info?.querySelector('.lb-streak-icon');
+                            if (icon) {
+                                // Update existing ice
+                                icon.setAttribute('data-streak', newLossStreak);
+                                if (newLossStreak !== oldLossStreak) {
+                                    icon.classList.remove('animate');
+                                    void icon.offsetWidth;
+                                    icon.classList.add('animate');
+                                }
+                            } else if (info) {
+                                // Add new ice
+                                const ice = document.createElement('i');
+                                ice.className = 'fa-solid fa-snowflake lb-streak-icon cold animate';
+                                ice.setAttribute('data-streak', newLossStreak);
+                                info.appendChild(ice);
+                            }
+                        }
+                    });
+
+                    // --- Update dashboard widgets in-place (score-dependent only) ---
+                    ['league_stats', 'last_10_games', 'exceeding_expectations', 'falling_short'].forEach(type => {
+                        const oldWidget = document.querySelector('.dw-card[data-widget-type="' + type + '"] .dw-body');
+                        const newWidget = doc.querySelector('.dw-card[data-widget-type="' + type + '"] .dw-body');
+                        if (oldWidget && newWidget) {
+                            oldWidget.innerHTML = newWidget.innerHTML;
+                        }
+                    });
+
+                    // Check if leaderboard order changed — only reorder + cascade if it did
+                    const currentOrder = [...document.querySelectorAll('.standings-row')].map(r =>
+                        r.querySelector('.participant-name-text')?.textContent?.trim()
+                    );
+
+                    // Build new order sorted by wins desc, win% tiebreaker
+                    const sortable = currentOrder.map(name => {
+                        const row = [...document.querySelectorAll('.standings-row')].find(r =>
+                            r.querySelector('.participant-name-text')?.textContent?.trim() === name
+                        );
+                        const winsEl = row?.querySelector('.wins-number');
+                        return {
+                            name,
+                            wins: updatedWins[name] ?? 0,
+                            winPct: winsEl ? parseFloat(winsEl.getAttribute('data-win-percentage')) || 0 : 0
+                        };
+                    });
+                    sortable.sort((a, b) => {
+                        if (b.wins !== a.wins) return b.wins - a.wins;
+                        return b.winPct - a.winPct;
+                    });
+                    const newOrder = sortable.map(s => s.name);
+
+                    const orderChanged = currentOrder.some((name, i) => name !== newOrder[i]);
+
+                    if (orderChanged) {
+                        // Positions changed — use reRankLeaderboard which reorders DOM + cascades
+                        reRankLeaderboard(updatedWins);
+                    } else {
+                        // Same positions — just update rank numbers in-place, no animation
+                        let rank = 1;
+                        sortable.forEach((entry, index) => {
+                            if (index > 0 && entry.wins < sortable[index - 1].wins) rank = index + 1;
+                            const row = [...document.querySelectorAll('.standings-row')].find(r =>
+                                r.querySelector('.participant-name-text')?.textContent?.trim() === entry.name
+                            );
+                            if (row) {
+                                const rankNum = row.querySelector('.rank-num');
+                                if (rankNum) rankNum.textContent = rank;
+                                row.classList.remove('rank-1', 'rank-2', 'rank-3');
+                                if (rank <= 3) row.classList.add('rank-' + rank);
+                            }
+                        });
+                    }
+                })
+                .catch(err => { console.error('Auto-refresh error:', err); })
+                .finally(() => { _autoRefreshInFlight = false; });
+        }
+
+        // Auto-refresh every 30s when live games are showing
+        setInterval(function() {
+            if (document.querySelector('.game-btn-primary.live')) {
+                autoRefreshScores();
+            }
+        }, 15000);
+
         // Selective leaderboard update after AJAX refresh
         function updateLeaderboardSelective(fetchedDoc) {
             const oldWins = window._preRefreshWins || {};
@@ -2601,14 +2965,19 @@ while ($current <= $rangeEnd) {
             rows.forEach(row => {
                 const name = row.querySelector('.participant-name-text')?.textContent?.trim();
                 const wins = newWins[name] ?? 0;
+                const winsEl = row.querySelector('.wins-number');
+                const winPct = winsEl ? parseFloat(winsEl.getAttribute('data-win-percentage')) || 0 : 0;
                 // The panel immediately follows the row in the DOM
                 const panel = row.nextElementSibling?.classList.contains('team-detail-panel')
                     ? row.nextElementSibling : null;
-                pairs.push({ row, panel, name, wins });
+                pairs.push({ row, panel, name, wins, winPct });
             });
 
-            // Sort descending by wins (stable — preserves original order for ties)
-            pairs.sort((a, b) => b.wins - a.wins);
+            // Sort descending by wins, then by win percentage as tiebreaker
+            pairs.sort((a, b) => {
+                if (b.wins !== a.wins) return b.wins - a.wins;
+                return b.winPct - a.winPct;
+            });
 
             // Re-append in new order (after the standings-header)
             const header = container.querySelector('.standings-header');

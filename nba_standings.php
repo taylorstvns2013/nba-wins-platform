@@ -485,6 +485,10 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
         opacity: 0;
     }
 
+    .team-records tbody tr.eliminated {
+        opacity: 0;
+    }
+
     .team-records tbody tr:hover {
         background: var(--bg-card-hover);
     }
@@ -496,11 +500,6 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
     /* Playoff cutoff line after 6th */
     .team-records tbody tr:nth-child(6) td {
         border-bottom: 1px dashed var(--border-cutoff);
-    }
-
-    /* Play-in cutoff after 10th */
-    .team-records tbody tr.eliminated {
-        opacity: 0; /* starts hidden like all rows, JS sets to 0.4 after cascade */
     }
 
     /* Column widths */
@@ -607,8 +606,7 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
     /* Conference Tabs (mobile only) */
     .conference-tabs {
         display: none; /* hidden on desktop */
-        margin-bottom: 12px;
-        padding-top: 12px;
+        margin-bottom: 0;
     }
 
     .conf-tab {
@@ -661,18 +659,23 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
     @media (max-width: 700px) {
         .conference-tabs {
             display: flex;
-            gap: 2px;
-            box-shadow: var(--shadow-card);
-            border-radius: var(--radius-md);
+            gap: 0;
+            border-radius: var(--radius-md) var(--radius-md) 0 0;
             overflow: hidden;
+            background: var(--bg-card);
+            box-shadow: var(--shadow-card);
+            margin-bottom: 0;
         }
 
         .conference-container {
             flex-direction: column;
-            gap: 12px;
+            gap: 0;
         }
 
-        .conference { min-width: unset; }
+        .conference {
+            min-width: unset;
+            border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+        }
 
         /* Hide non-active conference on mobile */
         .conference.mobile-hidden {
@@ -874,16 +877,7 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
         .floating-pill.expanded .pill-item:hover::after { opacity: 0; }
     }
 
-    /* Cascade animation */
-    @keyframes cascadeIn {
-        from { opacity: 0; transform: translateY(10px); }
-        to   { opacity: 1; transform: translateY(0); }
-    }
-    .cascade-row {
-        opacity: 0;
-        animation: cascadeIn 0.35s ease-out forwards;
-    }
-</style>
+    </style>
 </head>
 <body>
 
@@ -1004,6 +998,57 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
     </div>
 
     <script>
+    // Initialize mobile state immediately
+    if (window.innerWidth <= 700) {
+        document.querySelector('.conference.western').classList.add('mobile-hidden');
+    }
+
+    // Wait for ALL resources (including team logo images) before cascading
+    // This prevents layout shifts from loading images causing stutter
+    window.addEventListener('load', function() {
+        var allRows = [];
+
+        document.querySelectorAll('.team-records tbody').forEach(function(tbody) {
+            if (tbody.closest('.mobile-hidden')) return;
+            var rows = tbody.querySelectorAll('tr');
+            rows.forEach(function(row) { allRows.push(row); });
+        });
+
+        // Phase 1: Cascade all rows in at full opacity
+        allRows.forEach(function(row, i) {
+            setTimeout(function() {
+                row.style.transition = 'opacity 0.35s ease-out, transform 0.35s ease-out';
+                row.style.opacity = '1';
+                row.style.transform = 'translateY(0)';
+            }, i * 40);
+        });
+
+        // Phase 2: Dim eliminated rows
+        var phase1Done = allRows.length * 40 + 400;
+        var eliminatedRows = [];
+        allRows.forEach(function(row) {
+            if (row.classList.contains('eliminated')) eliminatedRows.push(row);
+        });
+
+        eliminatedRows.forEach(function(row, i) {
+            setTimeout(function() {
+                row.style.transition = 'opacity 0.4s ease-in';
+                row.style.opacity = '0.4';
+            }, phase1Done + (i * 60));
+        });
+
+        // Cleanup: remove transition and transform, keep inline opacity
+        var totalDone = phase1Done + (eliminatedRows.length * 60) + 450;
+        setTimeout(function() {
+            allRows.forEach(function(row) {
+                row.style.transition = '';
+                row.style.transform = '';
+            });
+        }, totalDone);
+    });
+    </script>
+
+    <script>
     // Conference tab switching (mobile)
     function switchConference(conf) {
         // Update tab active state
@@ -1023,17 +1068,41 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
             eastern.classList.add('mobile-hidden');
         }
 
-        // Re-run cascade animation on the now-visible table
+        // Two-phase cascade on the now-visible conference
         var visibleConf = conf === 'east' ? eastern : western;
-        visibleConf.querySelectorAll('tbody tr').forEach(function(row, i) {
-            var finalOpacity = row.classList.contains('eliminated') ? 0.4 : 1;
+        var rows = visibleConf.querySelectorAll('tbody tr');
+
+        // Phase 1: Hide all, then cascade in at full opacity
+        rows.forEach(function(row) {
             row.style.opacity = '0';
-            row.style.animation = 'cascadeIn 0.35s ease-out ' + (i * 40) + 'ms forwards';
-            row.addEventListener('animationend', function() {
-                row.style.opacity = finalOpacity;
-                row.style.animation = '';
-            }, { once: true });
+            row.style.transform = 'translateY(10px)';
         });
+        rows.forEach(function(row, i) {
+            setTimeout(function() {
+                row.style.transition = 'opacity 0.35s ease-out, transform 0.35s ease-out';
+                row.style.opacity = '1';
+                row.style.transform = 'translateY(0)';
+            }, i * 40);
+        });
+
+        // Phase 2: Dim eliminated rows
+        var phase1Done = rows.length * 40 + 400;
+        var eliminated = visibleConf.querySelectorAll('tbody tr.eliminated');
+        eliminated.forEach(function(row, i) {
+            setTimeout(function() {
+                row.style.transition = 'opacity 0.4s ease-in';
+                row.style.opacity = '0.4';
+            }, phase1Done + (i * 60));
+        });
+
+        // Cleanup: remove transition and transform only, keep inline opacity
+        var totalDone = phase1Done + (eliminated.length * 60) + 450;
+        setTimeout(function() {
+            rows.forEach(function(row) {
+                row.style.transition = '';
+                row.style.transform = '';
+            });
+        }, totalDone);
     }
 
     // Set initial mobile state
@@ -1062,23 +1131,9 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
     });
 
     document.addEventListener('DOMContentLoaded', function() {
-        // Set initial mobile state
-        initMobileConferences();
-
-        // Cascade animation
-        document.querySelectorAll('.team-records tbody').forEach(function(tbody) {
-            // Skip hidden conference on mobile
-            if (tbody.closest('.mobile-hidden')) return;
-
-            var rows = tbody.querySelectorAll('tr');
-            rows.forEach(function(row, i) {
-                var finalOpacity = row.classList.contains('eliminated') ? 0.4 : 1;
-                row.style.animation = 'cascadeIn 0.35s ease-out ' + (i * 40) + 'ms forwards';
-                row.addEventListener('animationend', function() {
-                    row.style.opacity = finalOpacity;
-                    row.style.animation = '';
-                }, { once: true });
-            });
+        // Set hidden conference rows to visible (for when user switches tabs)
+        document.querySelectorAll('.mobile-hidden .team-records tbody tr').forEach(function(row) {
+            row.style.opacity = row.classList.contains('eliminated') ? '0.4' : '1';
         });
     });
     </script>

@@ -443,6 +443,57 @@ class DashboardWidget {
         $nameStmt->execute([$user_id]);
         $dwDisplayName = $nameStmt->fetchColumn() ?: 'My';
         
+        // Calculate participant win/loss streak
+        $dwWinStreak = 0;
+        $dwLossStreak = 0;
+        try {
+            $teamStmt = $this->pdo->prepare("
+                SELECT lpt.team_name 
+                FROM league_participant_teams lpt
+                JOIN league_participants lp ON lpt.league_participant_id = lp.id
+                WHERE lp.user_id = ? AND lp.league_id = ? AND lp.status = 'active'
+            ");
+            $teamStmt->execute([$user_id, $league_id]);
+            $dwTeams = $teamStmt->fetchAll(PDO::FETCH_COLUMN);
+            
+            if (!empty($dwTeams)) {
+                $ph = str_repeat('?,', count($dwTeams) - 1) . '?';
+                $streakStmt = $this->pdo->prepare("
+                    SELECT 
+                        CASE 
+                            WHEN (g.home_team IN ($ph) AND g.away_team IN ($ph)) THEN 'W'
+                            WHEN (g.home_team IN ($ph) AND g.home_points > g.away_points) THEN 'W'
+                            WHEN (g.away_team IN ($ph) AND g.away_points > g.home_points) THEN 'W'
+                            ELSE 'L'
+                        END AS result
+                    FROM games g
+                    WHERE (g.home_team IN ($ph) OR g.away_team IN ($ph))
+                      AND g.status_long IN ('Final', 'Finished')
+                      AND g.date >= '2025-10-21'
+                    ORDER BY g.date DESC, g.start_time DESC
+                ");
+                $params = array_merge($dwTeams, $dwTeams, $dwTeams, $dwTeams, $dwTeams, $dwTeams);
+                $streakStmt->execute($params);
+                $streakResults = $streakStmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                if (!empty($streakResults)) {
+                    $streakType = $streakResults[0]['result'];
+                    $streak = 0;
+                    foreach ($streakResults as $game) {
+                        if ($game['result'] === $streakType) {
+                            $streak++;
+                        } else {
+                            break;
+                        }
+                    }
+                    if ($streakType === 'W') $dwWinStreak = $streak;
+                    else $dwLossStreak = $streak;
+                }
+            }
+        } catch (Exception $e) {
+            error_log("DashboardWidget streak error: " . $e->getMessage());
+        }
+        
         ob_start();
         ?>
         <div class="dw-card" data-widget-type="league_stats">
@@ -473,6 +524,22 @@ class DashboardWidget {
                         ?>
                     </div>
                 </div>
+                <?php if ($dwWinStreak > 0 || $dwLossStreak > 0): ?>
+                <div class="dw-team-stat-row">
+                    <div class="dw-team-stat-left">
+                        <?php if ($dwWinStreak > 0): ?>
+                            <i class="fas fa-fire" style="color: #f59e0b; margin-right: 4px; font-size: 0.85rem"></i>
+                            <span>Win Streak</span>
+                        <?php else: ?>
+                            <i class="fa-solid fa-snowflake" style="color: #60a5fa; margin-right: 4px; font-size: 0.85rem"></i>
+                            <span>Loss Streak</span>
+                        <?php endif; ?>
+                    </div>
+                    <div class="dw-team-stat-value" style="color: <?php echo $dwWinStreak > 0 ? 'var(--accent-green)' : 'var(--accent-red)'; ?>">
+                        <?php echo $dwWinStreak > 0 ? $dwWinStreak . 'W' : $dwLossStreak . 'L'; ?>
+                    </div>
+                </div>
+                <?php endif; ?>
                 <div class="dw-team-stat-row">
                     <div class="dw-team-stat-left"><span>Best Team</span></div>
                     <div class="dw-team-stat-value">

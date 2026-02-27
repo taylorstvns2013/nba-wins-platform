@@ -544,6 +544,60 @@ try {
     error_log("Error fetching last games: " . $e->getMessage());
 }
 
+// ==========================================================================
+// PARTICIPANT WIN/LOSS STREAK
+// ==========================================================================
+$participantWinStreak = 0;
+$participantLossStreak = 0;
+try {
+    if (!empty($participantTeams)) {
+        $placeholders = str_repeat('?,', count($participantTeams) - 1) . '?';
+
+        $streakStmt = $pdo->prepare("
+            SELECT 
+                CASE 
+                    WHEN (g.home_team IN ($placeholders) AND g.away_team IN ($placeholders)) THEN 'W'
+                    WHEN (g.home_team IN ($placeholders) AND g.home_points > g.away_points) THEN 'W'
+                    WHEN (g.away_team IN ($placeholders) AND g.away_points > g.home_points) THEN 'W'
+                    ELSE 'L'
+                END AS result
+            FROM games g
+            WHERE (g.home_team IN ($placeholders) OR g.away_team IN ($placeholders))
+              AND g.status_long IN ('Final', 'Finished')
+              AND g.date >= '2025-10-21'
+            ORDER BY g.date DESC, g.start_time DESC
+        ");
+
+        $params = array_merge(
+            $participantTeams, $participantTeams,  // both-teams check
+            $participantTeams,                     // home win check
+            $participantTeams,                     // away win check
+            $participantTeams, $participantTeams   // WHERE clause
+        );
+        $streakStmt->execute($params);
+        $streakResults = $streakStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (!empty($streakResults)) {
+            $streakType = $streakResults[0]['result'];
+            $streak = 0;
+            foreach ($streakResults as $game) {
+                if ($game['result'] === $streakType) {
+                    $streak++;
+                } else {
+                    break;
+                }
+            }
+            if ($streakType === 'W') {
+                $participantWinStreak = $streak;
+            } else {
+                $participantLossStreak = $streak;
+            }
+        }
+    }
+} catch (Exception $e) {
+    error_log("Error fetching participant streak: " . $e->getMessage());
+}
+
 
 // ==========================================================================
 // UPCOMING 5 GAMES
@@ -1756,6 +1810,23 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
                     ?>
                 </div>
             </div>
+
+            <?php if ($participantWinStreak > 0 || $participantLossStreak > 0): ?>
+            <div class="team-row">
+                <div class="team-info">
+                    <?php if ($participantWinStreak > 0): ?>
+                        <i class="fas fa-fire" style="color: #f59e0b; margin-right: 4px; font-size: 0.85rem"></i>
+                        <span>Win Streak</span>
+                    <?php else: ?>
+                        <i class="fa-solid fa-snowflake" style="color: #60a5fa; margin-right: 4px; font-size: 0.85rem"></i>
+                        <span>Loss Streak</span>
+                    <?php endif; ?>
+                </div>
+                <div class="team-record" style="color: <?= $participantWinStreak > 0 ? 'var(--accent-green)' : 'var(--accent-red)' ?>">
+                    <?= $participantWinStreak > 0 ? $participantWinStreak . 'W' : $participantLossStreak . 'L' ?>
+                </div>
+            </div>
+            <?php endif; ?>
 
             <div class="team-row">
                 <div class="team-info"><span>Best Team</span></div>
