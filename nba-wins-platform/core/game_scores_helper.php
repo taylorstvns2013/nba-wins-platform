@@ -335,3 +335,52 @@ function getFullTeamName($abbr) {
     
     return $teams[$abbr] ?? $abbr;
 }
+
+/**
+ * Extract NBA CDN game ID from scoreboard data by matching team names
+ */
+function getGameIdFromScoreboard($home_team, $away_team, $api_scores) {
+    if (!isset($api_scores['scoreboard']['games'])) {
+        return null;
+    }
+    
+    foreach ($api_scores['scoreboard']['games'] as $api_game) {
+        $api_home = $api_game['homeTeam']['teamCity'] . ' ' . $api_game['homeTeam']['teamName'];
+        $api_away = $api_game['awayTeam']['teamCity'] . ' ' . $api_game['awayTeam']['teamName'];
+        
+        if ($api_home === $home_team && $api_away === $away_team) {
+            return $api_game['gameId'] ?? null;
+        }
+    }
+    
+    return null;
+}
+
+/**
+ * Fetch the latest play-by-play action for a live game
+ * Returns array with play data or null if unavailable
+ */
+function getLatestPlay($game_id) {
+    if (empty($game_id)) return null;
+    
+    try {
+        $script_path = '/data/www/default/nba-wins-platform/core/get_playbyplay.py';
+        $escaped_id = escapeshellarg($game_id);
+        $command = "timeout 8 python3 $script_path $escaped_id 2>&1";
+        
+        $output = shell_exec($command);
+        if (!$output) return null;
+        
+        $data = json_decode($output, true);
+        if (!$data || isset($data['error'])) {
+            error_log("getLatestPlay error: " . ($data['error'] ?? 'Unknown'));
+            return null;
+        }
+        
+        return $data['play'] ?? null;
+        
+    } catch (Exception $e) {
+        error_log("getLatestPlay exception: " . $e->getMessage());
+        return null;
+    }
+}

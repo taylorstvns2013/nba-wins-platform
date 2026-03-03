@@ -815,6 +815,47 @@ body {
    ========================================================================== */
 .app-container { max-width: 1000px; margin: 0 auto; padding: 0 12px 2rem; }
 
+/* Desktop two-column layout */
+@media (min-width: 1100px) {
+    .app-container { max-width: 1340px; }
+    .pp-two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        align-items: start;
+    }
+    .pp-col-right {
+        position: sticky;
+        top: 12px;
+        max-height: calc(100vh - 24px);
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: var(--bg-elevated) transparent;
+    }
+    .pp-col-right::-webkit-scrollbar { width: 5px; }
+    .pp-col-right::-webkit-scrollbar-track { background: transparent; }
+    .pp-col-right::-webkit-scrollbar-thumb {
+        background: var(--bg-elevated);
+        border-radius: 4px;
+    }
+    .pp-col-right::-webkit-scrollbar-thumb:hover {
+        background: var(--text-muted);
+    }
+    /* Stats-grid single column when inside two-col (not enough width for 2) */
+    .pp-col-left .stats-grid {
+        grid-template-columns: 1fr;
+    }
+    /* Remove double-spacing from stats-card margin + grid gap */
+    .pp-col-left .stats-card,
+    .pp-col-right .stats-card {
+        margin-bottom: 0;
+    }
+    /* Right column content spacing */
+    .pp-col-right .stats-card + .stats-card {
+        margin-top: 14px;
+    }
+}
+
 .app-header {
     display: flex; align-items: center; justify-content: center;
     gap: 10px; padding: 16px 16px 12px; position: relative;
@@ -1178,6 +1219,9 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
 .team-record {
     font-weight: 600; min-width: 70px; text-align: right;
     font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+    max-width: 50%;
+    word-break: break-word;
 }
 .team-record div { font-size: 0.78rem; color: var(--text-muted); }
 
@@ -1263,6 +1307,10 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
 .rival-link {
     text-decoration: none; color: var(--accent-blue);
     font-weight: 600; transition: color 0.2s;
+    word-break: break-word;
+    display: inline-block;
+    max-width: 100%;
+    line-height: 1.3;
 }
 .rival-link:hover { color: #5ba3fd; }
 
@@ -1337,6 +1385,10 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
 
 @media (min-width: 768px) {
     .stats-grid { grid-template-columns: repeat(2, 1fr); }
+}
+/* Override: inside desktop two-col, stats-grid stays single column */
+@media (min-width: 1100px) {
+    .pp-col-left .stats-grid { grid-template-columns: 1fr !important; }
 }
 /* ===== FLOATING PILL NAV ===== */
     .floating-pill {
@@ -1573,6 +1625,14 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
         </form>
 
     <?php endif; ?>
+
+    <!-- ================================================================
+         TWO-COLUMN LAYOUT (desktop) / STACKED (mobile)
+         ================================================================ -->
+    <div class="pp-two-col">
+
+    <!-- LEFT COLUMN -->
+    <div class="pp-col-left">
 
     <!-- ================================================================
          PROFILE HEADER CARD (with selector + gear)
@@ -1900,6 +1960,11 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
 
     </div><!-- /.stats-grid -->
 
+    </div><!-- /.pp-col-left -->
+
+    <!-- RIGHT COLUMN -->
+    <div class="pp-col-right">
+
     <!-- ================================================================
          LAST 10 GAMES
          ================================================================ -->
@@ -2015,6 +2080,9 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
             <div class="no-data">No upcoming games</div>
         <?php endif; ?>
     </div>
+
+    </div><!-- /.pp-col-right -->
+    </div><!-- /.pp-two-col -->
 
 </div><!-- /.app-container -->
 

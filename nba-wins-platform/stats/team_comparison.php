@@ -204,6 +204,26 @@ if (($home_stats && $home_stats['GP'] > 0) || ($away_stats && $away_stats['GP'] 
         $away_stats = $emptyStats;
     }
 }
+
+// ------ Head-to-Head Matchups This Season ------
+$h2hStmt = $pdo->prepare("
+    SELECT date, home_team, away_team, home_points, away_points, status_long,
+           home_team_code, away_team_code
+    FROM games
+    WHERE date >= '2025-10-20'
+      AND status_long IN ('Final', 'Finished')
+      AND (
+          (home_team = ? AND away_team = ?)
+          OR
+          (home_team = ? AND away_team = ?)
+      )
+    ORDER BY date DESC
+");
+$h2hStmt->execute([
+    $game['home_team_name'], $game['away_team_name'],
+    $game['away_team_name'], $game['home_team_name']
+]);
+$h2hGames = $h2hStmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -302,7 +322,56 @@ body {
 /* ==========================================================================
    LAYOUT
    ========================================================================== */
-.app-container { max-width: 900px; margin: 0 auto; padding: 0 12px 2rem; }
+.app-container { max-width: 900px; margin: 0 auto; padding: 12px 12px 2rem; }
+
+/* Desktop two-column layout */
+@media (min-width: 1100px) {
+    .app-container { max-width: 1280px; }
+    .tc-two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto 1fr;
+        gap: 14px;
+        align-items: start;
+    }
+    .tc-col-left {
+        grid-column: 1;
+        grid-row: 1;
+    }
+    .tc-col-right {
+        grid-column: 2;
+        grid-row: 1 / -1;
+        position: sticky;
+        top: 12px;
+        max-height: calc(100vh - 24px);
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: var(--bg-elevated) transparent;
+    }
+    .tc-h2h {
+        grid-column: 1;
+        grid-row: 2;
+    }
+    .tc-col-right::-webkit-scrollbar { width: 5px; }
+    .tc-col-right::-webkit-scrollbar-track { background: transparent; }
+    .tc-col-right::-webkit-scrollbar-thumb {
+        background: var(--bg-elevated);
+        border-radius: 4px;
+    }
+    .tc-col-right::-webkit-scrollbar-thumb:hover {
+        background: var(--text-muted);
+    }
+}
+@media (max-width: 1099px) {
+    .tc-two-col {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+    }
+    .tc-col-left { order: 1; }
+    .tc-col-right { order: 2; }
+    .tc-h2h { order: 3; }
+}
 
 .app-header {
     display: flex;
@@ -503,6 +572,32 @@ body {
     border-bottom: 1px solid var(--border-color);
 }
 
+.stat-team-header {
+    border-bottom: 2px solid var(--border-color);
+}
+.stat-team-label {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 0.85rem 0.75rem;
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+}
+.stat-team-logo {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+}
+.stat-header-mid {
+    background: var(--bg-secondary) !important;
+    border-left: none !important;
+    border-right: none !important;
+}
+
 .stat-row {
     display: flex;
     align-items: stretch;
@@ -553,10 +648,86 @@ body {
 }
 
 /* ==========================================================================
+   HEAD-TO-HEAD MATCHUPS
+   ========================================================================== */
+.h2h-section {
+    background: var(--bg-card);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+    overflow: hidden;
+}
+.h2h-title {
+    padding: 0.85rem 1.25rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.h2h-game {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid var(--border-color);
+    gap: 12px;
+    text-decoration: none;
+    color: inherit;
+    transition: background var(--transition-fast);
+}
+.h2h-game:last-child { border-bottom: none; }
+.h2h-game:hover { background: var(--bg-card-hover); }
+.h2h-date {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    min-width: 70px;
+    white-space: nowrap;
+}
+.h2h-teams {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+.h2h-team {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+.h2h-team-logo {
+    width: 22px;
+    height: 22px;
+    object-fit: contain;
+}
+.h2h-score {
+    font-weight: 700;
+    min-width: 26px;
+    text-align: center;
+}
+.h2h-score.winner { color: var(--accent-green); }
+.h2h-score.loser { color: var(--text-muted); }
+.h2h-at {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 400;
+}
+.h2h-empty {
+    padding: 1.5rem;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.88rem;
+}
+
+/* ==========================================================================
    MOBILE RESPONSIVE
    ========================================================================== */
 @media (max-width: 600px) {
-    .app-container { padding: 0 8px 2rem; }
+    .app-container { padding: 8px 8px 2rem; }
 
     .matchup-header { padding: 1rem; border-radius: var(--radius-md); }
     .team-row { padding: 1rem 0.75rem; min-height: 70px; }
@@ -755,14 +926,13 @@ body {
 <div class="app-container">
 
     <!-- ================================================================
-         HEADER
+         TWO-COLUMN GRID (desktop) / STACKED (mobile)
          ================================================================ -->
+    <div class="tc-two-col">
 
-
-    <!-- ================================================================
-         MATCHUP HEADER
-         ================================================================ -->
-    <div class="matchup-header">
+        <!-- LEFT COLUMN: Matchup Header -->
+        <div class="tc-col-left">
+            <div class="matchup-header">
 
         <!-- Home Team -->
         <div class="team-row home-team">
@@ -839,11 +1009,35 @@ body {
         </div>
     </div>
 
+        </div><!-- /.tc-col-left -->
+
+        <!-- RIGHT COLUMN: Stats Comparison -->
+        <div class="tc-col-right">
     <!-- ================================================================
          STATS COMPARISON
          ================================================================ -->
     <div class="stats-section">
-        <h2 class="section-title">Team Stats</h2>
+        <?php
+        // Extract mascot names (last word of team name, or handle special cases)
+        $homeParts = explode(' ', $game['home_team_name']);
+        $homeMascot = end($homeParts);
+        $awayParts = explode(' ', $game['away_team_name']);
+        $awayMascot = end($awayParts);
+        // Handle "Trail Blazers" and "76ers" type names
+        if ($game['home_team_name'] === 'Portland Trail Blazers') $homeMascot = 'Trail Blazers';
+        if ($game['away_team_name'] === 'Portland Trail Blazers') $awayMascot = 'Trail Blazers';
+        ?>
+        <div class="stat-row stat-team-header">
+            <div class="stat-team-label">
+                <img src="<?= htmlspecialchars(getTeamLogo($game['home_team_name'])) ?>" alt="" class="stat-team-logo">
+                <span><?= htmlspecialchars($homeMascot) ?></span>
+            </div>
+            <div class="stat-label stat-header-mid"></div>
+            <div class="stat-team-label">
+                <img src="<?= htmlspecialchars(getTeamLogo($game['away_team_name'])) ?>" alt="" class="stat-team-logo">
+                <span><?= htmlspecialchars($awayMascot) ?></span>
+            </div>
+        </div>
 
         <?php if ($statsAvailable): ?>
             <?php
@@ -893,6 +1087,44 @@ body {
             </div>
         <?php endif; ?>
     </div>
+        </div><!-- /.tc-col-right -->
+
+        <!-- SEASON MATCHUPS (left col on desktop, after stats on mobile) -->
+        <div class="tc-h2h">
+            <div class="h2h-section">
+                <div class="h2h-title">
+                    <i class="fas fa-repeat" style="color: var(--accent-teal);"></i>
+                    Season Matchups
+                </div>
+                <?php if (!empty($h2hGames)): ?>
+                    <?php foreach ($h2hGames as $h2h):
+                        $homeWon = $h2h['home_points'] > $h2h['away_points'];
+                        $h2hUrl = '/nba-wins-platform/stats/game_details.php?home=' . urlencode($h2h['home_team_code'])
+                                . '&away=' . urlencode($h2h['away_team_code'])
+                                . '&date=' . urlencode($h2h['date']);
+                    ?>
+                        <a href="<?= $h2hUrl ?>" class="h2h-game">
+                            <span class="h2h-date"><?= date('M j', strtotime($h2h['date'])) ?></span>
+                            <div class="h2h-teams">
+                                <div class="h2h-team">
+                                    <img src="<?= htmlspecialchars(getTeamLogo($h2h['away_team'])) ?>" alt="" class="h2h-team-logo">
+                                    <span class="h2h-score <?= !$homeWon ? 'winner' : 'loser' ?>"><?= $h2h['away_points'] ?></span>
+                                </div>
+                                <span class="h2h-at">@</span>
+                                <div class="h2h-team">
+                                    <img src="<?= htmlspecialchars(getTeamLogo($h2h['home_team'])) ?>" alt="" class="h2h-team-logo">
+                                    <span class="h2h-score <?= $homeWon ? 'winner' : 'loser' ?>"><?= $h2h['home_points'] ?></span>
+                                </div>
+                            </div>
+                        </a>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <div class="h2h-empty">No matchups yet this season</div>
+                <?php endif; ?>
+            </div>
+        </div>
+
+    </div><!-- /.tc-two-col -->
 
 </div>
     <script>

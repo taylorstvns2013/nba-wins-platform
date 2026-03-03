@@ -1,0 +1,132 @@
+# NBA WINS PLATFORM - COMPLETE CRON SCHEDULE
+# Server Time: UTC | Local Time Reference: EST (UTC-5) / EDT (UTC-4 during DST)
+# All paths verified to exist on server
+# Last Updated: September 19, 2025
+
+# =============================================================================
+# DAILY DATA MAINTENANCE JOBS
+# =============================================================================
+
+# Smart daily wins - every 5 min from midnight to 2:59 AM EST
+# EST (Nov-Mar): midnight-3AM EST = 5:00-7:59 UTC
+# EDT (Mar-Nov): midnight-3AM EDT = 4:00-6:59 UTC
+# Cover hours 4-7 UTC to handle both DST periods
+*/5 4,5,6,7 * * * /usr/bin/php /data/www/default/nba-wins-platform/tasks/record_daily_wins.php
+
+# Hard cutoff at 3 AM EST = 8 AM UTC (covers both EST/EDT with duplicate protection)
+0 8 * * * /usr/bin/php /data/www/default/nba-wins-platform/tasks/record_daily_wins.php --force 
+
+# Update NBA standings from API - Morning data refresh  
+0 9 * * * /usr/bin/php /data/www/default/nba-wins-platform/tasks/update_standings.php
+# UTC: 09:00 | EST: 04:00 AM | Purpose: Sync NBA team standings with API
+
+# Update player roster data - Early morning refresh
+0 8 * * * /usr/bin/python3 /data/www/default/nba-wins-platform/tasks/update_roster_stats.py
+# UTC: 08:00 | EST: 03:00 AM | Purpose: Update player roster information
+
+# =============================================================================
+# GAME DATA COLLECTION - WEEKDAYS (Monday-Friday)
+# =============================================================================
+
+# Hourly collection during off-peak hours (3 AM - 6 PM EST)
+0 8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23 * * 1-5 /usr/bin/php /data/www/default/nba-wins-platform/tasks/fetch_games.php
+# UTC: 08:00-23:00 | EST: 03:00 AM - 06:00 PM | Purpose: Regular game data updates
+
+# Intensive collection during NBA prime time (7 PM - 2 AM EST next day)
+*/20 0 * * 1-5 /usr/bin/php /data/www/default/nba-wins-platform/tasks/fetch_games.php
+# UTC: 00:xx | EST: 07:xx PM (previous day) | Purpose: Live game tracking
+
+*/20 1,2,3,4,5,6,7 * * 2-6 /usr/bin/php /data/www/default/nba-wins-platform/tasks/fetch_games.php
+# UTC: 01:xx-07:xx | EST: 08:xx PM - 02:xx AM | Purpose: Live game tracking continues
+
+# =============================================================================
+# GAME DATA COLLECTION - SATURDAY
+# =============================================================================
+
+# Hourly collection (3 AM - 2 PM EST Saturday)
+0 8,9,10,11,12,13,14,15,16,17,18,19 * * 6 /usr/bin/php /data/www/default/nba-wins-platform/tasks/fetch_games.php
+# UTC: 08:00-19:00 | EST: 03:00 AM - 02:00 PM | Purpose: Saturday morning/afternoon games
+
+# Intensive collection during prime time (3 PM Saturday - 2 AM Sunday EST)
+*/20 20,21,22,23,0 * * 6 /usr/bin/php /data/www/default/nba-wins-platform/tasks/fetch_games.php
+# UTC: 20:xx-00:xx | EST: 03:xx PM - 07:xx PM | Purpose: Saturday evening games
+
+*/20 1,2,3,4,5,6,7 * * 0 /usr/bin/php /data/www/default/nba-wins-platform/tasks/fetch_games.php
+# UTC: 01:xx-07:xx | EST: 08:xx PM Sat - 02:xx AM Sun | Purpose: Saturday night games
+
+# =============================================================================
+# GAME DATA COLLECTION - SUNDAY  
+# =============================================================================
+
+# Hourly collection (2 AM - 11 AM EST Sunday)
+0 7,8,9,10,11,12,13,14,15,16 * * 0 /usr/bin/php /data/www/default/nba-wins-platform/tasks/fetch_games.php
+# UTC: 07:00-16:00 | EST: 02:00 AM - 11:00 AM | Purpose: Sunday morning games
+
+# Intensive collection during prime time (12 PM - 8 PM EST Sunday)
+*/20 17,18,19,20,21,22,23,0 * * 0 /usr/bin/php /data/www/default/nba-wins-platform/tasks/fetch_games.php
+# UTC: 17:xx-00:xx | EST: 12:xx PM - 07:xx PM | Purpose: Sunday afternoon/evening games
+
+*/20 1,2,3,4,5,6 * * 1 /usr/bin/php /data/www/default/nba-wins-platform/tasks/fetch_games.php
+# UTC: 01:xx-06:xx | EST: 08:xx PM - 01:xx AM | Purpose: Sunday night games
+
+# =============================================================================
+# SUPPLEMENTARY DATA JOBS
+# =============================================================================
+
+# Fetch game stream URLs - Twice daily
+0 13,18 * * * /usr/bin/php /data/www/default/nba-wins-platform/tasks/scrape_urls.php
+# UTC: 13:00, 18:00 | EST: 08:00 AM, 01:00 PM | Purpose: Update streaming links
+
+# Upload detailed game and player statistics - Every 2 minutes
+#*/2 * * * * /usr/bin/python3 /data/www/default/nba-wins-platform/tasks/upload_season_data.py
+# UTC: Every 2 min | EST: Every 2 min | Purpose: Box scores, player stats, game details
+
+# =============================================================================
+# DUAL-API: NBA API (get_games.py) - Offset by 5 minutes for redundancy
+# =============================================================================
+
+# WEEKDAYS - Hourly during off-peak (offset from fetch_games.php)
+30 8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23 * * 1-5 /usr/bin/python3 /data/www/default/nba-wins-platform/tasks/get_games.py --write
+
+# WEEKDAYS - Every 5 minutes during prime time (offset by 2 minutes from fetch_games.php)
+2,7,12,17,22,27,32,37,42,47,52,57 0 * * 1-5 /usr/bin/python3 /data/www/default/nba-wins-platform/tasks/get_games.py --write
+2,7,12,17,22,27,32,37,42,47,52,57 1,2,3,4,5,6,7 * * 2-6 /usr/bin/python3 /data/www/default/nba-wins-platform/tasks/get_games.py --write
+
+# SATURDAY - Hourly (offset)
+30 8,9,10,11,12,13,14,15,16,17,18,19 * * 6 /usr/bin/python3 /data/www/default/nba-wins-platform/tasks/get_games.py --write
+
+# SATURDAY - Every 5 minutes during prime time
+2,7,12,17,22,27,32,37,42,47,52,57 20,21,22,23,0,1,2,3,4,5,6,7 * * 6 /usr/bin/python3 /data/www/default/nba-wins-platform/tasks/get_games.py --write
+2,7,12,17,22,27,32,37,42,47,52,57 0,1,2,3,4,5,6,7 * * 0 /usr/bin/python3 /data/www/default/nba-wins-platform/tasks/get_games.py --write
+
+# SUNDAY - Hourly (offset)
+30 7,8,9,10,11,12,13,14,15,16 * * 0 /usr/bin/python3 /data/www/default/nba-wins-platform/tasks/get_games.py --write
+
+# SUNDAY - Every 5 minutes during prime time
+2,7,12,17,22,27,32,37,42,47,52,57 17,18,19,20,21,22,23,0 * * 0 /usr/bin/python3 /data/www/default/nba-wins-platform/tasks/get_games.py --write
+2,7,12,17,22,27,32,37,42,47,52,57 1,2,3,4,5,6 * * 1 /usr/bin/python3 /data/www/default/nba-wins-platform/tasks/get_games.py --write
+
+# =============================================================================
+# NBA API Player and Quarter Stats Upload
+# =============================================================================
+
+# Save quarter scores - runs every 10 minutes during game hours
+*/10 0,1,2,3,4,5,6,7,17,18,19,20,21,22,23 * * * /usr/bin/python3 /data/www/default/nba-wins-platform/tasks/save_quarter_scores.py
+
+# Save player statistics - runs every 10 minutes during game hours
+*/10 0,1,2,3,4,5,6,7,17,18,19,20,21,22,23 * * * /usr/bin/python3 /data/www/default/nba-wins-platform/tasks/save_player_stats.py
+
+#=============================================================================
+# RapidAPI Team Stats
+
+# Update team statistics from RapidAPI - Smart update (only teams that played)
+# Runs at 7 AM EST daily
+0 12 * * * /usr/bin/php /data/www/default/nba-wins-platform/tasks/update_team_api_stats.php
+
+# =============================================================================
+# VERIFIED SCRIPTS ON SERVER
+# =============================================================================
+# PHP Scripts: record_daily_wins.php, update_standings.php, fetch_games.php, scrape_urls.php
+# Python Scripts: upload_season_data.py, update_roster_stats.py
+# Utility Scripts (not in cron): get_player_stats.py, get_team_stats.py
+# =============================================================================

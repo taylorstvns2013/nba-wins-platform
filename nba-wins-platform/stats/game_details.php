@@ -300,6 +300,42 @@ if ($current_scores) {
     if (isset($current_scores['status'])) {
         $game['status_long'] = $current_scores['status'];
     }
+    if (isset($current_scores['game_status'])) {
+        $game['game_status_code'] = $current_scores['game_status'];
+    }
+}
+$isLiveGame = ($game['game_status_code'] ?? 0) == 2;
+
+// ------ Latest Play-by-Play (live games only) ------
+$latestPlay = null;
+if ($isLiveGame) {
+    // Find game ID from the scoreboard data we already fetched
+    $nba_game_id = null;
+    if (isset($api_scores['scoreboard']['games'])) {
+        foreach ($api_scores['scoreboard']['games'] as $ag) {
+            $agHome = $ag['homeTeam']['teamCity'] . ' ' . $ag['homeTeam']['teamName'];
+            $agAway = $ag['awayTeam']['teamCity'] . ' ' . $ag['awayTeam']['teamName'];
+            if ($agHome === $game['home_team'] && $agAway === $game['away_team']) {
+                $nba_game_id = $ag['gameId'] ?? null;
+                break;
+            }
+        }
+    }
+    if ($nba_game_id) {
+        try {
+            $pbp_script = '/data/www/default/nba-wins-platform/core/get_playbyplay.py';
+            $pbp_cmd = "timeout 8 python3 " . $pbp_script . " " . escapeshellarg($nba_game_id) . " 2>&1";
+            $pbp_output = shell_exec($pbp_cmd);
+            if ($pbp_output) {
+                $pbp_data = json_decode($pbp_output, true);
+                if ($pbp_data && !isset($pbp_data['error']) && !empty($pbp_data['play'])) {
+                    $latestPlay = $pbp_data['play'];
+                }
+            }
+        } catch (Exception $e) {
+            error_log("Play-by-play fetch error: " . $e->getMessage());
+        }
+    }
 }
 
 // ------ Score Fallback: Quarter Scores Table ------
@@ -622,7 +658,90 @@ body {
 /* ==========================================================================
    LAYOUT
    ========================================================================== */
-.app-container { max-width: 900px; margin: 0 auto; padding: 0 12px 2rem; }
+.app-container { max-width: 900px; margin: 0 auto; padding: 12px 12px 2rem; }
+
+/* Desktop two-column layout */
+@media (min-width: 1100px) {
+    .app-container { max-width: 1280px; }
+    .gd-two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        align-items: start;
+    }
+    .gd-col-right {
+        position: sticky;
+        top: 12px;
+        max-height: calc(100vh - 24px);
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: var(--bg-elevated) transparent;
+    }
+    .gd-col-right::-webkit-scrollbar { width: 5px; }
+    .gd-col-right::-webkit-scrollbar-track { background: transparent; }
+    .gd-col-right::-webkit-scrollbar-thumb {
+        background: var(--bg-elevated);
+        border-radius: 4px;
+    }
+    .gd-col-right::-webkit-scrollbar-thumb:hover {
+        background: var(--text-muted);
+    }
+}
+@media (max-width: 1099px) {
+    .gd-two-col { display: block; }
+}
+
+/* Game status badge */
+.gd-status-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 12px; border-radius: 20px;
+    font-size: 0.78rem; font-weight: 600;
+    margin-top: 6px;
+}
+.gd-status-badge.live {
+    background: rgba(248, 81, 73, 0.15); color: var(--accent-red);
+    animation: gd-live-pulse 2s ease-in-out infinite;
+}
+.gd-status-badge.final {
+    background: rgba(63, 185, 80, 0.15); color: var(--accent-green);
+}
+.gd-status-badge.scheduled {
+    background: rgba(56, 139, 253, 0.15); color: var(--accent-blue);
+}
+.gd-status-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: currentColor;
+}
+@keyframes gd-live-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+/* Latest play ticker */
+.gd-latest-play {
+    text-align: center; margin-top: 8px;
+    padding: 6px 14px; border-radius: 8px;
+    background: rgba(56, 139, 253, 0.08);
+    border: 1px solid rgba(56, 139, 253, 0.15);
+    font-size: 0.78rem; line-height: 1.4;
+    max-width: 420px; margin-left: auto; margin-right: auto;
+    animation: gd-play-fade-in 0.4s ease;
+}
+.gd-play-label {
+    display: inline-block;
+    background: rgba(56, 139, 253, 0.18); color: var(--accent-blue);
+    font-size: 0.65rem; font-weight: 700; letter-spacing: 0.05em;
+    padding: 1px 6px; border-radius: 4px; margin-right: 6px;
+    vertical-align: middle;
+}
+.gd-play-text {
+    color: var(--text-secondary);
+    vertical-align: middle;
+}
+@keyframes gd-play-fade-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
 
 .app-header {
     display: flex; align-items: center; justify-content: center;
@@ -1030,14 +1149,13 @@ td.font-bold { font-weight: 700; color: var(--text-primary); }
 <div class="app-container">
 
     <!-- ================================================================
-         HEADER
+         TWO-COLUMN GRID (desktop) / STACKED (mobile)
          ================================================================ -->
+    <div class="gd-two-col">
 
-
-    <!-- ================================================================
-         MATCHUP HEADER
-         ================================================================ -->
-    <div class="matchup-header">
+        <!-- LEFT COLUMN: Matchup + Box Score -->
+        <div class="gd-col-left">
+            <div class="matchup-header" id="gd-matchup">
 
         <!-- Home Team -->
         <div class="team-row home-team">
@@ -1061,7 +1179,7 @@ td.font-bold { font-weight: 700; color: var(--text-primary); }
                 </a>
                 <div>
                     <div class="team-name"><?= htmlspecialchars($game['home_team']) ?></div>
-                    <div class="team-score"><?= $game['home_points'] ?></div>
+                    <div class="team-score" id="gd-home-score"><?= $game['home_points'] ?></div>
                     <?php if ($game['home_participant']): ?>
                         <div class="team-owner">(<?= htmlspecialchars($game['home_participant']) ?>)</div>
                     <?php endif; ?>
@@ -1093,7 +1211,7 @@ td.font-bold { font-weight: 700; color: var(--text-primary); }
                 </a>
                 <div>
                     <div class="team-name"><?= htmlspecialchars($game['away_team']) ?></div>
-                    <div class="team-score"><?= $game['away_points'] ?></div>
+                    <div class="team-score" id="gd-away-score"><?= $game['away_points'] ?></div>
                     <?php if ($game['away_participant']): ?>
                         <div class="team-owner">(<?= htmlspecialchars($game['away_participant']) ?>)</div>
                     <?php endif; ?>
@@ -1101,121 +1219,141 @@ td.font-bold { font-weight: 700; color: var(--text-primary); }
             </div>
         </div>
 
-        <!-- Venue & Date -->
+        <!-- Venue, Date & Status -->
         <div class="venue-info">
             <span><i class="fas fa-building"></i> <?= htmlspecialchars($game['arena']) ?></span>
             <span class="divider">•</span>
             <span><i class="far fa-calendar"></i> <?= date('F j, Y', strtotime($game['date'])) ?></span>
         </div>
-    </div>
-
-    <!-- ================================================================
-         BOX SCORE (Quarter-by-Quarter)
-         ================================================================ -->
-    <div class="section">
-        <table>
-            <thead>
-                <tr>
-                    <th>Team</th>
-                    <th>Q1</th>
-                    <th>Q2</th>
-                    <th>Q3</th>
-                    <th>Q4</th>
-                    <?php for ($ot = 1; $ot <= $numOvertimes; $ot++): ?>
-                        <th><?= $numOvertimes === 1 ? 'OT' : 'OT' . $ot ?></th>
-                    <?php endfor; ?>
-                    <th>Total</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($quarterScores as $score): ?>
-                    <tr>
-                        <td class="font-bold"><?= htmlspecialchars($score['team_abbrev']) ?></td>
-                        <td><?= $score['q1_points'] ?? '-' ?></td>
-                        <td><?= $score['q2_points'] ?? '-' ?></td>
-                        <td><?= $score['q3_points'] ?? '-' ?></td>
-                        <td><?= $score['q4_points'] ?? '-' ?></td>
-                        <?php for ($ot = 1; $ot <= $numOvertimes; $ot++): ?>
-                            <td><?= $score['ot' . $ot . '_points'] ?? '-' ?></td>
-                        <?php endfor; ?>
-                        <td class="font-bold"><?= $score['total_points'] ?></td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    </div>
-
-    <!-- ================================================================
-         PLAYER STATISTICS
-         ================================================================ -->
-    <div class="section">
-
         <?php
-        $gd_teams = array_unique(array_column($playerStats, 'team_name'));
-        foreach ($gd_teams as $gd_team):
-            $teamPlayers = array_filter($playerStats, function ($p) use ($gd_team) {
-                return $p['team_name'] === $gd_team;
-            });
+        $statusClass = 'scheduled';
+        $statusText = $game['status_long'] ?? 'Scheduled';
+        if ($isLiveGame) {
+            $statusClass = 'live';
+        } elseif (in_array($game['status_long'], ['Final', 'Finished'])) {
+            $statusClass = 'final';
+            $statusText = 'Final';
+        }
         ?>
-            <h4><?= htmlspecialchars(normalizeTeamName($gd_team)) ?></h4>
-            <table class="player-stats-table">
-                <thead>
-                    <tr>
-                        <th>Player</th>
-                        <th>MIN</th>
-                        <th>PTS</th>
-                        <th>REB</th>
-                        <th>AST</th>
-                        <th>FG</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($teamPlayers as $player):
-                        $pUrl = '/nba-wins-platform/stats/player_profile.php'
-                              . '?team=' . urlencode(normalizeTeamName($gd_team))
-                              . '&player=' . urlencode($player['player_name']);
-                    ?>
-                        <tr>
-                            <td>
-                                <a href="<?= $pUrl ?>" class="player-link">
-                                    <?= htmlspecialchars($player['player_name']) ?>
-                                </a>
-                            </td>
-                            <td><?= formatMinutes($player['minutes']) ?></td>
-                            <td><?= $player['points'] ?? '-' ?></td>
-                            <td><?= $player['rebounds'] ?? '-' ?></td>
-                            <td><?= $player['assists'] ?? '-' ?></td>
-                            <td><?= ($player['fg_made'] ?? '-') . '-' . ($player['fg_attempts'] ?? '-') ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        <?php endforeach; ?>
+        <div style="text-align: center;">
+            <span class="gd-status-badge <?= $statusClass ?>" id="gd-status-badge">
+                <span class="gd-status-dot"></span>
+                <span id="gd-status-text"><?= htmlspecialchars($statusText) ?></span>
+            </span>
+        </div>
+        <?php if ($latestPlay): ?>
+        <div class="gd-latest-play" id="gd-latest-play">
+            <span class="gd-play-label">LATEST</span>
+            <span class="gd-play-text"><?= htmlspecialchars($latestPlay['description']) ?></span>
+        </div>
+        <?php else: ?>
+        <div class="gd-latest-play" id="gd-latest-play" style="display:none;"></div>
+        <?php endif; ?>
     </div>
 
-    <!-- ================================================================
-         INACTIVE PLAYERS
-         ================================================================ -->
-    <?php if (!empty($inactivePlayers)): ?>
-        <div class="section">
-            <h3><i class="fa-solid fa-notes-medical inactive-icon"></i> Inactive Players</h3>
+            <div class="section" id="gd-box-score">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Team</th>
+                            <th>Q1</th>
+                            <th>Q2</th>
+                            <th>Q3</th>
+                            <th>Q4</th>
+                            <?php for ($ot = 1; $ot <= $numOvertimes; $ot++): ?>
+                                <th><?= $numOvertimes === 1 ? 'OT' : 'OT' . $ot ?></th>
+                            <?php endfor; ?>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($quarterScores as $score): ?>
+                            <tr>
+                                <td class="font-bold"><?= htmlspecialchars($score['team_abbrev']) ?></td>
+                                <td><?= $score['q1_points'] ?? '-' ?></td>
+                                <td><?= $score['q2_points'] ?? '-' ?></td>
+                                <td><?= $score['q3_points'] ?? '-' ?></td>
+                                <td><?= $score['q4_points'] ?? '-' ?></td>
+                                <?php for ($ot = 1; $ot <= $numOvertimes; $ot++): ?>
+                                    <td><?= $score['ot' . $ot . '_points'] ?? '-' ?></td>
+                                <?php endfor; ?>
+                                <td class="font-bold"><?= $score['total_points'] ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
 
-            <?php
-            $gd_inactive_teams = array_unique(array_column($inactivePlayers, 'team_city'));
-            foreach ($gd_inactive_teams as $gd_it):
-                $teamInactives = array_filter($inactivePlayers, function ($p) use ($gd_it) {
-                    return $p['team_city'] === $gd_it;
-                });
-            ?>
-                <h4><?= htmlspecialchars($gd_it) ?></h4>
-                <ul class="inactive-list">
-                    <?php foreach ($teamInactives as $p): ?>
-                        <li><?= htmlspecialchars($p['player_name']) ?></li>
+            <!-- Inactive Players (below box score on desktop) -->
+            <?php if (!empty($inactivePlayers)): ?>
+                <div class="section">
+                    <h3><i class="fa-solid fa-notes-medical inactive-icon"></i> Inactive Players</h3>
+                    <?php
+                    $gd_inactive_teams = array_unique(array_column($inactivePlayers, 'team_city'));
+                    foreach ($gd_inactive_teams as $gd_it):
+                        $teamInactives = array_filter($inactivePlayers, function ($p) use ($gd_it) {
+                            return $p['team_city'] === $gd_it;
+                        });
+                    ?>
+                        <h4><?= htmlspecialchars($gd_it) ?></h4>
+                        <ul class="inactive-list">
+                            <?php foreach ($teamInactives as $p): ?>
+                                <li><?= htmlspecialchars($p['player_name']) ?></li>
+                            <?php endforeach; ?>
+                        </ul>
                     <?php endforeach; ?>
-                </ul>
-            <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
         </div>
-    <?php endif; ?>
+
+        <!-- RIGHT COLUMN: Player Statistics -->
+        <div class="gd-col-right">
+            <div class="section" id="gd-player-stats">
+                <?php
+                $gd_teams = array_unique(array_column($playerStats, 'team_name'));
+                foreach ($gd_teams as $gd_team):
+                    $teamPlayers = array_filter($playerStats, function ($p) use ($gd_team) {
+                        return $p['team_name'] === $gd_team;
+                    });
+                ?>
+                    <h4><?= htmlspecialchars(normalizeTeamName($gd_team)) ?></h4>
+                    <table class="player-stats-table">
+                        <thead>
+                            <tr>
+                                <th>Player</th>
+                                <th>MIN</th>
+                                <th>PTS</th>
+                                <th>REB</th>
+                                <th>AST</th>
+                                <th>FG</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($teamPlayers as $player):
+                                $pUrl = '/nba-wins-platform/stats/player_profile.php'
+                                      . '?team=' . urlencode(normalizeTeamName($gd_team))
+                                      . '&player=' . urlencode($player['player_name']);
+                            ?>
+                                <tr>
+                                    <td>
+                                        <a href="<?= $pUrl ?>" class="player-link">
+                                            <?= htmlspecialchars($player['player_name']) ?>
+                                        </a>
+                                    </td>
+                                    <td><?= formatMinutes($player['minutes']) ?></td>
+                                    <td><?= $player['points'] ?? '-' ?></td>
+                                    <td><?= $player['rebounds'] ?? '-' ?></td>
+                                    <td><?= $player['assists'] ?? '-' ?></td>
+                                    <td><?= ($player['fg_made'] ?? '-') . '-' . ($player['fg_attempts'] ?? '-') ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                <?php endforeach; ?>
+            </div>
+        </div>
+
+    </div><!-- /.gd-two-col -->
 
 </div>
     <script>
@@ -1237,6 +1375,88 @@ td.font-bold { font-weight: 700; color: var(--text-primary); }
             }, 2000);
         }, 600);
     });
+    </script>
+
+    <!-- Live Box Score Auto-Refresh -->
+    <script>
+    (function() {
+        var isLive = <?= $isLiveGame ? 'true' : 'false' ?>;
+        var gameStatus = '<?= addslashes($game['status_long'] ?? 'Scheduled') ?>';
+        var refreshInFlight = false;
+
+        function refreshBoxScore() {
+            if (refreshInFlight) return;
+            refreshInFlight = true;
+
+            fetch(window.location.href)
+                .then(function(r) { return r.text(); })
+                .then(function(html) {
+                    var doc = new DOMParser().parseFromString(html, 'text/html');
+
+                    // Surgically update scores only (don't touch flip containers)
+                    var newHome = doc.getElementById('gd-home-score');
+                    var newAway = doc.getElementById('gd-away-score');
+                    if (newHome) document.getElementById('gd-home-score').textContent = newHome.textContent;
+                    if (newAway) document.getElementById('gd-away-score').textContent = newAway.textContent;
+
+                    // Update status badge only
+                    var newBadge = doc.getElementById('gd-status-badge');
+                    var oldBadge = document.getElementById('gd-status-badge');
+                    if (newBadge && oldBadge) {
+                        oldBadge.className = newBadge.className;
+                        oldBadge.innerHTML = newBadge.innerHTML;
+                    }
+
+                    // Update latest play ticker
+                    var newPlay = doc.getElementById('gd-latest-play');
+                    var oldPlay = document.getElementById('gd-latest-play');
+                    if (newPlay && oldPlay) {
+                        if (newPlay.innerHTML !== oldPlay.innerHTML) {
+                            oldPlay.innerHTML = newPlay.innerHTML;
+                            oldPlay.style.display = newPlay.style.display;
+                            oldPlay.style.animation = 'none';
+                            oldPlay.offsetHeight;
+                            oldPlay.style.animation = '';
+                        }
+                    }
+
+                    // Update box score table
+                    var newBox = doc.querySelector('#gd-box-score');
+                    var oldBox = document.querySelector('#gd-box-score');
+                    if (newBox && oldBox) {
+                        oldBox.innerHTML = newBox.innerHTML;
+                    }
+
+                    // Update player stats (preserve scroll position)
+                    var newStats = doc.querySelector('#gd-player-stats');
+                    var oldStats = document.querySelector('#gd-player-stats');
+                    if (newStats && oldStats) {
+                        var scrollPos = oldStats.closest('.gd-col-right');
+                        var savedScroll = scrollPos ? scrollPos.scrollTop : 0;
+                        oldStats.innerHTML = newStats.innerHTML;
+                        if (scrollPos) scrollPos.scrollTop = savedScroll;
+                    }
+
+                    // Check if game went final — stop refreshing
+                    var newStatusText = doc.getElementById('gd-status-text');
+                    if (newStatusText) {
+                        var st = newStatusText.textContent.trim();
+                        if (st === 'Final' || st === 'Finished') {
+                            isLive = false;
+                        } else if (st !== 'Scheduled') {
+                            isLive = true;
+                        }
+                    }
+                })
+                .catch(function(err) { console.error('Box score refresh error:', err); })
+                .finally(function() { refreshInFlight = false; });
+        }
+
+        // Poll every 15 seconds while game is live
+        setInterval(function() {
+            if (isLive) refreshBoxScore();
+        }, 15000);
+    })();
     </script>
 
     <!-- Floating Pill Navigation -->

@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 # So we normalize TO the games table format
 TEAM_NAME_MAP = {
     'Los Angeles Clippers': 'LA Clippers',
-    'Los Angeles Lakers': 'LA Lakers',
+    # Lakers stay as 'Los Angeles Lakers' (matches games table)
 }
 
 def normalize_team_name(team_city, team_name):

@@ -1107,9 +1107,11 @@ foreach ($all_picks as $pick) {
                         <span class="pick-number">
                             <?php echo $view_mode === 'rank' ? ($index + 1) . '.' : $pick['position_in_round'] . '.'; ?>
                         </span>
-                        <img src="<?php echo getTeamLogoPath($pick); ?>" 
-                             alt="" class="team-logo"
-                             onerror="this.style.opacity='0.3'">
+                        <a href="/nba-wins-platform/stats/team_data.php?team=<?php echo urlencode($pick['team_name']); ?>">
+                            <img src="<?php echo getTeamLogoPath($pick); ?>" 
+                                 alt="" class="team-logo"
+                                 onerror="this.style.opacity='0.3'">
+                        </a>
                         <div class="team-details">
                             <div class="team-name"><?php echo htmlspecialchars($pick['team_name']); ?></div>
                             <div class="drafter-info">
@@ -1231,7 +1233,9 @@ foreach ($all_picks as $pick) {
                 card.innerHTML = `
                     <div class="team-info">
                         <span class="pick-number">${pickNum}</span>
-                        <img src="${escapeHtml(pick.logo_path)}" alt="" class="team-logo" onerror="this.style.opacity='0.3'">
+                        <a href="/nba-wins-platform/stats/team_data.php?team=${encodeURIComponent(pick.team_name)}">
+                            <img src="${escapeHtml(pick.logo_path)}" alt="" class="team-logo" onerror="this.style.opacity='0.3'">
+                        </a>
                         <div class="team-details">
                             <div class="team-name">${escapeHtml(pick.team_name)}</div>
                             <div class="drafter-info">
