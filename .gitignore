@@ -32,3 +32,4 @@ nba-wins-platform/vendor/
 # Cache
 *.cache
 cache/
+.claude/
