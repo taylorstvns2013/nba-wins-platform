@@ -4,6 +4,8 @@
 
 // Include database connection
 require_once(__DIR__ . '/../config/db_connection_cli.php');
+require_once(__DIR__ . '/../config/season_config.php');
+$season = getSeasonConfig();
 
 // RapidAPI configuration
 $rapidapi_key = 'RAPIDAPI_KEY_REMOVED';
@@ -17,7 +19,7 @@ function fetchStandings($rapidapi_key, $rapidapi_host) {
     $curl = curl_init();
 
     curl_setopt_array($curl, [
-        CURLOPT_URL => "https://api-nba-v1.p.rapidapi.com/standings?league=standard&season=2025",
+        CURLOPT_URL => "https://api-nba-v1.p.rapidapi.com/standings?league=standard&season={$GLOBALS['season']['api_season_rapid']}",
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_HTTPHEADER => [
             "X-RapidAPI-Host: " . $rapidapi_host,
@@ -47,13 +49,13 @@ function fetchStandings($rapidapi_key, $rapidapi_host) {
 function updateStandings($pdo, $standings) {
     // First, get all existing teams from the backup database
     $existingTeams = [];
-    $stmt = $pdo->query("SELECT name FROM 2025_2026_backup");
+    $stmt = $pdo->query("SELECT name FROM {$GLOBALS['season']['standings_table_backup']}");
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $existingTeams[$row['name']] = true;
     }
 
     // Prepare update statement for existing teams in backup table
-    $updateStmt = $pdo->prepare("UPDATE 2025_2026_backup SET 
+    $updateStmt = $pdo->prepare("UPDATE {$GLOBALS['season']['standings_table_backup']} SET
                                 conference = :conference,
                                 win = :win,
                                 loss = :loss,
@@ -64,7 +66,7 @@ function updateStandings($pdo, $standings) {
                                 WHERE name = :name");
 
     // Prepare insert statement for new teams in backup table
-    $insertStmt = $pdo->prepare("INSERT INTO 2025_2026_backup 
+    $insertStmt = $pdo->prepare("INSERT INTO {$GLOBALS['season']['standings_table_backup']}
                                 (name, conference, win, loss, streak, logo, percentage, winstreak)
                                 VALUES 
                                 (:name, :conference, :win, :loss, :streak, :logo, :percentage, :winstreak)");

@@ -2,19 +2,22 @@
 // More ESPN endpoints to find per-player stats by team
 // Bucks = 15, MIL
 
+require_once(__DIR__ . '/../config/season_config.php');
+$season = getSeasonConfig();
+
 $endpoints = [
-    'Core API team athletes stats' => 
-        'https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2026/types/2/teams/15/athletes?limit=30',
+    'Core API team athletes stats' =>
+        "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/{$season['api_season_espn']}/types/2/teams/15/athletes?limit=30",
     'Core API team statistics' =>
-        'https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2026/types/2/teams/15/statistics',
+        "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/{$season['api_season_espn']}/types/2/teams/15/statistics",
     'Core API single athlete stats (Giannis 3032977)' =>
-        'https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2026/types/2/athletes/3032977/statistics',
+        "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/{$season['api_season_espn']}/types/2/athletes/3032977/statistics",
     'Web API team roster stats' =>
-        'https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/teams/15/statistics?season=2026&seasontype=2',
+        "https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/teams/15/statistics?season={$season['api_season_espn']}&seasontype=2",
     'Site API team stats page data' =>
         'https://site.web.api.espn.com/apis/site/v2/sports/basketball/nba/teams/15/statistics',
     'byathlete with limit and team sort' =>
-        'https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byathlete?team=15&season=2026&seasontype=2&limit=50&sort=points',
+        "https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byathlete?team=15&season={$season['api_season_espn']}&seasontype=2&limit=50&sort=points",
 ];
 
 foreach ($endpoints as $label => $url) {
@@ -54,7 +57,7 @@ foreach ($endpoints as $label => $url) {
 
 // Also try: What if byathlete actually has Bucks players but with different teamId format?
 echo "=== CHECKING: All unique teamIds in byathlete response ===\n";
-$url = "https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byathlete?team=15&season=2026&seasontype=2&limit=50";
+$url = "https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byathlete?team=15&season={$season['api_season_espn']}&seasontype=2&limit=50";
 $ch = curl_init($url);
 curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15, CURLOPT_USERAGENT => 'Mozilla/5.0']);
 $response = curl_exec($ch);

@@ -10,6 +10,8 @@ if (!isset($_SESSION['user_id']) || !isset($_SESSION['current_league_id'])) {
 }
 
 require_once '/data/www/default/nba-wins-platform/config/db_connection.php';
+require_once '/data/www/default/nba-wins-platform/config/season_config.php';
+$season = getSeasonConfig();
 
 $user_id = $_SESSION['user_id'];
 $league_id = $_SESSION['current_league_id'];
@@ -19,6 +21,8 @@ $currentLeagueId = $league_id;
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'round_data') {
     header('Content-Type: application/json');
     require_once '/data/www/default/nba-wins-platform/config/db_connection.php';
+    require_once '/data/www/default/nba-wins-platform/config/season_config.php';
+    $season = getSeasonConfig();
 
     $stmt = $pdo->prepare("
         SELECT ds.*, COUNT(dp.id) as total_picks,
@@ -48,7 +52,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'round_data') {
         JOIN nba_teams nt ON dp.team_id = nt.id
         JOIN league_participants lp ON dp.league_participant_id = lp.id
         JOIN users u ON lp.user_id = u.id
-        LEFT JOIN 2025_2026 nss ON nt.name = nss.name
+        LEFT JOIN {$season['standings_table']} nss ON nt.name = nss.name
         WHERE dp.draft_session_id = ? AND dp.round_number = ?
         ORDER BY dp.pick_number ASC
     ");
@@ -169,7 +173,7 @@ $stmt = $pdo->prepare("
     JOIN nba_teams nt ON dp.team_id = nt.id
     JOIN league_participants lp ON dp.league_participant_id = lp.id
     JOIN users u ON lp.user_id = u.id
-    LEFT JOIN 2025_2026 nss ON nt.name = nss.name
+    LEFT JOIN {$season['standings_table']} nss ON nt.name = nss.name
     WHERE dp.draft_session_id = ?
     ORDER BY dp.pick_number ASC
 ");

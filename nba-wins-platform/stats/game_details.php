@@ -215,6 +215,8 @@ function normalizeTeamName($teamName) {
 // DEPENDENCIES & VALIDATION
 // ==========================================================================
 require_once '/data/www/default/nba-wins-platform/config/db_connection.php';
+require_once '/data/www/default/nba-wins-platform/config/season_config.php';
+$season = getSeasonConfig();
 
 $league_id = $_SESSION['current_league_id'] ?? null;
 if (!$league_id) die("No league selected.");

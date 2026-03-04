@@ -8,6 +8,8 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from nba_api.stats.endpoints import playercareerstats, playergamelog, playerdashboardbygeneralsplits
 from nba_api.stats.static import players
+from season_config import get_season_config
+season_cfg = get_season_config()
 
 # Configure requests session with retries and longer timeouts
 def create_robust_session():
@@ -133,7 +135,7 @@ def get_player_career_stats(player_id):
                         'ft_pct': round(float(stats.get('ft_pct', 0)), 3)
                     }
                     
-                    if stats.get('season_id') == '2025-26':
+                    if stats.get('season_id') == season_cfg['api_season_nba']:
                         current_season = season_data
                         
                     career_stats.append(season_data)

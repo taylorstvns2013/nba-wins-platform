@@ -15,6 +15,8 @@ $currentLeagueId = $league_id;
 
 // Use centralized database connection
 require_once '/data/www/default/nba-wins-platform/config/db_connection.php';
+require_once '/data/www/default/nba-wins-platform/config/season_config.php';
+$season = getSeasonConfig();
 
 // ==================== NBA DIVISIONS DEFINITION ====================
 $nba_divisions = [
@@ -44,11 +46,12 @@ foreach ($nba_divisions as $conference => $divisions) {
 // ==================== HELPER FUNCTIONS FOR TIE BREAKERS ====================
 
 function getHeadToHeadRecord($pdo, $team1_name, $team2_name) {
+    $season = getSeasonConfig();
     $stmt = $pdo->prepare("
         SELECT home_team, away_team, home_points, away_points
         FROM games 
         WHERE status_long = 'Final'
-        AND DATE(start_time) >= '2025-10-21'
+        AND DATE(start_time) >= '{$season['season_start_date']}'
         AND (
             (home_team = ? AND away_team = ?)
             OR (home_team = ? AND away_team = ?)
@@ -74,19 +77,20 @@ function getHeadToHeadRecord($pdo, $team1_name, $team2_name) {
 }
 
 function getDivisionRecord($pdo, $team_name, $division_teams) {
+    $season = getSeasonConfig();
     $placeholders = str_repeat('?,', count($division_teams) - 1) . '?';
     
     $stmt = $pdo->prepare("
         SELECT home_team, away_team, home_points, away_points
         FROM games 
         WHERE status_long = 'Final'
-        AND DATE(start_time) >= '2025-10-21'
+        AND DATE(start_time) >= '{$season['season_start_date']}'
         AND (
             (home_team = ? AND away_team IN ($placeholders))
             OR (away_team = ? AND home_team IN ($placeholders))
         )
     ");
-    
+
     $params = array_merge([$team_name], $division_teams, [$team_name], $division_teams);
     $stmt->execute($params);
     $games = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -104,19 +108,20 @@ function getDivisionRecord($pdo, $team_name, $division_teams) {
 }
 
 function getConferenceRecord($pdo, $team_name, $conference_teams) {
+    $season = getSeasonConfig();
     $placeholders = str_repeat('?,', count($conference_teams) - 1) . '?';
     
     $stmt = $pdo->prepare("
         SELECT home_team, away_team, home_points, away_points
         FROM games 
         WHERE status_long = 'Final'
-        AND DATE(start_time) >= '2025-10-21'
+        AND DATE(start_time) >= '{$season['season_start_date']}'
         AND (
             (home_team = ? AND away_team IN ($placeholders))
             OR (away_team = ? AND home_team IN ($placeholders))
         )
     ");
-    
+
     $params = array_merge([$team_name], $conference_teams, [$team_name], $conference_teams);
     $stmt->execute($params);
     $games = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -134,11 +139,12 @@ function getConferenceRecord($pdo, $team_name, $conference_teams) {
 }
 
 function getPointDifferential($pdo, $team_name) {
+    $season = getSeasonConfig();
     $stmt = $pdo->prepare("
         SELECT home_team, away_team, home_points, away_points
         FROM games 
         WHERE status_long = 'Final'
-        AND DATE(start_time) >= '2025-10-21'
+        AND DATE(start_time) >= '{$season['season_start_date']}'
         AND (home_team = ? OR away_team = ?)
     ");
     $stmt->execute([$team_name, $team_name]);
@@ -220,7 +226,7 @@ try {
             name, logo, win, loss,
             ROUND((win / (win + loss)) * 100, 1) as win_percentage,
             streak, winstreak, conference
-        FROM 2025_2026 
+        FROM {$season['standings_table']}
         ORDER BY conference ASC, win DESC
     ");
     $teamRecords = $stmt->fetchAll(PDO::FETCH_ASSOC);

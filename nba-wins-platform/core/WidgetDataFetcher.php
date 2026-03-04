@@ -2,11 +2,15 @@
 // /data/www/default/nba-wins-platform/core/WidgetDataFetcher.php
 // Extracts data logic from participant_profile.php and analytics.php for reusable widgets
 
+require_once __DIR__ . '/../config/season_config.php';
+
 class WidgetDataFetcher {
     private $pdo;
-    
+    private $season;
+
     public function __construct($pdo) {
         $this->pdo = $pdo;
+        $this->season = getSeasonConfig();
     }
     
     /**
@@ -180,11 +184,11 @@ class WidgetDataFetcher {
             FROM games g
             WHERE (g.home_team IN ($placeholders) OR g.away_team IN ($placeholders))
             AND g.status_long IN ('Final', 'Finished')
-            AND g.date >= '2025-10-21'
+            AND g.date >= '{$this->season['season_start_date']}'
             ORDER BY g.date DESC, g.start_time DESC
             LIMIT 10
         ");
-        
+
         // Execute with team names repeated for each placeholder
         $params = array_merge(
             $participantTeams, $participantTeams, $participantTeams, $participantTeams,
@@ -251,7 +255,7 @@ class WidgetDataFetcher {
             FROM draft_picks dp
             JOIN league_participants lp ON dp.league_participant_id = lp.id
             JOIN nba_teams nt ON dp.team_id = nt.id
-            LEFT JOIN 2025_2026 s ON nt.name = s.name
+            LEFT JOIN {$this->season['standings_table']} s ON nt.name = s.name
             WHERE dp.league_participant_id = ? AND lp.league_id = ?
             ORDER BY dp.pick_number ASC
         ");
@@ -326,7 +330,7 @@ class WidgetDataFetcher {
                 )
             ) 
             AND g.status_long IN ('Final', 'Finished')
-            AND DATE(g.start_time) >= '2025-10-21'
+            AND DATE(g.start_time) >= '{$this->season['season_start_date']}'
             JOIN league_participant_teams opponent_team ON (
                 (g.home_team IN (
                     REPLACE(opponent_team.team_name, 'Los Angeles Clippers', 'LA Clippers'),
@@ -355,7 +359,7 @@ class WidgetDataFetcher {
         ");
         $stmt->execute([$participant_id]);
         $biggest_rival = $stmt->fetch(PDO::FETCH_ASSOC);
-        
+
         // Get NEMESIS (most losses against)
         $stmt = $this->pdo->prepare("
             SELECT 
@@ -400,7 +404,7 @@ class WidgetDataFetcher {
                 )
             ) 
             AND g.status_long IN ('Final', 'Finished')
-            AND DATE(g.start_time) >= '2025-10-21'
+            AND DATE(g.start_time) >= '{$this->season['season_start_date']}'
             JOIN league_participant_teams opponent_team ON (
                 (g.home_team IN (
                     REPLACE(opponent_team.team_name, 'Los Angeles Clippers', 'LA Clippers'),
@@ -464,7 +468,7 @@ class WidgetDataFetcher {
             JOIN users u ON lp.user_id = u.id
             JOIN leagues l ON lp.league_id = l.id
             LEFT JOIN league_participant_teams lpt ON lp.id = lpt.league_participant_id
-            LEFT JOIN 2025_2026 t ON lpt.team_name = t.name
+            LEFT JOIN {$this->season['standings_table']} t ON lpt.team_name = t.name
             WHERE lp.status = 'active'
             GROUP BY u.id, u.display_name, l.id, l.display_name, lp.id
             ORDER BY total_wins DESC
@@ -491,7 +495,7 @@ class WidgetDataFetcher {
             JOIN users u ON lp.user_id = u.id
             JOIN leagues l ON lp.league_id = l.id
             LEFT JOIN league_participant_teams lpt ON lp.id = lpt.league_participant_id
-            LEFT JOIN 2025_2026 t ON lpt.team_name = t.name
+            LEFT JOIN {$this->season['standings_table']} t ON lpt.team_name = t.name
             WHERE lp.status = 'active'
             GROUP BY u.id, u.display_name, l.id, l.display_name, lp.id
             ORDER BY total_wins DESC
@@ -508,7 +512,7 @@ class WidgetDataFetcher {
                     COALESCE(t.win, 0) as wins,
                     COALESCE(dp.pick_number, 999) as draft_pick_number
                 FROM league_participant_teams lpt
-                LEFT JOIN 2025_2026 t ON lpt.team_name = t.name
+                LEFT JOIN {$this->season['standings_table']} t ON lpt.team_name = t.name
                 LEFT JOIN nba_teams nt ON lpt.team_name = nt.name
                 LEFT JOIN draft_picks dp ON (
                     lpt.league_participant_id = dp.league_participant_id
@@ -543,7 +547,7 @@ class WidgetDataFetcher {
                 AVG(COALESCE(t.win, 0)) as avg_round_wins
             FROM draft_picks dp
             JOIN nba_teams nt ON dp.team_id = nt.id
-            LEFT JOIN 2025_2026 t ON nt.name = t.name
+            LEFT JOIN {$this->season['standings_table']} t ON nt.name = t.name
             WHERE EXISTS (
                 SELECT 1 FROM draft_sessions ds 
                 WHERE ds.id = dp.draft_session_id 
@@ -570,7 +574,7 @@ class WidgetDataFetcher {
             JOIN users u ON lp.user_id = u.id
             JOIN leagues l ON lp.league_id = l.id
             JOIN nba_teams nt ON dp.team_id = nt.id
-            LEFT JOIN 2025_2026 t ON nt.name = t.name
+            LEFT JOIN {$this->season['standings_table']} t ON nt.name = t.name
             WHERE EXISTS (
                 SELECT 1 FROM draft_sessions ds 
                 WHERE ds.id = dp.draft_session_id 
@@ -667,7 +671,7 @@ class WidgetDataFetcher {
                 SELECT id FROM league_participants 
                 WHERE league_id = ? AND status = 'active'
             )
-            AND date >= '2025-10-21'
+            AND date >= '{$this->season['season_start_date']}'
             ORDER BY date ASC
         ");
         $stmt->execute([$league_id]);
@@ -690,7 +694,7 @@ class WidgetDataFetcher {
         $trackingData = [];
         
         foreach ($dailyWinsData as $record) {
-            if ($record['date'] < '2025-10-21') {
+            if ($record['date'] < $this->season['season_start_date']) {
                 continue;
             }
             
@@ -765,7 +769,7 @@ class WidgetDataFetcher {
                 FROM league_participant_daily_wins pdw
                 JOIN league_participants lp ON pdw.league_participant_id = lp.id
                 JOIN users u ON lp.user_id = u.id
-                WHERE pdw.date >= '2025-10-21'
+                WHERE pdw.date >= '{$this->season['season_start_date']}'
                     AND lp.league_id = ?
                     AND lp.status = 'active'
                 GROUP BY 
@@ -780,7 +784,7 @@ class WidgetDataFetcher {
                 FROM league_participant_daily_wins pdw
                 JOIN league_participants lp ON pdw.league_participant_id = lp.id
                 JOIN users u ON lp.user_id = u.id
-                WHERE pdw.date >= '2025-10-21'
+                WHERE pdw.date >= '{$this->season['season_start_date']}'
                     AND lp.league_id = ?
                     AND lp.status = 'active'
                 GROUP BY 
@@ -845,7 +849,7 @@ class WidgetDataFetcher {
                 )
                 WHERE lpt.league_participant_id = ?
                 AND g.status_long IN ('Final', 'Finished')
-                AND DATE(g.start_time) >= '2025-10-21'
+                AND DATE(g.start_time) >= '{$this->season['season_start_date']}'
             ");
             $stmt->execute([$participant['participant_id']]);
             $games = $stmt->fetchAll();
@@ -858,7 +862,7 @@ class WidgetDataFetcher {
                     $oppStmt = $this->pdo->prepare("
                         SELECT 
                             COALESCE(win / NULLIF(win + loss, 0) * 100, 0) as win_pct
-                        FROM 2025_2026
+                        FROM {$this->season['standings_table']}
                         WHERE name = ?
                     ");
                     $oppStmt->execute([$game['opponent']]);
@@ -942,7 +946,7 @@ class WidgetDataFetcher {
             // Get current record
             $stmt = $this->pdo->prepare("
                 SELECT win, loss
-                FROM 2025_2026
+                FROM {$this->season['standings_table']}
                 WHERE name = ?
             ");
             $stmt->execute([$team_name]);

@@ -29,6 +29,8 @@ if (!isset($_SESSION['user_id']) || !isset($_SESSION['current_league_id'])) {
 // =====================================================================
 require_once '/data/www/default/nba-wins-platform/config/db_connection.php';
 require_once '/data/www/default/nba-wins-platform/core/nba_api_integration.php';
+require_once '/data/www/default/nba-wins-platform/config/season_config.php';
+$season = getSeasonConfig();
 
 // =====================================================================
 // REQUEST PARAMETERS
@@ -272,7 +274,7 @@ function getTeamLogo($teamName) {
 
 // ------ Basic Team Record ------
 try {
-    $stmt = $pdo->prepare("SELECT name, win, loss, streak, winstreak FROM 2025_2026 WHERE name = ?");
+    $stmt = $pdo->prepare("SELECT name, win, loss, streak, winstreak FROM {$season['standings_table']} WHERE name = ?");
     $stmt->execute([$team_name]);
     $team = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -345,7 +347,7 @@ try {
             FROM games g
             WHERE (g.home_team = ? OR g.away_team = ?)
               AND g.status_long IN ('Final', 'Finished')
-              AND g.date >= '2025-10-21'
+              AND g.date >= '{$season['season_start_date']}'
             ORDER BY g.date DESC
             LIMIT 5
         ) AS recent_games
@@ -399,7 +401,7 @@ try {
         FROM games g
         WHERE (g.home_team = ? OR g.away_team = ?)
           AND g.status_long = 'Scheduled'
-          AND g.date >= '2025-10-21'
+          AND g.date >= '{$season['season_start_date']}'
         ORDER BY g.date ASC
         LIMIT 5
     ");
@@ -460,7 +462,7 @@ if (isset($_GET['tab']) && $_GET['tab'] === 'schedule') {
                 END AS result
             FROM games g
             WHERE (g.home_team = ? OR g.away_team = ?)
-              AND g.date >= '2025-10-21'
+              AND g.date >= '{$season['season_start_date']}'
             ORDER BY g.date ASC
         ");
         $stmt->execute([
@@ -616,7 +618,7 @@ if (isset($_GET['tab']) && $_GET['tab'] === 'roster') {
                      ELSE 0 
                 END AS fg_percentage
             FROM game_player_stats
-            WHERE team_name IN ($placeholders) AND game_date >= '2025-10-20'
+            WHERE team_name IN ($placeholders) AND game_date >= '{$season['season_start_date']}'
             GROUP BY player_name
         ");
         $gs->execute($teamVariants);

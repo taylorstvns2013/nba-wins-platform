@@ -1,9 +1,12 @@
 <?php
 /**
- * NBA API Integration Class for 2025-26 Season
+ * NBA API Integration Class
  * Handles communication between PHP and Python NBA API scripts
  * Optimized for production use with proper error handling
+ * Season dates loaded from config/season.json via getSeasonConfig()
  */
+
+require_once __DIR__ . '/../config/season_config.php';
 
 class NBAApiIntegration {
     private $pythonPath;
@@ -11,14 +14,16 @@ class NBAApiIntegration {
     private $cacheEnabled;
     private $cacheTimeout;
     private $cacheDir;
-    
+    private $seasonConfig;
+
     public function __construct($config = []) {
         $this->pythonPath = $config['python_path'] ?? '/usr/bin/python3';
         $this->scriptsPath = $config['scripts_path'] ?? '/data/www/default/nba-wins-platform/tasks';
         $this->cacheEnabled = $config['cache_enabled'] ?? true;
         $this->cacheTimeout = $config['cache_timeout'] ?? 300; // 5 minutes default
         $this->cacheDir = $config['cache_dir'] ?? '/tmp/nba_cache';
-        
+        $this->seasonConfig = getSeasonConfig();
+
         // Create cache directory if it doesn't exist
         if ($this->cacheEnabled && !is_dir($this->cacheDir)) {
             mkdir($this->cacheDir, 0755, true);
@@ -95,19 +100,20 @@ class NBAApiIntegration {
     }
     
     /**
-     * Get team statistics by team name for 2025-26 season
+     * Get team statistics by team name for current season
      */
     public function getTeamStats($teamName) {
         try {
+            $seasonLabel = $this->seasonConfig['season_label'];
             $teamId = $this->getTeamIdByName($teamName);
             if (!$teamId) {
                 return [
                     'error' => 'Team not found: ' . $teamName,
-                    'season' => '2025-26'
+                    'season' => $seasonLabel
                 ];
             }
-            
-            $cacheKey = 'team_stats_2025_26_' . $teamId;
+
+            $cacheKey = 'team_stats_' . str_replace('-', '_', $seasonLabel) . '_' . $teamId;
             
             // Check cache first
             if ($this->cacheEnabled) {
@@ -121,33 +127,34 @@ class NBAApiIntegration {
                 }
             }
             
-            // Execute Python script for 2025-26 season
+            // Execute Python script for current season
             $scriptPath = $this->scriptsPath . '/get_team_stats.py';
             if (!file_exists($scriptPath)) {
                 return [
                     'error' => 'NBA API script not found at: ' . $scriptPath,
-                    'season' => '2025-26'
+                    'season' => $seasonLabel
                 ];
             }
-            
+
             $command = escapeshellcmd($this->pythonPath) . ' ' . escapeshellarg($scriptPath) . ' ' . escapeshellarg($teamId);
             $output = shell_exec($command . ' 2>&1');
-            
+
             if (!$output) {
+                $seasonStart = $this->seasonConfig['season_start_date'];
                 return [
-                    'error' => '2025-26 season data not available yet',
-                    'details' => 'Season starts October 21, 2025',
-                    'season' => '2025-26',
+                    'error' => $seasonLabel . ' season data not available yet',
+                    'details' => "Season starts $seasonStart",
+                    'season' => $seasonLabel,
                     'api_status' => 'no_response'
                 ];
             }
-            
+
             $data = json_decode(trim($output), true);
             if (json_last_error() !== JSON_ERROR_NONE) {
                 return [
                     'error' => 'Invalid response from NBA API',
                     'raw_output' => substr($output, 0, 200) . '...',
-                    'season' => '2025-26'
+                    'season' => $seasonLabel
                 ];
             }
             
@@ -175,26 +182,27 @@ class NBAApiIntegration {
         } catch (Exception $e) {
             return [
                 'error' => 'Exception in getTeamStats: ' . $e->getMessage(),
-                'season' => '2025-26',
+                'season' => $this->seasonConfig['season_label'],
                 'api_status' => 'exception'
             ];
         }
     }
-    
+
     /**
-     * Get team roster by team name for 2025-26 season
+     * Get team roster by team name for current season
      */
     public function getTeamRoster($teamName) {
         try {
+            $seasonLabel = $this->seasonConfig['season_label'];
             $teamId = $this->getTeamIdByName($teamName);
             if (!$teamId) {
                 return [
                     'error' => 'Team not found: ' . $teamName,
-                    'season' => '2025-26'
+                    'season' => $seasonLabel
                 ];
             }
-            
-            $cacheKey = 'team_roster_2025_26_' . $teamId;
+
+            $cacheKey = 'team_roster_' . str_replace('-', '_', $seasonLabel) . '_' . $teamId;
             
             // Check cache first
             if ($this->cacheEnabled) {
@@ -205,39 +213,39 @@ class NBAApiIntegration {
                         'data' => $cached,
                         'cached' => true,
                         'timestamp' => time(),
-                        'season' => '2025-26'
+                        'season' => $seasonLabel
                     ];
                 }
             }
-            
+
             // Execute Python script
             $scriptPath = $this->scriptsPath . '/get_team_stats.py';
             if (!file_exists($scriptPath)) {
                 return [
                     'error' => 'NBA API script not found',
-                    'season' => '2025-26'
+                    'season' => $seasonLabel
                 ];
             }
-            
+
             $command = escapeshellcmd($this->pythonPath) . ' ' . escapeshellarg($scriptPath) . ' --roster ' . escapeshellarg($teamId);
             $output = shell_exec($command . ' 2>&1');
-            
+
             if (!$output) {
                 return [
                     'success' => true,
                     'data' => [],
-                    'message' => '2025-26 roster data not yet available',
-                    'season' => '2025-26'
+                    'message' => $seasonLabel . ' roster data not yet available',
+                    'season' => $seasonLabel
                 ];
             }
-            
+
             $data = json_decode(trim($output), true);
             if (json_last_error() !== JSON_ERROR_NONE) {
                 return [
                     'success' => true,
                     'data' => [],
                     'message' => 'Roster data format error',
-                    'season' => '2025-26'
+                    'season' => $seasonLabel
                 ];
             }
             
@@ -251,15 +259,15 @@ class NBAApiIntegration {
                 'data' => is_array($data) ? $data : [],
                 'cached' => false,
                 'timestamp' => time(),
-                'season' => '2025-26'
+                'season' => $seasonLabel
             ];
-            
+
         } catch (Exception $e) {
             return [
                 'success' => true,
                 'data' => [],
                 'error' => 'Exception in getTeamRoster: ' . $e->getMessage(),
-                'season' => '2025-26'
+                'season' => $this->seasonConfig['season_label']
             ];
         }
     }
@@ -269,41 +277,42 @@ class NBAApiIntegration {
      */
     public function getSeasonStatus() {
         $currentDate = date('Y-m-d');
-        $seasonStart = '2025-10-21';
-        $trainingCamp = '2025-09-29';
-        $preseason = '2025-10-02';
-        
+        $seasonLabel = $this->seasonConfig['season_label'];
+        $seasonStart = $this->seasonConfig['season_start_date'];
+        $trainingCamp = $this->seasonConfig['training_camp_date'];
+        $preseason = $this->seasonConfig['preseason_start_date'];
+
         if ($currentDate < $trainingCamp) {
             return [
                 'status' => 'off_season',
                 'message' => 'NBA off-season',
-                'next_milestone' => 'Training camps start September 29, 2025',
+                'next_milestone' => "Training camps start $trainingCamp",
                 'data_available' => false,
-                'season' => '2025-26'
+                'season' => $seasonLabel
             ];
         } elseif ($currentDate < $preseason) {
             return [
                 'status' => 'training_camp',
                 'message' => 'Training camp period',
-                'next_milestone' => 'Preseason starts October 2, 2025',
+                'next_milestone' => "Preseason starts $preseason",
                 'data_available' => false,
-                'season' => '2025-26'
+                'season' => $seasonLabel
             ];
         } elseif ($currentDate < $seasonStart) {
             return [
                 'status' => 'preseason',
                 'message' => 'Preseason games',
-                'next_milestone' => 'Regular season starts October 21, 2025',
+                'next_milestone' => "Regular season starts $seasonStart",
                 'data_available' => 'limited',
-                'season' => '2025-26'
+                'season' => $seasonLabel
             ];
         } else {
             return [
                 'status' => 'regular_season',
-                'message' => '2025-26 regular season active',
+                'message' => "$seasonLabel regular season active",
                 'next_milestone' => 'Season in progress',
                 'data_available' => true,
-                'season' => '2025-26'
+                'season' => $seasonLabel
             ];
         }
     }

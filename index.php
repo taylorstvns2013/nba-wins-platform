@@ -4,6 +4,8 @@ date_default_timezone_set('America/New_York');
 
 // Load database connection and authentication
 require_once '/data/www/default/nba-wins-platform/config/db_connection.php';
+require_once '/data/www/default/nba-wins-platform/config/season_config.php';
+$season = getSeasonConfig();
 
 // Require authentication - redirect to login if not authenticated
 requireAuthentication($auth);
@@ -128,7 +130,7 @@ $stmt = $pdo->query("
            COALESCE(ou.over_under_number, 0) as projected_wins,
            nt.logo_filename as logo,
            t.loss as losses
-    FROM 2025_2026 t
+    FROM {$season['standings_table']} t
     LEFT JOIN over_under ou ON t.name = ou.team_name
     LEFT JOIN nba_teams nt ON t.name = nt.name
     ORDER BY t.win DESC
@@ -302,7 +304,7 @@ try {
             FROM games g
             WHERE (g.home_team IN ($ph) OR g.away_team IN ($ph))
               AND g.status_long IN ('Final', 'Finished')
-              AND g.date >= '2025-10-21'
+              AND g.date >= '{$season['season_start_date']}'
             ORDER BY g.date DESC, g.start_time DESC
             LIMIT 50
         ");
@@ -344,10 +346,7 @@ try {
     unset($standing);
 }
 
-$nbaCupDates = [
-    '2025-10-31','2025-11-07','2025-11-14','2025-11-21','2025-11-25',
-    '2025-11-26','2025-11-28','2025-12-09','2025-12-10','2025-12-13','2025-12-16'
-];
+$nbaCupDates = $season['nba_cup_dates'];
 
 $selectedDate = isset($_GET['date']) ? $_GET['date'] : $effectiveToday;
 $isNbaCupDate = in_array($selectedDate, $nbaCupDates);
@@ -355,7 +354,7 @@ $isNbaCupDate = in_array($selectedDate, $nbaCupDates);
 // Prev/next dates for swipe navigation
 $prevDate = date('Y-m-d', strtotime($selectedDate . ' -1 day'));
 $nextDate = date('Y-m-d', strtotime($selectedDate . ' +1 day'));
-if ($prevDate < '2025-10-21') $prevDate = null;
+if ($prevDate < $season['season_start_date']) $prevDate = null;
 // nextDate capped later after $rangeEnd is known
 
 $stmt = $pdo->prepare("
@@ -429,8 +428,8 @@ function getParticipantGameCounts($games, $participants) {
 }
 
 // Build full season date range from Oct 21 through last game in DB
-$seasonStart = '2025-10-21';
-$stmt = $pdo->query("SELECT MAX(date) FROM games WHERE date >= '2025-10-21'");
+$seasonStart = $season['season_start_date'];
+$stmt = $pdo->query("SELECT MAX(date) FROM games WHERE date >= '{$season['season_start_date']}'");
 $lastGameDate = $stmt->fetchColumn() ?: date('Y-m-d', strtotime('+7 days'));
 
 // Extend at least 7 days past today so upcoming games are visible
@@ -2368,8 +2367,8 @@ while ($current <= $rangeEnd) {
             </div>
 
             <?php 
-            $allStarStart = '2026-02-13';
-            $allStarEnd = '2026-02-18';
+            $allStarStart = $season['all_star_break_start'];
+            $allStarEnd = $season['all_star_break_end'];
             $isAllStarBreak = ($selectedDate >= $allStarStart && $selectedDate <= $allStarEnd);
             $todayStr = date('Y-m-d');
             $isAllStarBreakToday = (isset($_GET['preview']) && $_GET['preview'] === 'allstar') 

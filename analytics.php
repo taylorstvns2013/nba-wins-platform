@@ -33,6 +33,8 @@ $currentLeagueId   = $league_id;
 // DEPENDENCIES
 // =====================================================================
 require_once '/data/www/default/nba-wins-platform/config/db_connection.php';
+require_once '/data/www/default/nba-wins-platform/config/season_config.php';
+$season = getSeasonConfig();
 
 
 // =====================================================================
@@ -77,7 +79,7 @@ try {
     $stmt = $pdo->query("
         SELECT name, win, loss,
                ROUND((win / (win + loss)) * 100, 1) AS win_percentage
-        FROM 2025_2026
+        FROM {$season['standings_table']}
         WHERE (win + loss) > 0
         ORDER BY win_percentage DESC
         LIMIT 10
@@ -153,7 +155,7 @@ try {
             $team_name       = $ou['team_name'];
             $vegas_projection = $ou['over_under_number'];
 
-            $stmt = $pdo->prepare("SELECT win, loss FROM 2025_2026 WHERE name = ?");
+            $stmt = $pdo->prepare("SELECT win, loss FROM {$season['standings_table']} WHERE name = ?");
             $stmt->execute([$team_name]);
             $record = $stmt->fetch();
 
@@ -213,7 +215,7 @@ try {
         JOIN users u ON lp.user_id = u.id
         JOIN leagues l ON lp.league_id = l.id
         LEFT JOIN league_participant_teams lpt ON lp.id = lpt.league_participant_id
-        LEFT JOIN 2025_2026 t ON lpt.team_name = t.name
+        LEFT JOIN {$season['standings_table']} t ON lpt.team_name = t.name
         WHERE lp.status = 'active'
         GROUP BY u.id, u.display_name, l.id, l.display_name, lp.id
         ORDER BY total_wins DESC
@@ -232,9 +234,9 @@ try {
         SELECT dp.round_number, AVG(COALESCE(t.win, 0)) AS avg_round_wins
         FROM draft_picks dp
         JOIN nba_teams nt ON dp.team_id = nt.id
-        LEFT JOIN 2025_2026 t ON nt.name = t.name
+        LEFT JOIN {$season['standings_table']} t ON nt.name = t.name
         WHERE EXISTS (
-            SELECT 1 FROM draft_sessions ds 
+            SELECT 1 FROM draft_sessions ds
             WHERE ds.id = dp.draft_session_id AND ds.status = 'completed'
         )
         GROUP BY dp.round_number
@@ -258,9 +260,9 @@ try {
         JOIN users u ON lp.user_id = u.id
         JOIN leagues l ON lp.league_id = l.id
         JOIN nba_teams nt ON dp.team_id = nt.id
-        LEFT JOIN 2025_2026 t ON nt.name = t.name
+        LEFT JOIN {$season['standings_table']} t ON nt.name = t.name
         WHERE EXISTS (
-            SELECT 1 FROM draft_sessions ds 
+            SELECT 1 FROM draft_sessions ds
             WHERE ds.id = dp.draft_session_id AND ds.status = 'completed'
         )
         AND lp.status = 'active'
@@ -410,7 +412,7 @@ try {
             FROM league_participants lp
             JOIN users u ON lp.user_id = u.id
             LEFT JOIN league_participant_teams lpt ON lp.id = lpt.league_participant_id
-            LEFT JOIN 2025_2026 t ON lpt.team_name = t.name
+            LEFT JOIN {$season['standings_table']} t ON lpt.team_name = t.name
             WHERE lp.league_id = ? AND lp.status = 'active'
             GROUP BY u.id, u.display_name, lp.id
             ORDER BY total_games_played DESC, total_wins DESC
@@ -461,7 +463,7 @@ try {
                         ))
                 WHERE lpt.league_participant_id = ?
                   AND g.status_long IN ('Final', 'Finished')
-                  AND DATE(g.start_time) >= '2025-10-21'
+                  AND DATE(g.start_time) >= '{$season['season_start_date']}'
             ");
             $stmt->execute([$an_participant['participant_id']]);
             $games = $stmt->fetchAll();
@@ -473,7 +475,7 @@ try {
                 foreach ($games as $game) {
                     $oppStmt = $pdo->prepare("
                         SELECT COALESCE(win / NULLIF(win + loss, 0) * 100, 0) AS win_pct
-                        FROM 2025_2026
+                        FROM {$season['standings_table']}
                         WHERE name = ?
                     ");
                     $oppStmt->execute([$game['opponent']]);
@@ -518,7 +520,7 @@ try {
                 COALESCE(t.win, 0) AS wins,
                 COALESCE(dp.pick_number, 999) AS draft_pick_number
             FROM league_participant_teams lpt
-            LEFT JOIN 2025_2026 t ON lpt.team_name = t.name
+            LEFT JOIN {$season['standings_table']} t ON lpt.team_name = t.name
             LEFT JOIN nba_teams nt ON lpt.team_name = nt.name
             LEFT JOIN draft_picks dp 
                 ON (lpt.league_participant_id = dp.league_participant_id
@@ -548,10 +550,10 @@ try {
     $timeWindow           = isset($_GET['time_window']) ? intval($_GET['time_window']) : 7;
 
     if ($timeWindow === 0) {
-        $startDate = '2025-10-21';
+        $startDate = $season['season_start_date'];
     } else {
         $startDate = date('Y-m-d', strtotime("-{$timeWindow} days"));
-        if ($startDate < '2025-10-21') $startDate = '2025-10-21';
+        if ($startDate < $season['season_start_date']) $startDate = $season['season_start_date'];
     }
 
     if (!empty($league_id)) {
@@ -660,7 +662,7 @@ try {
                                     REPLACE(REPLACE(team2.team_name, 'Los Angeles Clippers', 'LA Clippers'), 'L.A. Clippers', 'LA Clippers')
                                 )))
                             AND g.status_long IN ('Final', 'Finished')
-                            AND DATE(g.start_time) >= '2025-10-21'
+                            AND DATE(g.start_time) >= '{$season['season_start_date']}'
                         WHERE team1.league_participant_id = ?
                     ");
                     $stmt->execute([$p1['id']]);
@@ -703,7 +705,7 @@ try {
                                 REPLACE(REPLACE(my_team.team_name, 'Los Angeles Clippers', 'LA Clippers'), 'L.A. Clippers', 'LA Clippers')
                             ))
                         AND g.status_long IN ('Final', 'Finished')
-                        AND DATE(g.start_time) >= '2025-10-21'
+                        AND DATE(g.start_time) >= '{$season['season_start_date']}'
                     JOIN league_participant_teams opponent_team 
                         ON ((g.home_team IN (
                                 REPLACE(opponent_team.team_name, 'Los Angeles Clippers', 'LA Clippers'),
@@ -761,7 +763,7 @@ try {
                 FROM league_participant_daily_wins pdw
                 JOIN league_participants lp ON pdw.league_participant_id = lp.id
                 JOIN users u ON lp.user_id = u.id
-                WHERE pdw.date >= '2025-10-21'
+                WHERE pdw.date >= '{$season['season_start_date']}'
                   AND lp.league_id = ?
                   AND lp.status = 'active'
                 GROUP BY u.display_name, YEARWEEK(DATE_SUB(pdw.date, INTERVAL 1 DAY), 1)
@@ -774,7 +776,7 @@ try {
                 FROM league_participant_daily_wins pdw
                 JOIN league_participants lp ON pdw.league_participant_id = lp.id
                 JOIN users u ON lp.user_id = u.id
-                WHERE pdw.date >= '2025-10-21'
+                WHERE pdw.date >= '{$season['season_start_date']}'
                   AND lp.league_id = ?
                   AND lp.status = 'active'
                 GROUP BY u.display_name, YEARWEEK(DATE_SUB(pdw.date, INTERVAL 1 DAY), 1)

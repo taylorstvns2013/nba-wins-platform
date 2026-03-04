@@ -12,11 +12,13 @@
  */
 
 require_once '/data/www/default/nba-wins-platform/config/db_connection_cli.php';
+require_once(__DIR__ . '/../config/season_config.php');
+$seasonConfig = getSeasonConfig();
 
 // RapidAPI Configuration
 $rapidapi_key = 'RAPIDAPI_KEY_REMOVED'; // Replace with your actual key
 $rapidapi_host = 'api-nba-v1.p.rapidapi.com';
-$season = '2025';
+$season = $seasonConfig['api_season_rapid'];
 
 // Rate Limiting Configuration (BASIC plan: ~10 requests/minute)
 $base_delay = 7; // Base delay between requests in seconds (safer than 6)

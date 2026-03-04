@@ -1,31 +1,38 @@
 <?php
 /**
  * TeamStatsCalculator - Calculate Team Statistics from Database
- * 
+ *
  * Customized for nba_wins_platform schema:
  * - games table: home_team, away_team, home_points, away_points
  * - game_player_stats table: team_name, points, rebounds, assists, fg_made, fg_attempts, etc.
  * - nba_team_api_stats: RapidAPI cached stats with advanced metrics
- * 
- * Regular season starts: October 21, 2025
- * 
+ *
  * ENHANCED: Now integrates RapidAPI stats from nba_team_api_stats table
+ * Season dates loaded from config/season.json via getSeasonConfig()
  */
+
+require_once __DIR__ . '/../config/season_config.php';
 
 class TeamStatsCalculator {
     private $pdo;
-    private $season_start_date = '2025-10-21'; // Regular season start
-    
+    private $season_start_date;
+    private $seasonConfig;
+
     public function __construct($pdo) {
         $this->pdo = $pdo;
+        $this->seasonConfig = getSeasonConfig();
+        $this->season_start_date = $this->seasonConfig['season_start_date'];
     }
     
     /**
-     * Get comprehensive team statistics for 2025-26 season
-     * Only includes games from October 21, 2025 onwards (no preseason)
+     * Get comprehensive team statistics for current season
+     * Only includes games from season start date onwards (no preseason)
      * ENHANCED: Now merges RapidAPI stats from nba_team_api_stats table
      */
-    public function getTeamStats($team_name, $season = '2025-2026') {
+    public function getTeamStats($team_name, $season = null) {
+        if ($season === null) {
+            $season = str_replace('-', '-20', $this->seasonConfig['season_label']);
+        }
         $stats = [
             'team_name' => $team_name,
             'season' => $season,
@@ -150,12 +157,13 @@ class TeamStatsCalculator {
      */
     private function getCachedApiStats($team_name) {
         try {
+            $apiSeason = $this->seasonConfig['api_season_rapid'];
             $stmt = $this->pdo->prepare("
-                SELECT * FROM nba_team_api_stats 
-                WHERE team_name = ? AND season = '2025'
+                SELECT * FROM nba_team_api_stats
+                WHERE team_name = ? AND season = ?
                 LIMIT 1
             ");
-            $stmt->execute([$team_name]);
+            $stmt->execute([$team_name, $apiSeason]);
             return $stmt->fetch(PDO::FETCH_ASSOC);
         } catch (Exception $e) {
             error_log("Error fetching cached API stats: " . $e->getMessage());
@@ -297,13 +305,14 @@ class TeamStatsCalculator {
     }
     
     /**
-     * Fallback: Get basic stats from 2025_2026 standings table
+     * Fallback: Get basic stats from standings table
      */
     private function getStatsFromStandings($team_name) {
         try {
+            $table = $this->seasonConfig['standings_table'];
             $stmt = $this->pdo->prepare("
-                SELECT name, win, loss 
-                FROM 2025_2026 
+                SELECT name, win, loss
+                FROM `{$table}`
                 WHERE name = ?
             ");
             $stmt->execute([$team_name]);

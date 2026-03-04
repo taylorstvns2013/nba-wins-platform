@@ -1,0 +1,22 @@
+{
+    "season_label": "2025-26",
+    "season_year_start": 2025,
+    "season_year_end": 2026,
+    "standings_table": "2025_2026",
+    "standings_table_backup": "2025_2026_backup",
+    "api_season_nba": "2025-26",
+    "api_season_rapid": "2025",
+    "api_season_espn": "2026",
+    "season_start_date": "2025-10-21",
+    "training_camp_date": "2025-09-29",
+    "preseason_start_date": "2025-10-02",
+    "all_star_break_start": "2026-02-13",
+    "all_star_break_end": "2026-02-18",
+    "playoffs_start_date": "2026-04-19",
+    "season_end_date": "2026-04-13",
+    "nba_cup_dates": [
+        "2025-10-31", "2025-11-07", "2025-11-14", "2025-11-21",
+        "2025-11-25", "2025-11-26", "2025-11-28",
+        "2025-12-09", "2025-12-10", "2025-12-13", "2025-12-16"
+    ]
+}

@@ -12,6 +12,8 @@ import requests
 import json
 from requests.exceptions import RequestException
 from tenacity import retry, stop_after_attempt, wait_exponential
+from season_config import get_season_config
+season_cfg = get_season_config()
 
 # Set up basic logging
 logging.basicConfig(
@@ -446,7 +448,7 @@ def process_nba_games(start_date, end_date, connection):
     try:
         gamefinder = leaguegamefinder.LeagueGameFinder(
             league_id_nullable='00',
-            season_nullable='2025-26',
+            season_nullable=season_cfg['api_season_nba'],
             date_from_nullable=start_date.strftime('%m/%d/%Y'),
             date_to_nullable=end_date.strftime('%m/%d/%Y')
         )

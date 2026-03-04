@@ -3,14 +3,18 @@
 // Renders individual widgets on the homepage dashboard - DARK THEME VERSION
 // Matches the dark UI of index.php
 
+require_once __DIR__ . '/../config/season_config.php';
+
 class DashboardWidget {
     private $pdo;
     private $widgetFetcher;
-    
+    private $seasonConfig;
+
     public function __construct($pdo) {
         $this->pdo = $pdo;
         require_once __DIR__ . '/WidgetDataFetcher.php';
         $this->widgetFetcher = new WidgetDataFetcher($pdo);
+        $this->seasonConfig = getSeasonConfig();
     }
     
     /**
@@ -469,7 +473,7 @@ class DashboardWidget {
                     FROM games g
                     WHERE (g.home_team IN ($ph) OR g.away_team IN ($ph))
                       AND g.status_long IN ('Final', 'Finished')
-                      AND g.date >= '2025-10-21'
+                      AND g.date >= '{$this->seasonConfig['season_start_date']}'
                     ORDER BY g.date DESC, g.start_time DESC
                 ");
                 $params = array_merge($dwTeams, $dwTeams, $dwTeams, $dwTeams, $dwTeams, $dwTeams);

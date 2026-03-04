@@ -4,6 +4,8 @@
 
 // Include CLI-specific database connection (no authentication system)
 require_once '/data/www/default/nba-wins-platform/config/db_connection_cli.php';
+require_once(__DIR__ . '/../config/season_config.php');
+$season = getSeasonConfig();
 
 // API details
 $api_host = 'api-nba-v1.p.rapidapi.com';
@@ -34,14 +36,15 @@ try {
 // Set timezone to EST
 date_default_timezone_set('America/New_York');
 
-// Function to fetch and store/update games for the 2025 season
+// Function to fetch and store/update games for the current season
 function fetchAndStoreGames($pdo, $api_host, $api_key) {
-    echo "Starting to fetch 2025 season games...\n";
+    $apiSeason = $GLOBALS['season']['api_season_rapid'];
+    echo "Starting to fetch {$apiSeason} season games...\n";
     
     // Fetch games from API
     $curl = curl_init();
     curl_setopt_array($curl, [
-        CURLOPT_URL => "https://$api_host/games?season=2025",  // Updated to 2025
+        CURLOPT_URL => "https://$api_host/games?season=$apiSeason",
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT => 30,  // Add timeout
         CURLOPT_HTTPHEADER => [
@@ -98,7 +101,7 @@ function fetchAndStoreGames($pdo, $api_host, $api_key) {
     echo "Found " . count($games['response']) . " games from API\n";
 
     if (count($games['response']) == 0) {
-        echo "No games returned from API for 2025 season\n";
+        echo "No games returned from API for {$apiSeason} season\n";
         return true; // Not an error, just no games yet
     }
 

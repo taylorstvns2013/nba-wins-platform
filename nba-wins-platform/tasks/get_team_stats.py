@@ -8,6 +8,8 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from nba_api.stats.endpoints import leaguedashteamstats, commonteamroster
 from nba_api.stats.static import teams
+from season_config import get_season_config
+season_cfg = get_season_config()
 
 def safe_api_call(endpoint_func, *args, max_retries=2, timeout=20, **kwargs):
     """
@@ -53,11 +55,11 @@ def get_team_stats_2025_26(team_id):
     """
     try:
         # Primary attempt: 2025-26 season data
-        print(f"Fetching 2025-26 season data for team {team_id}...", file=sys.stderr)
-        
+        print(f"Fetching {season_cfg['api_season_nba']} season data for team {team_id}...", file=sys.stderr)
+
         stats_dict = safe_api_call(
             leaguedashteamstats.LeagueDashTeamStats,
-            season='2025-26',
+            season=season_cfg['api_season_nba'],
             season_type_all_star='Regular Season',
             per_mode_detailed='PerGame',
             timeout=15  # Shorter timeout for production
@@ -101,18 +103,18 @@ def get_team_stats_2025_26(team_id):
                         'PF': round(float(team_stats.get('PF', 0)), 1),
                         'PFD': round(float(team_stats.get('PFD', 0)), 1),
                         'PLUS_MINUS': round(float(team_stats.get('PLUS_MINUS', 0)), 1),
-                        'season': '2025-26',
+                        'season': season_cfg['api_season_nba'],
                         'data_source': 'nba_api',
                         'api_status': 'live'
                     }
                     
-                    print("Successfully retrieved 2025-26 season data", file=sys.stderr)
+                    print(f"Successfully retrieved {season_cfg['api_season_nba']} season data", file=sys.stderr)
                     return cleaned_stats
         
         # If we get here, team wasn't found in results
         return {
-            'error': f'Team ID {team_id} not found in 2025-26 season data',
-            'season': '2025-26',
+            'error': f'Team ID {team_id} not found in {season_cfg["api_season_nba"]} season data',
+            'season': season_cfg['api_season_nba'],
             'api_status': 'no_data'
         }
         
@@ -122,22 +124,22 @@ def get_team_stats_2025_26(team_id):
         # Classify the error for better handling
         if 'timeout' in error_msg.lower():
             return {
-                'error': '2025-26 NBA season data not yet available or API timeout',
-                'details': 'Season starts October 21, 2025. Data will be available after games begin.',
-                'season': '2025-26',
+                'error': f'{season_cfg["api_season_nba"]} NBA season data not yet available or API timeout',
+                'details': f'Season starts {season_cfg["season_start_date"]}. Data will be available after games begin.',
+                'season': season_cfg['api_season_nba'],
                 'api_status': 'timeout'
             }
         elif 'connection' in error_msg.lower() or 'network' in error_msg.lower():
             return {
                 'error': 'Unable to connect to NBA API servers',
                 'details': 'Check network connection and try again later.',
-                'season': '2025-26',
+                'season': season_cfg['api_season_nba'],
                 'api_status': 'connection_error'
             }
         else:
             return {
                 'error': f'NBA API error: {error_msg}',
-                'season': '2025-26',
+                'season': season_cfg['api_season_nba'],
                 'api_status': 'api_error'
             }
 
@@ -147,12 +149,12 @@ def get_team_roster_2025_26(team_id):
     Returns empty list if data not available (graceful failure)
     """
     try:
-        print(f"Fetching 2025-26 roster for team {team_id}...", file=sys.stderr)
-        
+        print(f"Fetching {season_cfg['api_season_nba']} roster for team {team_id}...", file=sys.stderr)
+
         roster_dict = safe_api_call(
             commonteamroster.CommonTeamRoster,
             team_id=team_id,
-            season='2025-26',
+            season=season_cfg['api_season_nba'],
             league_id_nullable='00',
             timeout=15
         )
@@ -186,9 +188,9 @@ def get_team_roster_2025_26(team_id):
                     # Placeholder stats - would need separate API calls for actual stats
                     'GP': 0, 'MIN': 0, 'PTS': 0, 'REB': 0, 'AST': 0,
                     'FG_PCT': 0, 'FG3_PCT': 0, 'FT_PCT': 0,
-                    'season': '2025-26'
+                    'season': season_cfg['api_season_nba']
                 }
-                
+
                 roster_list.append(roster_player)
                 
             except Exception:

@@ -28,6 +28,8 @@ if (!isset($_SESSION['user_id']) || !isset($_SESSION['current_league_id'])) {
 // DEPENDENCIES
 // =====================================================================
 require_once '/data/www/default/nba-wins-platform/config/db_connection.php';
+require_once '/data/www/default/nba-wins-platform/config/season_config.php';
+$season = getSeasonConfig();
 
 // =====================================================================
 // REQUEST PARAMETERS
@@ -254,7 +256,7 @@ function fetchPlayerStats($espnId) {
     }
 
     // Fetch from ESPN core API
-    $url  = "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2026/types/2/athletes/{$espnId}/statistics";
+    $url  = "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/{$GLOBALS['season']['api_season_espn']}/types/2/athletes/{$espnId}/statistics";
     $data = espnCurlFetch($url);
     if (!$data) return null;
 
@@ -361,7 +363,7 @@ function fetchDbStats($pdo, $teamName, $playerName) {
                      ELSE 0
                 END AS fg_percentage
             FROM game_player_stats
-            WHERE team_name IN ($placeholders) AND game_date >= '2025-10-20'
+            WHERE team_name IN ($placeholders) AND game_date >= '{$GLOBALS['season']['season_start_date']}'
             GROUP BY player_name
         ");
         $stmt->execute($teamVariations);
@@ -1159,7 +1161,7 @@ body {
     <?php if ($hasEspnStats): ?>
         <div class="stats-card">
             <h2 class="section-title">
-            2025-26
+            <?= $season['season_label'] ?>
                 <span class="stats-source">via ESPN</span>
             </h2>
 
@@ -1271,7 +1273,7 @@ body {
     <?php elseif ($hasDbStats): ?>
         <div class="stats-card">
             <h2 class="section-title">
-            2025-26
+            <?= $season['season_label'] ?>
             </h2>
             <div class="primary-stats">
                 <div class="primary-stat">

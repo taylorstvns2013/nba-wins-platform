@@ -4,6 +4,8 @@
  * Functions to fetch and process live NBA game scores from the API
  */
 
+require_once __DIR__ . '/../config/season_config.php';
+
 /**
  * Parse ISO 8601 duration format to readable time (MM:SS)
  */
@@ -264,7 +266,7 @@ function syncFinalGames($pdo, $effectiveDate) {
                 $db_game['date'] === $api_date) {
                 
                 // This game is Final in API but not in DB — update it
-                // This UPDATE fires the MySQL trigger which updates 2025_2026 standings
+                // This UPDATE fires the MySQL trigger which updates the standings table
                 $update_stmt = $pdo->prepare("
                     UPDATE games 
                     SET status_long = 'Final', 

@@ -37,6 +37,8 @@ if (!$league_id || !$user_id) {
 // DEPENDENCIES
 // =====================================================================
 require_once '../config/db_connection.php';
+require_once __DIR__ . '/../config/season_config.php';
+$season = getSeasonConfig();
 require_once '../core/ProfilePhotoHandler.php';
 
 $photoHandler = new ProfilePhotoHandler($pdo);
@@ -289,7 +291,7 @@ $stmt = $pdo->prepare("
     FROM draft_picks dp
     JOIN league_participants lp ON dp.league_participant_id = lp.id
     JOIN nba_teams nt ON dp.team_id = nt.id
-    LEFT JOIN 2025_2026 s ON nt.name = s.name
+    LEFT JOIN {$season['standings_table']} s ON nt.name = s.name
     WHERE dp.league_participant_id = ? AND lp.league_id = ?
     ORDER BY dp.pick_number ASC
 ");
@@ -356,12 +358,12 @@ $stmt = $pdo->prepare("
                 REPLACE(REPLACE(my_team.team_name, 'Los Angeles Clippers', 'LA Clippers'), 'L.A. Clippers', 'LA Clippers')
             ))
         AND g.status_long IN ('Final', 'Finished')
-        AND DATE(g.start_time) >= '2025-10-21'
-    JOIN league_participant_teams opponent_team 
+        AND DATE(g.start_time) >= '{$season['season_start_date']}'
+    JOIN league_participant_teams opponent_team
         ON ((g.home_team IN (
                 REPLACE(opponent_team.team_name, 'Los Angeles Clippers', 'LA Clippers'),
                 REPLACE(REPLACE(opponent_team.team_name, 'Los Angeles Clippers', 'LA Clippers'), 'L.A. Clippers', 'LA Clippers')
-            ) 
+            )
             AND g.away_team IN (
                 REPLACE(my_team.team_name, 'Los Angeles Clippers', 'LA Clippers'),
                 REPLACE(REPLACE(my_team.team_name, 'Los Angeles Clippers', 'LA Clippers'), 'L.A. Clippers', 'LA Clippers')
@@ -369,16 +371,16 @@ $stmt = $pdo->prepare("
             OR (g.away_team IN (
                 REPLACE(opponent_team.team_name, 'Los Angeles Clippers', 'LA Clippers'),
                 REPLACE(REPLACE(opponent_team.team_name, 'Los Angeles Clippers', 'LA Clippers'), 'L.A. Clippers', 'LA Clippers')
-            ) 
+            )
             AND g.home_team IN (
                 REPLACE(my_team.team_name, 'Los Angeles Clippers', 'LA Clippers'),
                 REPLACE(REPLACE(my_team.team_name, 'Los Angeles Clippers', 'LA Clippers'), 'L.A. Clippers', 'LA Clippers')
             )))
-    JOIN league_participants opponent_participant 
+    JOIN league_participants opponent_participant
         ON opponent_team.league_participant_id = opponent_participant.id
         AND opponent_participant.league_id = my_participant.league_id
         AND opponent_participant.id != my_participant.id
-    JOIN users opponent_user 
+    JOIN users opponent_user
         ON opponent_participant.user_id = opponent_user.id
     WHERE my_participant.id = ?
     GROUP BY opponent_user.id, opponent_user.display_name
@@ -425,12 +427,12 @@ $stmt = $pdo->prepare("
                 REPLACE(REPLACE(my_team.team_name, 'Los Angeles Clippers', 'LA Clippers'), 'L.A. Clippers', 'LA Clippers')
             ))
         AND g.status_long IN ('Final', 'Finished')
-        AND DATE(g.start_time) >= '2025-10-21'
-    JOIN league_participant_teams opponent_team 
+        AND DATE(g.start_time) >= '{$season['season_start_date']}'
+    JOIN league_participant_teams opponent_team
         ON ((g.home_team IN (
                 REPLACE(opponent_team.team_name, 'Los Angeles Clippers', 'LA Clippers'),
                 REPLACE(REPLACE(opponent_team.team_name, 'Los Angeles Clippers', 'LA Clippers'), 'L.A. Clippers', 'LA Clippers')
-            ) 
+            )
             AND g.away_team IN (
                 REPLACE(my_team.team_name, 'Los Angeles Clippers', 'LA Clippers'),
                 REPLACE(REPLACE(my_team.team_name, 'Los Angeles Clippers', 'LA Clippers'), 'L.A. Clippers', 'LA Clippers')
@@ -438,16 +440,16 @@ $stmt = $pdo->prepare("
             OR (g.away_team IN (
                 REPLACE(opponent_team.team_name, 'Los Angeles Clippers', 'LA Clippers'),
                 REPLACE(REPLACE(opponent_team.team_name, 'Los Angeles Clippers', 'LA Clippers'), 'L.A. Clippers', 'LA Clippers')
-            ) 
+            )
             AND g.home_team IN (
                 REPLACE(my_team.team_name, 'Los Angeles Clippers', 'LA Clippers'),
                 REPLACE(REPLACE(my_team.team_name, 'Los Angeles Clippers', 'LA Clippers'), 'L.A. Clippers', 'LA Clippers')
             )))
-    JOIN league_participants opponent_participant 
+    JOIN league_participants opponent_participant
         ON opponent_team.league_participant_id = opponent_participant.id
         AND opponent_participant.league_id = my_participant.league_id
         AND opponent_participant.id != my_participant.id
-    JOIN users opponent_user 
+    JOIN users opponent_user
         ON opponent_participant.user_id = opponent_user.id
     WHERE my_participant.id = ?
     GROUP BY opponent_user.id, opponent_user.display_name
@@ -507,7 +509,7 @@ try {
             FROM games g
             WHERE (g.home_team IN ($placeholders) OR g.away_team IN ($placeholders))
               AND g.status_long IN ('Final', 'Finished')
-              AND g.date >= '2025-10-21'
+              AND g.date >= '{$season['season_start_date']}'
             ORDER BY g.date DESC, g.start_time DESC
             LIMIT 10
         ");
@@ -564,7 +566,7 @@ try {
             FROM games g
             WHERE (g.home_team IN ($placeholders) OR g.away_team IN ($placeholders))
               AND g.status_long IN ('Final', 'Finished')
-              AND g.date >= '2025-10-21'
+              AND g.date >= '{$season['season_start_date']}'
             ORDER BY g.date DESC, g.start_time DESC
         ");
 
@@ -629,7 +631,7 @@ try {
             FROM games g
             WHERE (g.home_team IN ($placeholders) OR g.away_team IN ($placeholders))
               AND g.status_long = 'Scheduled'
-              AND g.date >= '2025-10-21'
+              AND g.date >= '{$season['season_start_date']}'
             ORDER BY g.date ASC
             LIMIT 5
         ");

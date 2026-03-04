@@ -7,9 +7,11 @@ Run this first to test before full update
 from nba_api.stats.static import teams
 from nba_api.stats.endpoints import commonteamroster
 import json
+from season_config import get_season_config
+season_cfg = get_season_config()
 
 # Test with a single team first
-CURRENT_SEASON = '2025-26'
+CURRENT_SEASON = season_cfg['api_season_nba']
 TEST_TEAM_NAME = 'Boston Celtics'  # Current champions
 
 print(f"\n{'='*60}")

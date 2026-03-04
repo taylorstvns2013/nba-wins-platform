@@ -18,6 +18,8 @@ date_default_timezone_set('America/New_York');
 // AUTH & LEAGUE CONTEXT
 // =====================================================================
 require_once '/data/www/default/nba-wins-platform/config/db_connection.php';
+require_once '/data/www/default/nba-wins-platform/config/season_config.php';
+$season = getSeasonConfig();
 requireAuthentication($auth);
 
 $leagueContext = getCurrentLeagueContext($auth);
@@ -150,8 +152,8 @@ $stmt = $pdo->prepare("
     FROM games g
     JOIN nba_teams nt1 ON g.home_team = nt1.name
     JOIN nba_teams nt2 ON g.away_team = nt2.name
-    LEFT JOIN 2025_2026 t1 ON nt1.name = t1.name
-    LEFT JOIN 2025_2026 t2 ON nt2.name = t2.name
+    LEFT JOIN {$season['standings_table']} t1 ON nt1.name = t1.name
+    LEFT JOIN {$season['standings_table']} t2 ON nt2.name = t2.name
     WHERE g.home_team_code = ?
       AND g.away_team_code = ?
       AND DATE(g.start_time) = ?
@@ -210,7 +212,7 @@ $h2hStmt = $pdo->prepare("
     SELECT date, home_team, away_team, home_points, away_points, status_long,
            home_team_code, away_team_code
     FROM games
-    WHERE date >= '2025-10-20'
+    WHERE date >= '{$season['season_start_date']}'
       AND status_long IN ('Final', 'Finished')
       AND (
           (home_team = ? AND away_team = ?)

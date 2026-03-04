@@ -16,6 +16,8 @@
 
 // Include database connection
 require_once(__DIR__ . '/../config/db_connection_cli.php');
+require_once(__DIR__ . '/../config/season_config.php');
+$season = getSeasonConfig();
 
 // Set timezone to EST
 date_default_timezone_set('America/New_York');
@@ -46,7 +48,7 @@ function recordDailyWins($pdo) {
             $stmt = $pdo->prepare("
                 SELECT SUM(COALESCE(t.win, 0)) as total_wins
                 FROM league_participant_teams lpt
-                LEFT JOIN 2025_2026 t ON lpt.team_name = t.name
+                LEFT JOIN {$GLOBALS['season']['standings_table']} t ON lpt.team_name = t.name
                 WHERE lpt.league_participant_id = ?
             ");
             $stmt->execute([$participant['league_participant_id']]);
@@ -163,7 +165,7 @@ if ($forceRun) {
 
 try {
     echo "Starting daily wins recording for " . date('Y-m-d H:i:s') . "\n";
-    echo "Using table: 2025_2026 for standings data\n\n";
+    echo "Using table: {$season['standings_table']} for standings data\n\n";
     
     // Record daily wins for all participants
     $results = recordDailyWins($pdo);
