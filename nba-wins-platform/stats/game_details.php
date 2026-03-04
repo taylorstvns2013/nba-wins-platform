@@ -68,6 +68,35 @@ function getTeamLogo($teamName) {
 }
 
 /**
+ * Format NBA API gameClock (ISO 8601 duration) to readable time
+ * Converts PT05M30.00S → 5:30, PT00M45.60S → 0:45, already formatted → pass through
+ */
+function formatGameClock($clock) {
+    if (empty($clock)) return '';
+    
+    // Already formatted (e.g., "5:30" or "0:45") — pass through
+    if (preg_match('/^\d{1,2}:\d{2}$/', trim($clock))) {
+        return trim($clock);
+    }
+    
+    // ISO 8601 duration: PT05M30.00S or PT5M30.0S
+    if (preg_match('/^PT(\d+)M([\d.]+)S$/i', trim($clock), $m)) {
+        $minutes = intval($m[1]);
+        $seconds = intval(floor(floatval($m[2])));
+        return $minutes . ':' . str_pad($seconds, 2, '0', STR_PAD_LEFT);
+    }
+    
+    // Fallback: strip PT prefix and S suffix for any other format
+    $cleaned = preg_replace('/^PT/i', '', trim($clock));
+    $cleaned = preg_replace('/S$/i', '', $cleaned);
+    if (preg_match('/(\d+)M([\d.]+)/', $cleaned, $m)) {
+        return intval($m[1]) . ':' . str_pad(intval(floor(floatval($m[2]))), 2, '0', STR_PAD_LEFT);
+    }
+    
+    return trim($clock); // Return as-is if no pattern matches
+}
+
+/**
  * Fetch live scores from the NBA API via Python script
  */
 function getAPIScores() {
@@ -114,12 +143,16 @@ function getLatestGameScores($games, $api_scores) {
 
             if ($api_home === $game['home_team'] && $api_away === $game['away_team']) {
                 $status = 'Scheduled';
+                $formattedClock = formatGameClock($api_game['gameClock'] ?? '');
+                
                 if ($api_game['gameStatus'] == 1) {
                     $status = 'Scheduled';
                 } elseif ($api_game['gameStatus'] == 2) {
-                    $status = 'Q' . $api_game['period'];
-                    if ($api_game['gameClock']) {
-                        $status .= ' - ' . $api_game['gameClock'];
+                    // Match index page format: "5:30 Q2"
+                    if (!empty($formattedClock)) {
+                        $status = $formattedClock . ' Q' . $api_game['period'];
+                    } else {
+                        $status = 'Q' . $api_game['period'];
                     }
                 } elseif ($api_game['gameStatus'] == 3) {
                     $status = 'Final';
@@ -132,7 +165,7 @@ function getLatestGameScores($games, $api_scores) {
                     'source'      => 'api',
                     'game_status' => $api_game['gameStatus'],
                     'period'      => $api_game['period'] ?? 0,
-                    'clock'       => $api_game['gameClock'] ?? ''
+                    'clock'       => $formattedClock
                 ];
                 break;
             }
