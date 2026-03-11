@@ -183,6 +183,7 @@ def save_quarter_scores_to_db(games_dict, verbose=False, debug=False):
                     continue
                 
                 # Find game_id from games table
+                # Try today's date first, then yesterday (handles late games crossing midnight EST)
                 find_game_query = """
                     SELECT id FROM games 
                     WHERE home_team = %s 
@@ -190,8 +191,19 @@ def save_quarter_scores_to_db(games_dict, verbose=False, debug=False):
                     AND date = %s
                     LIMIT 1
                 """
+                game_date_used = current_date_est
                 cursor.execute(find_game_query, (home_team, away_team, current_date_est))
                 game_record = cursor.fetchone()
+                
+                if not game_record:
+                    # Try yesterday — handles late games still playing after midnight EST
+                    yesterday_est = current_date_est - timedelta(days=1)
+                    cursor.execute(find_game_query, (home_team, away_team, yesterday_est))
+                    game_record = cursor.fetchone()
+                    if game_record:
+                        game_date_used = yesterday_est
+                        if debug:
+                            print(f"↩ Found game on previous date ({yesterday_est}): {home_team} vs {away_team}")
                 
                 if not game_record:
                     if debug:
@@ -237,12 +249,13 @@ def save_quarter_scores_to_db(games_dict, verbose=False, debug=False):
                 away_total = game['awayTeam']['score']
                 
                 # Check if records already exist
+                # Use game_date_used (may be yesterday for late games crossing midnight)
                 check_query = """
                     SELECT id, team_abbrev, q1_points, q2_points, q3_points, q4_points, total_points
                     FROM game_quarter_scores
                     WHERE game_date = %s AND team_abbrev IN (%s, %s)
                 """
-                cursor.execute(check_query, (current_date_est, home_tricode, away_tricode))
+                cursor.execute(check_query, (game_date_used, home_tricode, away_tricode))
                 existing_records = cursor.fetchall()
                 
                 # Create a map of existing records
@@ -272,7 +285,7 @@ def save_quarter_scores_to_db(games_dict, verbose=False, debug=False):
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """
                     cursor.execute(insert_query, (
-                        game_id, current_date_est, home_tricode,
+                        game_id, game_date_used, home_tricode,
                         home_q1, home_q2, home_q3, home_q4, home_total
                     ))
                     inserted_count += 1
@@ -318,7 +331,7 @@ def save_quarter_scores_to_db(games_dict, verbose=False, debug=False):
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """
                     cursor.execute(insert_query, (
-                        game_id, current_date_est, away_tricode,
+                        game_id, game_date_used, away_tricode,
                         away_q1, away_q2, away_q3, away_q4, away_total
                     ))
                     inserted_count += 1

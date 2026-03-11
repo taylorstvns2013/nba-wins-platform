@@ -11,10 +11,11 @@ class UserAuthentication {
         // Configure secure session settings
         if (session_status() === PHP_SESSION_NONE) {
             ini_set('session.cookie_lifetime', $this->sessionLifetime);
+            ini_set('session.gc_maxlifetime', $this->sessionLifetime); // Keep session data as long as cookie
             ini_set('session.cookie_httponly', 1);
             ini_set('session.use_only_cookies', 1);
             ini_set('session.cookie_samesite', 'Lax');
-            
+
             session_start();
         }
     }

@@ -40,6 +40,7 @@ require_once '../config/db_connection.php';
 require_once __DIR__ . '/../config/season_config.php';
 $season = getSeasonConfig();
 require_once '../core/ProfilePhotoHandler.php';
+require_once '../core/BadgeCalculator.php';
 
 $photoHandler = new ProfilePhotoHandler($pdo);
 $is_guest     = isset($_SESSION['is_guest']) && $_SESSION['is_guest'] === true;
@@ -718,6 +719,32 @@ function getTeamLogo($teamName) {
 }
 
 $currentLeagueId = $league_id;
+
+// ==========================================================================
+// BADGES
+// ==========================================================================
+$badgeCalc   = new BadgeCalculator($pdo, $season);
+$badgeCalc->calculateAndStoreBadges(
+    $participant['user_id'],
+    $league_id,
+    $participant['id'],
+    $participant['profile_photo'],
+    $total_wins,
+    $total_losses
+);
+$earnedBadges = $badgeCalc->getBadges($participant['user_id'], $league_id);
+$badgeDefs    = BadgeCalculator::BADGE_DEFINITIONS;
+
+// Group badges by category for display
+$badgeCategories = [
+    'streaks'     => ['label' => 'Streaks',       'keys' => ['win_streak_5','win_streak_10','win_streak_15','loss_streak_5','loss_streak_10','loss_streak_15']],
+    'weekly'      => ['label' => 'Weekly',         'keys' => ['week_dominator','perfect_week']],
+    'milestones'  => ['label' => 'Milestones',     'keys' => ['wins_100','wins_200','wins_300']],
+    'performance' => ['label' => 'Performance',    'keys' => ['elite_roster','hot_hand']],
+    'rivals'      => ['label' => 'Rivals',         'keys' => ['bully_5','bully_10','bully_15','rivalmaster']],
+    'draft'       => ['label' => 'Draft & Teams',  'keys' => ['sleeper_pick','clean_sweep']],
+    'profile'     => ['label' => 'Profile',        'keys' => ['loyal_fan']],
+];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -829,6 +856,7 @@ body {
     .pp-col-right {
         position: sticky;
         top: 12px;
+        padding-top: 14px;
         max-height: calc(100vh - 24px);
         overflow-y: auto;
         scrollbar-width: thin;
@@ -1026,17 +1054,9 @@ body {
    ========================================================================== */
 /* Header controls: selector left, gear right */
 .header-controls {
-    position: absolute; top: 10px; left: 12px; right: 12px;
-    display: flex; align-items: center; justify-content: space-between;
+    position: absolute; top: 12px; right: 12px;
+    display: flex; align-items: center;
     z-index: 5;
-}
-.header-controls .participant-select {
-    max-width: 180px; padding: 7px 30px 7px 12px;
-    font-size: 13px; margin-bottom: 0;
-    background-color: rgba(0, 0, 0, 0.25);
-    border-color: rgba(255, 255, 255, 0.12);
-    border-radius: 8px;
-    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
 }
 .header-controls .gear-btn {
     width: 32px; height: 32px; font-size: 13px;
@@ -1362,8 +1382,7 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
 @media (max-width: 600px) {
     .app-container { padding: 0 8px 2rem; }
     .profile-header { padding: 1.5rem 0.75rem; padding-top: 2.8rem; min-height: 150px; }
-    .header-controls { top: 8px; left: 8px; right: 8px; }
-    .header-controls .participant-select { max-width: 150px; font-size: 12px; padding: 6px 26px 6px 10px; }
+    .header-controls { top: 8px; right: 8px; }
     .header-controls .gear-btn { width: 28px; height: 28px; font-size: 12px; }
     .profile-name { font-size: 1.5rem; }
     .profile-record { font-size: 1.2rem; }
@@ -1392,7 +1411,297 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
 @media (min-width: 1100px) {
     .pp-col-left .stats-grid { grid-template-columns: 1fr !important; }
 }
-/* ===== FLOATING PILL NAV ===== */
+/* ==========================================================================
+   PROFILE TABS
+   ========================================================================== */
+.profile-tabs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 16px;
+    margin-top: 10px;
+    border-bottom: 1px solid var(--border-color);
+}
+.tab-bar-spacer { flex: 1; }
+.tab-participant-select {
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 5px 28px 5px 10px;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 9px center;
+    outline: none;
+    transition: border-color 0.15s;
+    max-width: 160px;
+}
+.tab-participant-select:hover { border-color: rgba(56,139,253,0.4); }
+.tab-participant-select option { background: var(--bg-card); color: var(--text-primary); }
+.profile-tab {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 500;
+    padding: 10px 16px 9px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: -1px;
+    transition: color 0.15s, border-color 0.15s;
+}
+.profile-tab:hover { color: var(--text-primary); }
+.profile-tab.active {
+    color: var(--accent-blue);
+    border-bottom-color: var(--accent-blue);
+}
+.tab-badge-count {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 20px;
+    background: rgba(255,255,255,0.07);
+    color: var(--text-muted);
+}
+.profile-tab.active .tab-badge-count {
+    background: rgba(59,130,246,0.15);
+    color: var(--accent-blue);
+}
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ==========================================================================
+   BADGES TAB
+   ========================================================================== */
+.badges-tab-grid {
+    padding: 20px 16px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    align-items: start;
+}
+@media (max-width: 900px) {
+    .badges-tab-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 600px) {
+    .badges-tab-grid { grid-template-columns: 1fr; padding: 14px 12px; }
+}
+/* ==========================================================================
+   BADGES SECTION
+   ========================================================================== */
+.badges-card { position: relative; }
+
+
+/* Desktop: larger badges in tab view */
+@media (min-width: 1100px) {
+    .badges-tab-grid .badge-grid {
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 14px;
+    }
+    .badges-tab-grid .badge-tile {
+        padding: 16px 6px 12px;
+        gap: 8px;
+    }
+    .badges-tab-grid .badge-icon-wrap {
+        width: 58px;
+        height: 58px;
+        font-size: 24px;
+    }
+    .badges-tab-grid .badge-name {
+        font-size: 0.78rem;
+    }
+    .badges-tab-grid .badge-count {
+        font-size: 0.72rem;
+        padding: 2px 8px;
+    }
+    .badges-tab-grid .badge-category-label {
+        font-size: 0.82rem;
+        margin-bottom: 12px;
+    }
+}
+
+/* Desktop: add gap between stats-card elements in two-col layout */
+@media (min-width: 1100px) {
+    .pp-col-left .stats-card + .stats-card {
+        margin-top: 14px;
+    }
+}
+
+.badge-category-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+}
+
+.badge-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+    gap: 10px;
+}
+
+.badge-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    padding: 10px 4px 8px;
+    border-radius: var(--radius-md);
+    cursor: default;
+    position: relative;
+    transition: transform 0.15s ease;
+    text-align: center;
+}
+
+.badge-tile:hover { transform: translateY(-2px); }
+
+/* EARNED state */
+.badge-tile.earned {
+    background: var(--bg-elevated);
+    border: 1px solid rgba(255,255,255,0.06);
+}
+
+/* LOCKED state */
+.badge-tile.locked {
+    background: rgba(255,255,255,0.02);
+    border: 1px dashed rgba(255,255,255,0.06);
+    opacity: 0.42;
+    filter: grayscale(1);
+}
+
+.badge-icon-wrap {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+    transition: box-shadow 0.2s;
+}
+
+.badge-tile.earned .badge-icon-wrap {
+    box-shadow: 0 0 12px var(--badge-glow, rgba(255,255,255,0.2));
+}
+
+.badge-name {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    line-height: 1.2;
+    word-break: break-word;
+}
+
+.badge-tile.earned .badge-name { color: var(--text-primary); }
+
+.badge-count {
+    font-size: 0.65rem;
+    font-weight: 700;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 1px 6px;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+/* Badge Popup Modal */
+.badge-tile { cursor: pointer; }
+
+#badge-modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    z-index: 9000;
+    align-items: center;
+    justify-content: center;
+    perspective: 800px;
+}
+#badge-modal-overlay.open { display: flex; }
+
+#badge-modal {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 28px 28px 24px;
+    max-width: 320px;
+    width: 88%;
+    text-align: center;
+    position: relative;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    animation: badgeModalIn 0.2s ease both;
+}
+@keyframes badgeModalIn {
+    from { transform: scale(0.94); opacity: 0; }
+    to   { transform: scale(1);    opacity: 1; }
+}
+#badge-modal-close {
+    position: absolute;
+    top: 12px; right: 14px;
+    background: none; border: none;
+    color: var(--text-muted);
+    font-size: 18px; cursor: pointer;
+    line-height: 1;
+}
+#badge-modal-icon-wrap {
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 14px;
+    font-size: 26px;
+    animation: coinFlip 0.95s cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+@keyframes coinFlip {
+    0%   { transform: rotateY(0deg)    scale(1); }
+    20%  { transform: rotateY(90deg)   scale(0.85); }
+    40%  { transform: rotateY(180deg)  scale(1.1); }
+    60%  { transform: rotateY(270deg)  scale(0.9); }
+    78%  { transform: rotateY(360deg)  scale(1.12); }
+    88%  { transform: rotateY(700deg)  scale(0.96); }
+    100% { transform: rotateY(720deg)  scale(1); }
+}
+#badge-modal-name {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+#badge-modal-desc {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin-bottom: 12px;
+}
+#badge-modal-date {
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 5px 12px;
+    border-radius: 20px;
+    display: inline-block;
+}
+#badge-modal-date.earned-date {
+    background: rgba(255,255,255,0.08);
+    color: var(--text-primary);
+}
+#badge-modal-date.not-earned {
+    background: rgba(255,255,255,0.04);
+    color: #555;
+}
+
     .floating-pill {
         position: fixed;
         bottom: 18px;
@@ -1629,6 +1938,27 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
     <?php endif; ?>
 
     <!-- ================================================================
+         PROFILE TABS
+         ================================================================ -->
+    <div class="profile-tabs">
+        <button class="profile-tab active" onclick="switchTab('main', this)">Main</button>
+        <button class="profile-tab" onclick="switchTab('badges', this)">
+            Badges
+            <span class="tab-badge-count"><?= count($earnedBadges) ?>/<?= count($badgeDefs) ?></span>
+        </button>
+        <div class="tab-bar-spacer"></div>
+        <select class="tab-participant-select" onchange="window.location.href='?league_id=<?= $league_id ?>&user_id='+this.value+'&tab='+getActiveTab()">
+            <?php foreach ($all_participants as $p): ?>
+                <option value="<?= $p['user_id'] ?>" <?= $p['user_id'] == $user_id ? 'selected' : '' ?>>
+                    <?= htmlspecialchars($p['display_name']) ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+    </div>
+
+    <!-- TAB: MAIN -->
+    <div id="tab-main" class="tab-panel active">
+    <!-- ================================================================
          TWO-COLUMN LAYOUT (desktop) / STACKED (mobile)
          ================================================================ -->
     <div class="pp-two-col">
@@ -1640,16 +1970,8 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
          PROFILE HEADER CARD (with selector + gear)
          ================================================================ -->
     <div class="profile-header">
-        <!-- Controls: selector + gear -->
+        <!-- Controls: gear only (selector moved to tab bar) -->
         <div class="header-controls">
-            <select class="participant-select" onchange="window.location.href='?league_id=<?= $league_id ?>&user_id='+this.value">
-                <?php foreach ($all_participants as $p): ?>
-                    <option value="<?= $p['user_id'] ?>" <?= $p['user_id'] == $user_id ? 'selected' : '' ?>>
-                        <?= htmlspecialchars($p['display_name']) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-
             <?php if ($is_own_profile): ?>
             <div class="gear-settings-wrapper">
                 <button type="button" class="gear-btn" id="gearBtn" onclick="toggleGearPanel()">
@@ -2085,6 +2407,70 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
 
     </div><!-- /.pp-col-right -->
     </div><!-- /.pp-two-col -->
+    </div><!-- /#tab-main -->
+
+    <!-- TAB: BADGES -->
+    <div id="tab-badges" class="tab-panel">
+    <div class="badges-tab-grid">
+        <?php foreach ($badgeCategories as $catKey => $cat): ?>
+        <div class="badge-category badge-cat-<?= $catKey ?>">
+            <div class="badge-category-label"><?= $cat['label'] ?></div>
+            <div class="badge-grid">
+                <?php foreach ($cat['keys'] as $key):
+                    $def      = $badgeDefs[$key];
+                    $earned   = isset($earnedBadges[$key]);
+                    $data     = $earned ? $earnedBadges[$key] : null;
+                    $isEarned = $earned ? 'earned' : 'locked';
+
+                    $popupDate = '';
+                    if ($earned) {
+                        if (isset($data['metadata']['achieved_date'])) {
+                            $popupDate = 'Achieved ' . date('M j, Y', strtotime($data['metadata']['achieved_date']));
+                        } elseif (isset($data['metadata']['instances']) && count($data['metadata']['instances']) > 0) {
+                            $instances = $data['metadata']['instances'];
+                            $latest    = end($instances);
+                            $dateStr   = isset($latest['date']) ? date('M j, Y', strtotime($latest['date'])) :
+                                        (isset($latest['week']) ? 'Week of ' . date('M j', strtotime($latest['week'])) : '');
+                            if ($dateStr) $popupDate = 'Last: ' . $dateStr;
+                        } elseif ($data['earned_at']) {
+                            $popupDate = date('M j, Y', strtotime($data['earned_at']));
+                        }
+                        if ($key === 'elite_roster' && isset($data['metadata']['win_pct'])) {
+                            $popupDate .= ($popupDate ? ' · ' : '') . $data['metadata']['win_pct'] . '% win rate (' . $data['metadata']['games'] . ' games)';
+                        }
+                        if ($def['repeatable'] && $data['times_earned'] > 1) {
+                            $popupDate .= ($popupDate ? ' · ' : '') . 'Earned ' . $data['times_earned'] . 'x';
+                        }
+                    }
+
+                    $iconBg = $earned
+                        ? 'background: ' . $def['color'] . '22; color: ' . $def['color'] . ';'
+                        : 'background: rgba(255,255,255,0.04); color: #555;';
+                ?>
+                <div class="badge-tile <?= $isEarned ?>"
+                     onclick="openBadgePopup(this)"
+                     data-badge-name="<?= htmlspecialchars($def['name']) ?>"
+                     data-badge-desc="<?= htmlspecialchars($def['desc']) ?>"
+                     data-badge-date="<?= htmlspecialchars($popupDate) ?>"
+                     data-badge-icon="<?= htmlspecialchars($def['icon']) ?>"
+                     data-badge-color="<?= htmlspecialchars($def['color']) ?>"
+                     data-badge-glow="<?= htmlspecialchars($def['glow']) ?>"
+                     data-badge-earned="<?= $earned ? '1' : '0' ?>"
+                     style="<?= $earned ? '--badge-glow: ' . $def['glow'] . ';' : '' ?>">
+                    <div class="badge-icon-wrap" style="<?= $iconBg ?>">
+                        <i class="fas <?= $def['icon'] ?>"></i>
+                    </div>
+                    <span class="badge-name"><?= htmlspecialchars($def['name']) ?></span>
+                    <?php if ($earned && $def['repeatable'] && $data['times_earned'] > 1): ?>
+                        <span class="badge-count">×<?= $data['times_earned'] ?></span>
+                    <?php endif; ?>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endforeach; ?>
+    </div><!-- /.badges-tab-grid -->
+    </div><!-- /#tab-badges -->
 
 </div><!-- /.app-container -->
 
@@ -2332,6 +2718,25 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
     </nav>
     <script>
+    function getActiveTab() {
+        var active = document.querySelector('.tab-panel.active');
+        return active ? active.id.replace('tab-', '') : 'main';
+    }
+    function switchTab(tabName, btn) {
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        document.querySelectorAll('.profile-tab').forEach(b => b.classList.remove('active'));
+        document.getElementById('tab-' + tabName).classList.add('active');
+        btn.classList.add('active');
+    }
+    // Restore tab from URL ?tab= param
+    (function() {
+        var params = new URLSearchParams(window.location.search);
+        var tab = params.get('tab');
+        if (tab && tab !== 'main') {
+            var btn = document.querySelector('.profile-tab[onclick*="' + tab + '"]');
+            if (btn) switchTab(tab, btn);
+        }
+    })();
     function togglePillMenu() {
         document.getElementById('floatingPill').classList.toggle('expanded');
     }
@@ -2343,5 +2748,77 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     </script>
+
+<!-- Badge Modal -->
+<div id="badge-modal-overlay" onclick="closeBadgePopup(event)">
+    <div id="badge-modal">
+        <button id="badge-modal-close" onclick="closeBadgePopup(null)">&times;</button>
+        <div id="badge-modal-icon-wrap">
+            <i id="badge-modal-icon-i" class="fas"></i>
+        </div>
+        <div id="badge-modal-name"></div>
+        <div id="badge-modal-desc"></div>
+        <div id="badge-modal-date"></div>
+    </div>
+</div>
+<script>
+function openBadgePopup(el) {
+    var earned  = el.dataset.badgeEarned === '1';
+    var color   = el.dataset.badgeColor;
+    var glow    = el.dataset.badgeGlow;
+    var icon    = el.dataset.badgeIcon;
+    var name    = el.dataset.badgeName;
+    var desc    = el.dataset.badgeDesc;
+    var date    = el.dataset.badgeDate;
+
+    var wrap = document.getElementById('badge-modal-icon-wrap');
+    var iconEl = document.getElementById('badge-modal-icon-i');
+    if (earned) {
+        wrap.style.background = color + '22';
+        wrap.style.color = color;
+        wrap.style.boxShadow = '0 0 18px ' + glow;
+        iconEl.className = 'fas ' + icon;
+    } else {
+        wrap.style.background = 'rgba(255,255,255,0.05)';
+        wrap.style.color = '#555';
+        wrap.style.boxShadow = 'none';
+        iconEl.className = 'fas ' + icon;
+    }
+
+    document.getElementById('badge-modal-name').textContent = name;
+    document.getElementById('badge-modal-desc').textContent = desc;
+
+    var dateEl = document.getElementById('badge-modal-date');
+    if (earned && date) {
+        dateEl.textContent = date;
+        dateEl.className = 'earned-date';
+        dateEl.style.color = color;
+        dateEl.style.background = color + '18';
+    } else if (!earned) {
+        dateEl.textContent = 'Not yet earned';
+        dateEl.className = 'not-earned';
+        dateEl.style.color = '';
+        dateEl.style.background = '';
+    } else {
+        dateEl.textContent = '';
+        dateEl.className = '';
+    }
+
+    document.getElementById('badge-modal-overlay').classList.add('open');
+
+    // Re-trigger coin flip on every open
+    var wrap = document.getElementById('badge-modal-icon-wrap');
+    wrap.style.animation = 'none';
+    wrap.offsetHeight; // force reflow
+    wrap.style.animation = '';
+}
+function closeBadgePopup(e) {
+    if (e && e.target !== document.getElementById('badge-modal-overlay')) return;
+    document.getElementById('badge-modal-overlay').classList.remove('open');
+}
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') document.getElementById('badge-modal-overlay').classList.remove('open');
+});
+</script>
 </body>
 </html>
