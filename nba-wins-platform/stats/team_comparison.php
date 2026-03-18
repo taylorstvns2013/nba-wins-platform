@@ -226,6 +226,139 @@ $h2hStmt->execute([
     $game['away_team_name'], $game['home_team_name']
 ]);
 $h2hGames = $h2hStmt->fetchAll(PDO::FETCH_ASSOC);
+
+// ------ Participant IDs for streak badges ------
+$partStmt = $pdo->prepare("
+    SELECT lp.id AS participant_id, lp.user_id, u.display_name,
+           lpt.team_name, 'home' AS side
+    FROM league_participant_teams lpt
+    JOIN league_participants lp ON lpt.league_participant_id = lp.id
+    LEFT JOIN users u ON lp.user_id = u.id
+    WHERE lpt.team_name = ? AND lp.league_id = ?
+    LIMIT 1
+");
+$partStmt->execute([$game['home_team_name'], $currentLeagueId]);
+$homeParticipant = $partStmt->fetch(PDO::FETCH_ASSOC);
+
+$partStmt->execute([$game['away_team_name'], $currentLeagueId]);
+$awayParticipant = $partStmt->fetch(PDO::FETCH_ASSOC);
+
+// Helper: get all team names for a participant
+function getParticipantTeamNames($pdo, $participantId) {
+    $s = $pdo->prepare("SELECT team_name FROM league_participant_teams WHERE league_participant_id = ?");
+    $s->execute([$participantId]);
+    return array_column($s->fetchAll(PDO::FETCH_ASSOC), 'team_name');
+}
+
+// Helper: calculate current win streak from game results (W/L array newest-first)
+function calcCurrentStreak($results) {
+    if (empty($results)) return ['type' => null, 'count' => 0];
+    $type = $results[0];
+    $count = 0;
+    foreach ($results as $r) {
+        if ($r === $type) $count++;
+        else break;
+    }
+    return ['type' => $type, 'count' => $count];
+}
+
+// Helper: returns ['streak' => N, 'leader' => 'home'|'away'|null] for H2H between two participants
+function calcH2HStreak($pdo, $homeTeams, $awayTeams, $seasonStart) {
+    if (empty($homeTeams) || empty($awayTeams)) return ['streak' => 0, 'leader' => null];
+    $hPh = implode(',', array_fill(0, count($homeTeams), '?'));
+    $aPh = implode(',', array_fill(0, count($awayTeams), '?'));
+    $stmt = $pdo->prepare("
+        SELECT
+            CASE
+                WHEN g.home_team IN ($hPh) AND g.away_team IN ($aPh) AND g.home_points > g.away_points THEN 'H'
+                WHEN g.away_team IN ($hPh) AND g.home_team IN ($aPh) AND g.away_points > g.home_points THEN 'H'
+                WHEN g.home_team IN ($aPh) AND g.away_team IN ($hPh) AND g.home_points > g.away_points THEN 'A'
+                WHEN g.away_team IN ($aPh) AND g.home_team IN ($hPh) AND g.away_points > g.home_points THEN 'A'
+                ELSE 'T'
+            END AS winner
+        FROM games g
+        WHERE g.status_long IN ('Final','Finished')
+          AND g.date >= ?
+          AND ((g.home_team IN ($hPh) AND g.away_team IN ($aPh))
+               OR (g.home_team IN ($aPh) AND g.away_team IN ($hPh)))
+        ORDER BY g.date DESC, g.start_time DESC
+    ");
+    // CASE has 4 WHEN clauses: (h,a), (h,a), (a,h), (a,h) = 4h + 4a
+    // WHERE filter: (h,a), (a,h) = 2h + 2a  |  date >= ? = 1
+    // Total: 6h, 6a, 1 seasonStart
+    $stmt->execute(array_merge(
+        $homeTeams, $awayTeams,
+        $homeTeams, $awayTeams,
+        $awayTeams, $homeTeams,
+        $awayTeams, $homeTeams,
+        [$seasonStart],
+        $homeTeams, $awayTeams,
+        $awayTeams, $homeTeams
+    ));
+    $games = array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'winner');
+    if (empty($games) || $games[0] === 'T') return ['streak' => 0, 'leader' => null];
+    $leader = $games[0];
+    $streak = 0;
+    foreach ($games as $g) {
+        if ($g === $leader) $streak++;
+        else break;
+    }
+    return ['streak' => $streak, 'leader' => $leader === 'H' ? 'home' : 'away'];
+}
+
+// Helper: calculate current win streak for a participant's teams
+function calcWinStreak($pdo, $teamNames, $seasonStart) {
+    if (empty($teamNames)) return 0;
+    $ph = implode(',', array_fill(0, count($teamNames), '?'));
+    $stmt = $pdo->prepare("
+        SELECT
+            CASE
+                WHEN g.home_team IN ($ph) AND g.home_points > g.away_points THEN 'W'
+                WHEN g.away_team IN ($ph) AND g.away_points > g.home_points THEN 'W'
+                ELSE 'L'
+            END AS result
+        FROM games g
+        WHERE g.status_long IN ('Final','Finished')
+          AND g.date >= ?
+          AND (g.home_team IN ($ph) OR g.away_team IN ($ph))
+        ORDER BY g.date DESC, g.start_time DESC
+    ");
+    // CASE: ph x2 | WHERE: seasonStart, ph, ph => total 4x ph, 1x seasonStart
+    $stmt->execute(array_merge($teamNames, $teamNames, [$seasonStart], $teamNames, $teamNames));
+    $results = array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'result');
+    $s = calcCurrentStreak($results);
+    return $s['type'] === 'W' ? $s['count'] : 0;
+}
+
+// Calculate streaks
+$homeTeamNames = $homeParticipant ? getParticipantTeamNames($pdo, $homeParticipant['participant_id']) : [];
+$awayTeamNames = $awayParticipant ? getParticipantTeamNames($pdo, $awayParticipant['participant_id']) : [];
+
+$h2hStreak     = calcH2HStreak($pdo, $homeTeamNames, $awayTeamNames, $season['season_start_date']);
+$homeWinStreak = calcWinStreak($pdo, $homeTeamNames, $season['season_start_date']);
+$awayWinStreak = calcWinStreak($pdo, $awayTeamNames, $season['season_start_date']);
+
+// Determine bully badge tier (5=I, 10=II, 15=III)
+function bullyTier($streak) {
+    if ($streak >= 15) return ['tier' => 'III', 'icon' => 'fa-skull-crossbones', 'color' => '#ef4444'];
+    if ($streak >= 10) return ['tier' => 'II',  'icon' => 'fa-face-angry',       'color' => '#f97316'];
+    if ($streak >= 5)  return ['tier' => 'I',   'icon' => 'fa-hand-fist',        'color' => '#10b981'];
+    return null;
+}
+
+// Determine win streak badge tier (5=Heating Up, 10=On Fire, 15=Unstoppable)
+function winStreakTier($streak) {
+    if ($streak >= 15) return ['label' => 'Unstoppable', 'icon' => 'fa-bolt',      'color' => '#a855f7'];
+    if ($streak >= 10) return ['label' => 'On Fire',     'icon' => 'fa-fire',      'color' => '#ef4444'];
+    if ($streak >= 5)  return ['label' => 'Heating Up',  'icon' => 'fa-fire',      'color' => '#f59e0b'];
+    return null;
+}
+
+$sameParticipant = ($homeParticipant && $awayParticipant && $homeParticipant['participant_id'] === $awayParticipant['participant_id']);
+$homeBully    = (!$sameParticipant && $h2hStreak['leader'] === 'home') ? bullyTier($h2hStreak['streak']) : null;
+$awayBully    = (!$sameParticipant && $h2hStreak['leader'] === 'away') ? bullyTier($h2hStreak['streak']) : null;
+$homeWinBadge = winStreakTier($homeWinStreak);
+$awayWinBadge = winStreakTier($awayWinStreak);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -328,12 +461,12 @@ body {
 
 /* Desktop two-column layout */
 @media (min-width: 1100px) {
-    .app-container { max-width: 1280px; }
+    .app-container { max-width: 1400px; }
     .tc-two-col {
         display: grid;
         grid-template-columns: 1fr 1fr;
         grid-template-rows: auto 1fr;
-        gap: 14px;
+        gap: 20px;
         align-items: start;
     }
     .tc-col-left {
@@ -363,6 +496,28 @@ body {
     .tc-col-right::-webkit-scrollbar-thumb:hover {
         background: var(--text-muted);
     }
+
+    /* ---- Desktop size scale-up ---- */
+    .app-container { padding: 20px 24px 2rem; }
+    .logo-flip-container { width: 88px; height: 88px; }
+    .owner-photo-flip { width: 78px; height: 78px; }
+    .team-name-small { font-size: 1.4rem; }
+    .team-record { font-size: 1.9rem; }
+    .team-owner-small { font-size: 0.95rem; }
+    .match-card, .h2h-card { padding: 2rem 2rem 1.5rem; }
+    .game-time-info { font-size: 1rem; padding: 0.6rem 1rem; }
+    .vs-divider { font-size: 1.1rem; }
+    /* Stats table */
+    .stats-table td { padding: 1rem 1rem; font-size: 1.05rem; }
+    .stats-table .stat-label { font-size: 0.9rem; }
+    .stats-header { padding: 1.1rem 1.4rem; font-size: 1.2rem; }
+    /* H2H matchup rows */
+    .h2h-row { padding: 1rem 1.4rem; font-size: 1rem; }
+    .h2h-score { font-size: 1rem; }
+    .h2h-team-logo { width: 28px; height: 28px; }
+    .h2h-date { font-size: 0.88rem; }
+    /* Section headers */
+    .section-header { padding: 1rem 1.4rem; font-size: 1.15rem; }
 }
 @media (max-width: 1099px) {
     .tc-two-col {
@@ -420,11 +575,16 @@ body {
     padding: 1.5rem;
     margin-bottom: 0.75rem;
     border-radius: var(--radius-md);
-    overflow: hidden;
+    overflow: visible;
     min-height: 90px;
     display: flex;
     align-items: center;
     background: transparent;
+}
+/* Re-clip only the background pseudo-element */
+.team-row::before {
+    border-radius: var(--radius-md);
+    overflow: hidden;
 }
 .team-row:last-of-type { margin-bottom: 0; }
 
@@ -506,6 +666,55 @@ body {
 }
 .logo-flip-container .team-logo-visible {
     filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.3));
+}
+
+/* Streak badge overlays on team logos */
+.logo-badge-wrap {
+    position: relative;
+    display: inline-block;
+}
+.streak-badge {
+    position: absolute;
+    bottom: -4px;
+    right: -6px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 900;
+    border: 2px solid var(--bg-card, #1a2332);
+    z-index: 2;
+    cursor: default;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+.streak-badge.bully-badge { bottom: -4px; right: -6px; }
+.streak-badge.win-badge   { bottom: 12px; right: -6px; }
+.streak-badge-tooltip {
+    position: absolute;
+    bottom: 28px;
+    right: -10px;
+    background: rgba(10,15,25,0.95);
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 600;
+    white-space: nowrap;
+    padding: 4px 8px;
+    border-radius: 6px;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    z-index: 10;
+}
+.streak-badge:hover .streak-badge-tooltip { opacity: 1; transform: translateY(0); }
+
+/* Home team is on the left — flip tooltip to open rightward */
+.home-team .streak-badge-tooltip {
+    right: auto;
+    left: -10px;
 }
 
 .team-name-small {
@@ -941,22 +1150,36 @@ body {
             <img src="<?= htmlspecialchars(getTeamLogo($game['home_team_name'])) ?>" alt=""
                  class="team-logo-background" onerror="this.style.display='none'">
             <div class="team-info-left">
+                <div class="logo-badge-wrap">
                 <a href="/nba-wins-platform/stats/team_data.php?team=<?= urlencode($game['home_team_name']) ?>">
                     <div class="logo-flip-container">
                         <div class="logo-flip-inner">
                             <div class="logo-flip-front">
-                                <img src="<?= htmlspecialchars(getTeamLogo($game['home_team_name'])) ?>"
-                                     alt="<?= htmlspecialchars($game['home_team_name']) ?>"
-                                     class="team-logo-visible" onerror="this.style.opacity='0.3'">
-                            </div>
-                            <div class="logo-flip-back">
                                 <img src="<?= htmlspecialchars($game['home_photo_url']) ?>" alt=""
                                      class="owner-photo-flip"
                                      onerror="this.src='<?= $photoBase ?>default.png'">
                             </div>
+                            <div class="logo-flip-back">
+                                <img src="<?= htmlspecialchars(getTeamLogo($game['home_team_name'])) ?>"
+                                     alt="<?= htmlspecialchars($game['home_team_name']) ?>"
+                                     class="team-logo-visible" onerror="this.style.opacity='0.3'">
+                            </div>
                         </div>
                     </div>
                 </a>
+                <?php if ($homeBully): ?>
+                    <span class="streak-badge bully-badge" style="background:<?= $homeBully['color'] ?>;">
+                        <i class="fas <?= $homeBully['icon'] ?>"></i>
+                        <span class="streak-badge-tooltip">Bully <?= $homeBully['tier'] ?> · <?= $h2hStreak['streak'] ?> H2H wins</span>
+                    </span>
+                <?php endif; ?>
+                <?php if ($homeWinBadge): ?>
+                    <span class="streak-badge win-badge" style="background:<?= $homeWinBadge['color'] ?>;">
+                        <i class="fas <?= $homeWinBadge['icon'] ?>"></i>
+                        <span class="streak-badge-tooltip"><?= $homeWinBadge['label'] ?> · <?= $homeWinStreak ?> win streak</span>
+                    </span>
+                <?php endif; ?>
+                </div>
                 <div>
                     <div class="team-name-small"><?= htmlspecialchars($game['home_team_name']) ?></div>
                     <div class="team-record"><?= $game['home_wins'] ?>-<?= $game['home_losses'] ?></div>
@@ -974,22 +1197,36 @@ body {
             <img src="<?= htmlspecialchars(getTeamLogo($game['away_team_name'])) ?>" alt=""
                  class="team-logo-background" onerror="this.style.display='none'">
             <div class="team-info-right">
+                <div class="logo-badge-wrap">
                 <a href="/nba-wins-platform/stats/team_data.php?team=<?= urlencode($game['away_team_name']) ?>">
                     <div class="logo-flip-container">
                         <div class="logo-flip-inner">
                             <div class="logo-flip-front">
-                                <img src="<?= htmlspecialchars(getTeamLogo($game['away_team_name'])) ?>"
-                                     alt="<?= htmlspecialchars($game['away_team_name']) ?>"
-                                     class="team-logo-visible" onerror="this.style.opacity='0.3'">
-                            </div>
-                            <div class="logo-flip-back">
                                 <img src="<?= htmlspecialchars($game['away_photo_url']) ?>" alt=""
                                      class="owner-photo-flip"
                                      onerror="this.src='<?= $photoBase ?>default.png'">
                             </div>
+                            <div class="logo-flip-back">
+                                <img src="<?= htmlspecialchars(getTeamLogo($game['away_team_name'])) ?>"
+                                     alt="<?= htmlspecialchars($game['away_team_name']) ?>"
+                                     class="team-logo-visible" onerror="this.style.opacity='0.3'">
+                            </div>
                         </div>
                     </div>
                 </a>
+                <?php if ($awayBully): ?>
+                    <span class="streak-badge bully-badge" style="background:<?= $awayBully['color'] ?>;">
+                        <i class="fas <?= $awayBully['icon'] ?>"></i>
+                        <span class="streak-badge-tooltip">Bully <?= $awayBully['tier'] ?> · <?= $h2hStreak['streak'] ?> H2H wins</span>
+                    </span>
+                <?php endif; ?>
+                <?php if ($awayWinBadge): ?>
+                    <span class="streak-badge win-badge" style="background:<?= $awayWinBadge['color'] ?>;">
+                        <i class="fas <?= $awayWinBadge['icon'] ?>"></i>
+                        <span class="streak-badge-tooltip"><?= $awayWinBadge['label'] ?> · <?= $awayWinStreak ?> win streak</span>
+                    </span>
+                <?php endif; ?>
+                </div>
                 <div>
                     <div class="team-name-small"><?= htmlspecialchars($game['away_team_name']) ?></div>
                     <div class="team-record"><?= $game['away_wins'] ?>-<?= $game['away_losses'] ?></div>

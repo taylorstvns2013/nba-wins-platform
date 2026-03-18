@@ -482,13 +482,13 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
 
     .team-records td {
         padding: 10px 12px;
-        border-bottom: 1px solid var(--border-subtle);
         font-size: 14px;
     }
 
     .team-records tbody tr {
         transition: background var(--transition-fast);
         opacity: 0;
+        border-bottom: 1px solid var(--border-subtle);
     }
 
     .team-records tbody tr.eliminated {
@@ -499,12 +499,12 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
         background: var(--bg-card-hover);
     }
 
-    .team-records tbody tr:last-child td {
+    .team-records tbody tr:last-child {
         border-bottom: none;
     }
 
     /* Playoff cutoff line after 6th */
-    .team-records tbody tr:nth-child(6) td {
+    .team-records tbody tr:nth-child(6) {
         border-bottom: 1px dashed var(--border-cutoff);
     }
 
@@ -1119,11 +1119,17 @@ $westTeams = applyTieBreakers($pdo, $westTeams, 'Western Conference', $team_to_d
     }
 
     // Handle resize (switching between mobile/desktop)
+    // Track width only — mobile browsers fire resize when address bar
+    // shows/hides (height change), which would re-trigger the cascade animation
     var resizeTimer;
+    var lastResizeWidth = window.innerWidth;
     window.addEventListener('resize', function() {
+        var newWidth = window.innerWidth;
+        if (newWidth === lastResizeWidth) return; // height-only change, ignore
+        lastResizeWidth = newWidth;
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(function() {
-            if (window.innerWidth > 700) {
+            if (newWidth > 700) {
                 // Desktop: show both
                 document.querySelector('.conference.eastern').classList.remove('mobile-hidden');
                 document.querySelector('.conference.western').classList.remove('mobile-hidden');

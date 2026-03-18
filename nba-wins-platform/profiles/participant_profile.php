@@ -732,15 +732,40 @@ $badgeCalc->calculateAndStoreBadges(
     $total_wins,
     $total_losses
 );
-$earnedBadges = $badgeCalc->getBadges($participant['user_id'], $league_id);
-$badgeDefs    = BadgeCalculator::BADGE_DEFINITIONS;
+$earnedBadges  = $badgeCalc->getBadges($participant['user_id'], $league_id);
+$badgeProgress = $badgeCalc->getProgress($participant['id'], $league_id, $earnedBadges, $total_wins, $total_losses);
+$badgeDefs     = BadgeCalculator::BADGE_DEFINITIONS;
+
+// Precompute the single next unearned badge per streak direction
+// Only this badge will show the active progress bar
+// Determine which streak badge to show the progress bar on based on current streak VALUE
+// (e.g. streak of 3 → Heating Up, streak of 7 → On Fire, streak of 13 → Unstoppable)
+// This is independent of earned status — show progress toward whatever threshold you're approaching
+$_curWinStreak  = $badgeProgress['win_streak_5']['current']  ?? 0;
+$_curLossStreak = $badgeProgress['loss_streak_5']['current'] ?? 0;
+$_curBully      = $badgeProgress['bully_5']['current']       ?? 0;
+
+$winStreakTarget = null;
+if ($_curWinStreak >= 10)      $winStreakTarget = 'win_streak_15';
+elseif ($_curWinStreak >= 5)   $winStreakTarget = 'win_streak_10';
+elseif ($_curWinStreak >= 1)   $winStreakTarget = 'win_streak_5';
+
+$lossStreakTarget = null;
+if ($_curLossStreak >= 10)     $lossStreakTarget = 'loss_streak_15';
+elseif ($_curLossStreak >= 5)  $lossStreakTarget = 'loss_streak_10';
+elseif ($_curLossStreak >= 1)  $lossStreakTarget = 'loss_streak_5';
+
+$bullyStreakTarget = null;
+if ($_curBully >= 10)          $bullyStreakTarget = 'bully_15';
+elseif ($_curBully >= 5)       $bullyStreakTarget = 'bully_10';
+elseif ($_curBully >= 1)       $bullyStreakTarget = 'bully_5';
 
 // Group badges by category for display
 $badgeCategories = [
     'streaks'     => ['label' => 'Streaks',       'keys' => ['win_streak_5','win_streak_10','win_streak_15','loss_streak_5','loss_streak_10','loss_streak_15']],
     'weekly'      => ['label' => 'Weekly',         'keys' => ['week_dominator','perfect_week']],
-    'milestones'  => ['label' => 'Milestones',     'keys' => ['wins_100','wins_200','wins_300']],
-    'performance' => ['label' => 'Performance',    'keys' => ['elite_roster','hot_hand']],
+    'milestones'  => ['label' => 'Milestones',     'keys' => ['wins_100','wins_200','wins_300','weeks_lead_10','weeks_lead_15','weeks_lead_20']],
+    'performance' => ['label' => 'Performance',    'keys' => ['elite_roster','hot_hand','comeback_20']],
     'rivals'      => ['label' => 'Rivals',         'keys' => ['bully_5','bully_10','bully_15','rivalmaster']],
     'draft'       => ['label' => 'Draft & Teams',  'keys' => ['sleeper_pick','clean_sweep']],
     'profile'     => ['label' => 'Profile',        'keys' => ['loyal_fan']],
@@ -1537,13 +1562,34 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
     }
 }
 
+.badge-category {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    padding: 14px 14px 12px;
+}
+
 .badge-category-label {
-    font-size: 0.78rem;
+    font-size: 0.7rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.1em;
     color: var(--text-muted);
-    margin-bottom: 10px;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.badge-category-label::before {
+    content: '';
+    display: inline-block;
+    width: 3px;
+    height: 12px;
+    border-radius: 2px;
+    background: var(--accent-blue, #3b82f6);
+    flex-shrink: 0;
 }
 
 .badge-grid {
@@ -1616,6 +1662,40 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
     padding: 1px 6px;
     color: var(--text-muted);
     line-height: 1.4;
+}
+
+.badge-active-streak {
+    font-size: 0.6rem;
+    font-weight: 700;
+    border-radius: 8px;
+    padding: 2px 6px;
+    line-height: 1.4;
+    background: rgba(245, 158, 11, 0.18);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    white-space: nowrap;
+}
+
+.badge-progress-bar-wrap {
+    width: 80%;
+    height: 4px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 2px;
+    margin-top: 5px;
+    overflow: hidden;
+}
+.badge-progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4b82f8, #818cf8);
+    border-radius: 2px;
+    transition: width 0.4s ease;
+}
+.badge-progress-label {
+    font-size: 0.6rem;
+    color: #6b7280;
+    margin-top: 3px;
+    line-height: 1.2;
+    text-align: center;
 }
 
 /* Badge Popup Modal */
@@ -2438,6 +2518,12 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
                         if ($key === 'elite_roster' && isset($data['metadata']['win_pct'])) {
                             $popupDate .= ($popupDate ? ' · ' : '') . $data['metadata']['win_pct'] . '% win rate (' . $data['metadata']['games'] . ' games)';
                         }
+                        if (in_array($key, ['weeks_lead_10','weeks_lead_15','weeks_lead_20']) && isset($data['metadata']['weeks_led'])) {
+                            $popupDate .= ($popupDate ? ' · ' : '') . $data['metadata']['weeks_led'] . ' weeks (' . ($data['metadata']['days_led'] ?? '?') . ' days in first)';
+                        }
+                        if ($key === 'comeback_20' && isset($data['metadata']['max_deficit'])) {
+                            $popupDate .= ($popupDate ? ' · ' : '') . 'Max deficit: ' . $data['metadata']['max_deficit'] . ' wins';
+                        }
                         if ($def['repeatable'] && $data['times_earned'] > 1) {
                             $popupDate .= ($popupDate ? ' · ' : '') . 'Earned ' . $data['times_earned'] . 'x';
                         }
@@ -2456,6 +2542,13 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
                      data-badge-color="<?= htmlspecialchars($def['color']) ?>"
                      data-badge-glow="<?= htmlspecialchars($def['glow']) ?>"
                      data-badge-earned="<?= $earned ? '1' : '0' ?>"
+                     data-badge-key="<?= htmlspecialchars($key) ?>"
+                     data-badge-streak="<?= ($earned && isset($data['metadata']['current_streak'])) ? (int)$data['metadata']['current_streak'] : 0 ?>"
+                     data-badge-streak-type="<?= ($earned && isset($data['metadata']['current_type'])) ? htmlspecialchars($data['metadata']['current_type']) : '' ?>"
+                     data-badge-streak-opp="<?= ($earned && isset($data['metadata']['current_opp_name'])) ? htmlspecialchars($data['metadata']['current_opp_name']) : '' ?>"
+                     <?php if (!$earned && isset($badgeProgress[$key])): ?>
+                     data-badge-progress="<?= htmlspecialchars(json_encode($badgeProgress[$key])) ?>"
+                     <?php endif; ?>
                      style="<?= $earned ? '--badge-glow: ' . $def['glow'] . ';' : '' ?>">
                     <div class="badge-icon-wrap" style="<?= $iconBg ?>">
                         <i class="fas <?= $def['icon'] ?>"></i>
@@ -2463,6 +2556,42 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
                     <span class="badge-name"><?= htmlspecialchars($def['name']) ?></span>
                     <?php if ($earned && $def['repeatable'] && $data['times_earned'] > 1): ?>
                         <span class="badge-count">×<?= $data['times_earned'] ?></span>
+                    <?php endif; ?>
+                    <?php
+                        // Show progress bar only on the single next unearned streak/bully badge.
+                        // Show progress bar on the badge matching the current streak range.
+                        // Works on earned AND unearned — streak of 7 shows 7/10 on On Fire even if earned.
+                        $isWinStreak  = in_array($key, ['win_streak_5','win_streak_10','win_streak_15']);
+                        $isLossStreak = in_array($key, ['loss_streak_5','loss_streak_10','loss_streak_15']);
+                        $isBully      = in_array($key, ['bully_5','bully_10','bully_15']);
+
+                        $showStreakProgress = isset($badgeProgress[$key]) && (
+                            ($isWinStreak  && $key === $winStreakTarget)  ||
+                            ($isLossStreak && $key === $lossStreakTarget) ||
+                            ($isBully      && $key === $bullyStreakTarget)
+                        );
+                        $showNormalProgress = !$earned && !$isWinStreak && !$isLossStreak && !$isBully && isset($badgeProgress[$key]);
+
+                        if ($showStreakProgress):
+                            $prog = $badgeProgress[$key];
+                            $pct  = min(100, round(($prog['current'] / max(1, $prog['target'])) * 100));
+                            $streakProgressLabel = $prog['current'] . ' / ' . $prog['target'];
+                            if ($isBully && !empty($prog['opp_name'])) {
+                                $streakProgressLabel .= ' vs ' . $prog['opp_name'];
+                            }
+                    ?>
+                        <div class="badge-progress-bar-wrap">
+                            <div class="badge-progress-bar-fill" style="width:<?= $pct ?>%"></div>
+                        </div>
+                        <span class="badge-progress-label"><?= htmlspecialchars($streakProgressLabel) ?></span>
+                    <?php elseif ($showNormalProgress):
+                            $prog = $badgeProgress[$key];
+                            $pct  = min(100, round(($prog['current'] / max(1, $prog['target'])) * 100));
+                    ?>
+                        <div class="badge-progress-bar-wrap">
+                            <div class="badge-progress-bar-fill" style="width:<?= $pct ?>%"></div>
+                        </div>
+                        <span class="badge-progress-label"><?= htmlspecialchars($prog['label']) ?></span>
                     <?php endif; ?>
                 </div>
                 <?php endforeach; ?>
@@ -2759,17 +2888,25 @@ document.addEventListener('DOMContentLoaded', function() {
         <div id="badge-modal-name"></div>
         <div id="badge-modal-desc"></div>
         <div id="badge-modal-date"></div>
+        <div id="badge-modal-streak" style="display:none; font-size:0.75rem; color:#9ca3af; margin-top:6px; text-align:center;"></div>
+        <div id="badge-modal-progress" style="display:none; width:100%; margin-top:10px;">
+            <div style="width:100%; height:6px; background:rgba(255,255,255,0.08); border-radius:3px; overflow:hidden;">
+                <div id="badge-modal-progress-fill" style="height:100%; border-radius:3px; background:linear-gradient(90deg,#4b82f8,#818cf8); transition:width 0.4s ease;"></div>
+            </div>
+            <div id="badge-modal-progress-label" style="font-size:0.75rem; color:#6b7280; margin-top:6px; text-align:center;"></div>
+        </div>
     </div>
 </div>
 <script>
 function openBadgePopup(el) {
-    var earned  = el.dataset.badgeEarned === '1';
-    var color   = el.dataset.badgeColor;
-    var glow    = el.dataset.badgeGlow;
-    var icon    = el.dataset.badgeIcon;
-    var name    = el.dataset.badgeName;
-    var desc    = el.dataset.badgeDesc;
-    var date    = el.dataset.badgeDate;
+    var earned   = el.dataset.badgeEarned === '1';
+    var color    = el.dataset.badgeColor;
+    var glow     = el.dataset.badgeGlow;
+    var icon     = el.dataset.badgeIcon;
+    var name     = el.dataset.badgeName;
+    var desc     = el.dataset.badgeDesc;
+    var date     = el.dataset.badgeDate;
+    var progData = el.dataset.badgeProgress ? JSON.parse(el.dataset.badgeProgress) : null;
 
     var wrap = document.getElementById('badge-modal-icon-wrap');
     var iconEl = document.getElementById('badge-modal-icon-i');
@@ -2789,6 +2926,14 @@ function openBadgePopup(el) {
     document.getElementById('badge-modal-desc').textContent = desc;
 
     var dateEl = document.getElementById('badge-modal-date');
+    var streakKeys = ['win_streak_5','win_streak_10','win_streak_15','loss_streak_5','loss_streak_10','loss_streak_15','bully_5','bully_10','bully_15'];
+    var bullyKeys  = ['bully_5','bully_10','bully_15'];
+    var badgeKey   = el.dataset.badgeKey || '';
+    var curStreak  = parseInt(el.dataset.badgeStreak) || 0;
+    var curType    = el.dataset.badgeStreakType || '';
+    var curOpp     = el.dataset.badgeStreakOpp || '';
+    var progData   = el.dataset.badgeProgress ? JSON.parse(el.dataset.badgeProgress) : null;
+
     if (earned && date) {
         dateEl.textContent = date;
         dateEl.className = 'earned-date';
@@ -2802,6 +2947,32 @@ function openBadgePopup(el) {
     } else {
         dateEl.textContent = '';
         dateEl.className = '';
+    }
+
+    // Active streak — own line, no emoji
+    var streakEl = document.getElementById('badge-modal-streak');
+    if (earned && curStreak > 0 && streakKeys.indexOf(badgeKey) !== -1) {
+        var isBullyBadge = bullyKeys.indexOf(badgeKey) !== -1;
+        var streakType   = isBullyBadge ? 'H2H' : (curType === 'W' ? 'win' : 'loss');
+        var streakText   = curStreak + ' game active ' + streakType + ' streak';
+        if (isBullyBadge && curOpp) {
+            streakText += ' vs ' + curOpp;
+        }
+        streakEl.textContent = streakText;
+        streakEl.style.display = 'block';
+    } else {
+        streakEl.style.display = 'none';
+    }
+
+    // Progress bar
+    var progWrap = document.getElementById('badge-modal-progress');
+    if (!earned && progData) {
+        var pct = Math.min(100, Math.round((progData.current / Math.max(1, progData.target)) * 100));
+        document.getElementById('badge-modal-progress-fill').style.width = pct + '%';
+        document.getElementById('badge-modal-progress-label').textContent = progData.label;
+        progWrap.style.display = 'block';
+    } else {
+        progWrap.style.display = 'none';
     }
 
     document.getElementById('badge-modal-overlay').classList.add('open');

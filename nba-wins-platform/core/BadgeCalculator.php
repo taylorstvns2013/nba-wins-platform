@@ -139,6 +139,46 @@ class BadgeCalculator {
             'category'   => 'milestones',
         ],
 
+        // --- Weeks in the Lead ---
+        'weeks_lead_10'  => [
+            'name'       => 'Floor General',
+            'desc'       => 'Led the league for 5 weeks (35 days in first)',
+            'icon'       => 'fa-award',
+            'color'      => '#f59e0b',
+            'glow'       => 'rgba(245, 158, 11, 0.4)',
+            'repeatable' => false,
+            'category'   => 'milestones',
+        ],
+        'weeks_lead_15'  => [
+            'name'       => 'Top Dog',
+            'desc'       => 'Led the league for 10 weeks (70 days in first)',
+            'icon'       => 'fa-certificate',
+            'color'      => '#f97316',
+            'glow'       => 'rgba(249, 115, 22, 0.4)',
+            'repeatable' => false,
+            'category'   => 'milestones',
+        ],
+        'weeks_lead_20'  => [
+            'name'       => 'Running the League',
+            'desc'       => 'Led the league for 15 weeks (105 days in first)',
+            'icon'       => 'fa-medal',
+            'color'      => '#a855f7',
+            'glow'       => 'rgba(168, 85, 247, 0.4)',
+            'repeatable' => false,
+            'category'   => 'milestones',
+        ],
+
+        // --- Comeback ---
+        'comeback_20'    => [
+            'name'       => 'Why Do I Do This',
+            'desc'       => 'Reached first place after trailing the leader by 20+ wins',
+            'icon'       => 'fa-person-running',
+            'color'      => '#10b981',
+            'glow'       => 'rgba(16, 185, 129, 0.4)',
+            'repeatable' => false,
+            'category'   => 'performance',
+        ],
+
         // --- Win Rate ---
         'elite_roster'   => [
             'name'       => 'Elite Roster',
@@ -256,8 +296,9 @@ class BadgeCalculator {
         $allGames = $this->getAllGames($teamNames);
         $streakBadges = $this->calculateStreakBadges($allGames);
         foreach ($streakBadges as $key => $data) {
+            if ($key === '_current') continue; // internal tracking only
             if ($data['times'] > 0) {
-                $this->storeBadge($user_id, $league_id, $key, $data['earned_at'], $data['times'], $data['metadata']);
+                $this->storeBadge($user_id, $league_id, $key, $data['earned_at'], $data['times'], $data['metadata'], true);
             }
         }
 
@@ -265,7 +306,7 @@ class BadgeCalculator {
         $weeklyBadges = $this->calculateWeeklyBadges($participant_id, $league_id, $teamNames);
         foreach ($weeklyBadges as $key => $data) {
             if ($data['times'] > 0) {
-                $this->storeBadge($user_id, $league_id, $key, $data['earned_at'], $data['times'], $data['metadata']);
+                $this->storeBadge($user_id, $league_id, $key, $data['earned_at'], $data['times'], $data['metadata'], true);
             }
         }
 
@@ -299,14 +340,13 @@ class BadgeCalculator {
 
         // Head-to-head badges
         $h2hBadges = $this->calculateH2HBadges($participant_id, $league_id, $teamNames);
-        // Bully tiers are repeatable — already stored inside calculateH2HBadges with times/earned_at,
-        // but we need to re-store with the correct user_id/league_id context here
         foreach (['bully_5', 'bully_10', 'bully_15'] as $key) {
             if (isset($h2hBadges[$key])) {
                 $this->storeBadge($user_id, $league_id, $key,
                     $h2hBadges[$key]['earned_at'],
                     $h2hBadges[$key]['times'],
-                    null
+                    $h2hBadges[$key]['metadata'] ?? null,
+                    true
                 );
             }
         }
@@ -322,6 +362,32 @@ class BadgeCalculator {
         // Profile badge
         if (!empty($profile_photo)) {
             $this->storeBadge($user_id, $league_id, 'loyal_fan', date('Y-m-d H:i:s'), 1, null);
+        }
+
+        // Weeks in the lead
+        $weeksLed = $this->calculateWeeksInLead($participant_id, $league_id);
+        foreach ([5 => 'weeks_lead_10', 10 => 'weeks_lead_15', 15 => 'weeks_lead_20'] as $threshold => $key) {
+            if ($weeksLed['count'] >= $threshold) {
+                $earnedDate = $weeksLed['threshold_dates'][$threshold] ?? date('Y-m-d');
+                $this->storeBadge($user_id, $league_id, $key, $earnedDate, 1, [
+                    'weeks_led'      => $weeksLed['count'],
+                    'days_led'       => $weeksLed['days'],
+                    'achieved_date'  => $earnedDate,
+                ]);
+            } else {
+                $this->deleteBadge($user_id, $league_id, $key);
+            }
+        }
+
+        // Comeback: reached first place after trailing by 20+ wins
+        $comeback = $this->calculateComeback20($participant_id, $league_id);
+        if ($comeback['achieved']) {
+            $this->storeBadge($user_id, $league_id, 'comeback_20', $comeback['date'], 1, [
+                'achieved_date' => $comeback['date'],
+                'max_deficit'   => $comeback['max_deficit'],
+            ]);
+        } else {
+            $this->deleteBadge($user_id, $league_id, 'comeback_20');
         }
     }
 
@@ -345,6 +411,93 @@ class BadgeCalculator {
             ];
         }
         return $result;
+    }
+
+    /**
+     * Returns current progress values for trackable badges.
+     * Used to show progress bars on locked badges.
+     * Keys: badge_key => ['current' => N, 'target' => N, 'label' => string]
+     */
+    public function getProgress($participant_id, $league_id, $earned_badges, $standings_wins = null, $standings_losses = null) {
+        $teams     = $this->getParticipantTeams($participant_id);
+        $teamNames = array_column($teams, 'team_name');
+        $progress  = [];
+
+        // Win milestones — use standings-based wins if available
+        $totalWins = ($standings_wins !== null) ? (int)$standings_wins : $this->getTotalWins($teamNames);
+        foreach ([100 => 'wins_100', 200 => 'wins_200', 300 => 'wins_300'] as $target => $key) {
+            if (!isset($earned_badges[$key])) {
+                $progress[$key] = [
+                    'current' => $totalWins,
+                    'target'  => $target,
+                    'label'   => $totalWins . ' / ' . $target . ' wins',
+                ];
+            }
+        }
+
+        // Win/loss streaks — always populate ALL entries so profile can pick
+        // the correct target badge based on current streak range
+        $allGames     = $this->getAllGames($teamNames);
+        $streakBadges = $this->calculateStreakBadges($allGames);
+        $curStreak    = $streakBadges['_current']['streak'] ?? 0;
+        $curType      = $streakBadges['_current']['type'] ?? null;
+        $curWinStreak  = ($curType === 'W') ? $curStreak : 0;
+        $curLossStreak = ($curType === 'L') ? $curStreak : 0;
+
+        foreach ([5 => 'win_streak_5', 10 => 'win_streak_10', 15 => 'win_streak_15'] as $target => $key) {
+            $progress[$key] = [
+                'current' => $curWinStreak,
+                'target'  => $target,
+                'label'   => $curWinStreak . ' / ' . $target,
+            ];
+        }
+        foreach ([5 => 'loss_streak_5', 10 => 'loss_streak_10', 15 => 'loss_streak_15'] as $target => $key) {
+            $progress[$key] = [
+                'current' => $curLossStreak,
+                'target'  => $target,
+                'label'   => $curLossStreak . ' / ' . $target,
+            ];
+        }
+
+        // Bully streaks — always populate all entries
+        $h2hBadges   = $this->calculateH2HBadges($participant_id, $league_id, $teamNames);
+        $curBully     = $h2hBadges['_current_bully'] ?? 0;
+        $curBullyOpp  = $h2hBadges['_current_bully_opp_name'] ?? null;
+        foreach ([5 => 'bully_5', 10 => 'bully_10', 15 => 'bully_15'] as $target => $key) {
+            $progress[$key] = [
+                'current'  => $curBully,
+                'target'   => $target,
+                'label'    => $curBully . ' / ' . $target . ($curBullyOpp ? ' vs ' . $curBullyOpp : ''),
+                'opp_name' => $curBullyOpp,
+            ];
+        }
+
+        // Weeks in lead
+        $weeksLed = $this->calculateWeeksInLead($participant_id, $league_id);
+        foreach ([5 => 'weeks_lead_10', 10 => 'weeks_lead_15', 15 => 'weeks_lead_20'] as $target => $key) {
+            if (!isset($earned_badges[$key])) {
+                $progress[$key] = [
+                    'current' => $weeksLed['count'],
+                    'target'  => $target,
+                    'label'   => $weeksLed['count'] . ' / ' . $target . ' weeks (' . $weeksLed['days'] . ' days in first)',
+                ];
+            }
+        }
+
+        // Comeback 20 — show max deficit seen so far
+        if (!isset($earned_badges['comeback_20'])) {
+            $comeback = $this->calculateComeback20($participant_id, $league_id);
+            $deficit  = $comeback['max_deficit'] ?? 0;
+            $progress['comeback_20'] = [
+                'current' => $deficit,
+                'target'  => 20,
+                'label'   => $deficit >= 20
+                    ? 'Max deficit reached — waiting to claim first'
+                    : 'Max deficit: ' . $deficit . ' wins behind (need 20+)',
+            ];
+        }
+
+        return $progress;
     }
 
     // =========================================================================
@@ -476,6 +629,7 @@ class BadgeCalculator {
     /**
      * Walk full game history to detect ALL streak milestones, not just the current one.
      * Awards once per streak crossing each threshold within a continuous run.
+     * Also returns current_streak and current_type for live streak display.
      */
     private function calculateStreakBadges($allGames) {
         $badges = [];
@@ -514,6 +668,20 @@ class BadgeCalculator {
                 }
             }
         }
+
+        // Attach current live streak to any relevant earned badges
+        if ($currentStreak > 0 && $currentType !== null) {
+            $activeKeys = ($currentType === 'W')
+                ? ['win_streak_5', 'win_streak_10', 'win_streak_15']
+                : ['loss_streak_5', 'loss_streak_10', 'loss_streak_15'];
+            foreach ($activeKeys as $key) {
+                $badges[$key]['metadata']['current_streak'] = $currentStreak;
+                $badges[$key]['metadata']['current_type']   = $currentType;
+            }
+        }
+
+        // Store overall current streak for progress tracking on unearned badges
+        $badges['_current'] = ['streak' => $currentStreak, 'type' => $currentType];
 
         return $badges;
     }
@@ -651,6 +819,8 @@ class BadgeCalculator {
         $bullyTimes = ['bully_5' => 0, 'bully_10' => 0, 'bully_15' => 0];
         $bullyEarnedAt = ['bully_5' => null, 'bully_10' => null, 'bully_15' => null];
         $rivalMasterEarned = false;
+        $maxCurrentBullyStreak = 0; // highest active bully streak vs any opponent
+        $maxCurrentBullyOppId  = null; // opponent that streak is against
 
         foreach ($opponents as $oppId) {
             $oppTeams = $this->getParticipantTeamNames($oppId);
@@ -708,6 +878,12 @@ class BadgeCalculator {
                 }
             }
 
+            // Track the highest current active bully streak vs any single opponent
+            if ($currentStreak > $maxCurrentBullyStreak) {
+                $maxCurrentBullyStreak = $currentStreak;
+                $maxCurrentBullyOppId  = $oppId;
+            }
+
             // --- Rival Master: win differential >= 15 ---
             $myWins  = count(array_filter($h2hGames, function($g) { return $g["result"] === "W"; }));
             $theirWins = count($h2hGames) - $myWins;
@@ -716,15 +892,37 @@ class BadgeCalculator {
             }
         }
 
+        // Resolve the opponent name for the active bully streak
+        $maxCurrentBullyOppName = null;
+        if ($maxCurrentBullyOppId) {
+            $stmt = $this->pdo->prepare("
+                SELECT u.display_name
+                FROM league_participants lp
+                JOIN users u ON lp.user_id = u.id
+                WHERE lp.id = ?
+            ");
+            $stmt->execute([$maxCurrentBullyOppId]);
+            $row = $stmt->fetch();
+            $maxCurrentBullyOppName = $row ? $row['display_name'] : null;
+        }
+
         // Return earned badge data — storage handled by calculateAndStoreBadges
         foreach (['bully_5', 'bully_10', 'bully_15'] as $key) {
             if ($bullyTimes[$key] > 0) {
                 $earned[$key] = [
                     'times'     => $bullyTimes[$key],
                     'earned_at' => $bullyEarnedAt[$key],
+                    'metadata'  => [
+                        'current_streak'   => $maxCurrentBullyStreak,
+                        'current_opp_name' => $maxCurrentBullyOppName,
+                    ],
                 ];
             }
         }
+
+        // Also pass the current bully streak for progress tracking on unearned badges
+        $earned['_current_bully']          = $maxCurrentBullyStreak;
+        $earned['_current_bully_opp_name'] = $maxCurrentBullyOppName;
 
         if ($rivalMasterEarned) {
             $earned['rivalmaster'] = true;
@@ -781,6 +979,129 @@ class BadgeCalculator {
     // =========================================================================
 
     /**
+     * Count how many distinct calendar weeks this participant led the league
+     * (had the most total_wins on any day in that week).
+     */
+    private function calculateWeeksInLead($participant_id, $league_id) {
+        $stmt = $this->pdo->prepare("
+            SELECT lp.id
+            FROM league_participants lp
+            WHERE lp.league_id = ?
+        ");
+        $stmt->execute([$league_id]);
+        $allParticipantIds = array_column($stmt->fetchAll(), 'id');
+
+        if (empty($allParticipantIds)) return ['count' => 0, 'days' => 0, 'threshold_dates' => []];
+
+        $ph = implode(',', array_fill(0, count($allParticipantIds), '?'));
+
+        // Get every distinct date that has data, ordered chronologically
+        $stmt = $this->pdo->prepare("
+            SELECT DISTINCT date
+            FROM league_participant_daily_wins
+            WHERE league_participant_id IN ($ph)
+              AND date >= ?
+            ORDER BY date ASC
+        ");
+        $stmt->execute(array_merge($allParticipantIds, [$this->season['season_start_date']]));
+        $dates = array_column($stmt->fetchAll(), 'date');
+
+        $daysInFirst = 0;
+        // Track first date each week threshold (5/10/15) was crossed (in days: 35/70/105)
+        $thresholdDays = [35 => 5, 70 => 10, 105 => 15];
+        $thresholdDates = []; // keyed by week threshold e.g. [5 => '2025-12-01']
+
+        foreach ($dates as $date) {
+            $stmt2 = $this->pdo->prepare("
+                SELECT MAX(total_wins) as max_wins
+                FROM league_participant_daily_wins
+                WHERE date = ?
+                  AND league_participant_id IN ($ph)
+            ");
+            $stmt2->execute(array_merge([$date], $allParticipantIds));
+            $maxRow = $stmt2->fetch();
+            if (!$maxRow || !$maxRow['max_wins']) continue;
+
+            $stmt3 = $this->pdo->prepare("
+                SELECT total_wins FROM league_participant_daily_wins
+                WHERE date = ? AND league_participant_id = ?
+            ");
+            $stmt3->execute([$date, $participant_id]);
+            $myRow = $stmt3->fetch();
+
+            if ($myRow && (int)$myRow['total_wins'] >= (int)$maxRow['max_wins']) {
+                $daysInFirst++;
+                // Check if we just crossed a threshold for the first time
+                foreach ($thresholdDays as $dayThreshold => $weekThreshold) {
+                    if ($daysInFirst === $dayThreshold && !isset($thresholdDates[$weekThreshold])) {
+                        $thresholdDates[$weekThreshold] = $date;
+                    }
+                }
+            }
+        }
+
+        $weeksLed = floor($daysInFirst / 7);
+
+        return ['count' => $weeksLed, 'days' => $daysInFirst, 'threshold_dates' => $thresholdDates];
+    }
+
+    /**
+     * Check if participant ever reached first place after being 20+ wins behind the leader.
+     * "Reached first place" = tied or led at any subsequent date.
+     */
+    private function calculateComeback20($participant_id, $league_id) {
+        $stmt = $this->pdo->prepare("
+            SELECT lp.id
+            FROM league_participants lp
+            WHERE lp.league_id = ?
+        ");
+        $stmt->execute([$league_id]);
+        $allParticipantIds = array_column($stmt->fetchAll(), 'id');
+
+        if (empty($allParticipantIds)) return ['achieved' => false];
+
+        $ph = implode(',', array_fill(0, count($allParticipantIds), '?'));
+
+        // Get daily snapshot: this participant's wins + league leader's wins
+        $stmt = $this->pdo->prepare("
+            SELECT
+                w.date,
+                w.total_wins AS my_wins,
+                (SELECT MAX(w2.total_wins)
+                 FROM league_participant_daily_wins w2
+                 WHERE w2.date = w.date
+                   AND w2.league_participant_id IN ($ph)
+                ) AS leader_wins
+            FROM league_participant_daily_wins w
+            WHERE w.league_participant_id = ?
+              AND w.date >= ?
+            ORDER BY w.date ASC
+        ");
+        $stmt->execute(array_merge($allParticipantIds, [$participant_id, $this->season['season_start_date']]));
+        $rows = $stmt->fetchAll();
+
+        $maxDeficit = 0;
+        $hadBigDeficit = false;
+
+        foreach ($rows as $row) {
+            $deficit = (int)$row['leader_wins'] - (int)$row['my_wins'];
+            if ($deficit > $maxDeficit) $maxDeficit = $deficit;
+            if ($deficit >= 20) $hadBigDeficit = true;
+
+            // Once we've been 20+ behind, check if we ever tied/led
+            if ($hadBigDeficit && (int)$row['my_wins'] >= (int)$row['leader_wins']) {
+                return [
+                    'achieved'    => true,
+                    'date'        => $row['date'],
+                    'max_deficit' => $maxDeficit,
+                ];
+            }
+        }
+
+        return ['achieved' => false, 'max_deficit' => $maxDeficit];
+    }
+
+    /**
      * Find the first date in league_participant_daily_wins where total_wins >= threshold.
      */
     private function getMilestoneDateFromDailyWins($participant_id, $threshold) {
@@ -805,14 +1126,19 @@ class BadgeCalculator {
         $stmt->execute([$user_id, $league_id, $badge_key]);
     }
 
-    private function storeBadge($user_id, $league_id, $badge_key, $earned_at, $times_earned, $metadata) {
+    private function storeBadge($user_id, $league_id, $badge_key, $earned_at, $times_earned, $metadata, $keepLatest = false) {
         $metaJson = $metadata ? json_encode($metadata) : null;
+        // Repeatable badges: always update to most recent earned_at
+        // Milestone badges: preserve the earliest (first achievement) date
+        $dateLogic = $keepLatest
+            ? 'earned_at = VALUES(earned_at)'
+            : 'earned_at = IF(VALUES(earned_at) < earned_at, VALUES(earned_at), earned_at)';
         $stmt = $this->pdo->prepare("
             INSERT INTO user_badges (user_id, league_id, badge_key, earned_at, times_earned, metadata)
             VALUES (?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 times_earned = VALUES(times_earned),
-                earned_at    = VALUES(earned_at),
+                $dateLogic,
                 metadata     = VALUES(metadata)
         ");
         $stmt->execute([$user_id, $league_id, $badge_key, $earned_at, $times_earned, $metaJson]);
