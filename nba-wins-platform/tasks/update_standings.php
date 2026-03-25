@@ -5,10 +5,11 @@
 // Include database connection
 require_once(__DIR__ . '/../config/db_connection_cli.php');
 require_once(__DIR__ . '/../config/season_config.php');
+require_once(__DIR__ . '/../config/secrets.php');
 $season = getSeasonConfig();
 
 // RapidAPI configuration
-$rapidapi_key = 'RAPIDAPI_KEY_REMOVED';
+$rapidapi_key = RAPIDAPI_KEY;
 $rapidapi_host = 'api-nba-v1.p.rapidapi.com';
 
 // Set timezone to EST

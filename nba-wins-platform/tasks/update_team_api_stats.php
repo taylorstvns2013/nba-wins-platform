@@ -13,10 +13,11 @@
 
 require_once '/data/www/default/nba-wins-platform/config/db_connection_cli.php';
 require_once(__DIR__ . '/../config/season_config.php');
+require_once(__DIR__ . '/../config/secrets.php');
 $seasonConfig = getSeasonConfig();
 
 // RapidAPI Configuration
-$rapidapi_key = 'RAPIDAPI_KEY_REMOVED'; // Replace with your actual key
+$rapidapi_key = RAPIDAPI_KEY;
 $rapidapi_host = 'api-nba-v1.p.rapidapi.com';
 $season = $seasonConfig['api_season_rapid'];
 

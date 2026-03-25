@@ -5,11 +5,12 @@
 // Include CLI-specific database connection (no authentication system)
 require_once '/data/www/default/nba-wins-platform/config/db_connection_cli.php';
 require_once(__DIR__ . '/../config/season_config.php');
+require_once(__DIR__ . '/../config/secrets.php');
 $season = getSeasonConfig();
 
 // API details
 $api_host = 'api-nba-v1.p.rapidapi.com';
-$api_key = 'RAPIDAPI_KEY_REMOVED';
+$api_key = RAPIDAPI_KEY;
 
 // Function to check if a column exists
 function columnExists($pdo, $table, $column) {
@@ -48,8 +49,9 @@ function fetchAndStoreGames($pdo, $api_host, $api_key) {
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT => 30,  // Add timeout
         CURLOPT_HTTPHEADER => [
-            "X-RapidAPI-Host: $api_host",
-            "X-RapidAPI-Key: $api_key"
+            "Content-Type: application/json",
+            "x-rapidapi-host: $api_host",
+            "x-rapidapi-key: $api_key"
         ],
     ]);
 
