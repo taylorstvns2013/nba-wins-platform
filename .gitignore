@@ -7,6 +7,8 @@ trash/
 # Database credentials - NEVER commit
 nba-wins-platform/config/db_connection.php
 nba-wins-platform/config/db_connection_cli.php
+nba-wins-platform/config/secrets.php
+nba-wins-platform/config/db_secrets.py
 
 # Environment files
 *.env
