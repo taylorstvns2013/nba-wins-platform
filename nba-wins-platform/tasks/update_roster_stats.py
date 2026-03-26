@@ -7,6 +7,9 @@ from nba_api.stats.endpoints import commonteamroster
 import time
 import logging
 from datetime import datetime
+import sys
+sys.path.insert(0, '/data/www/default/nba-wins-platform/config')
+from db_secrets import DB_PASS as DB_PASSWORD
 
 # Set up logging
 logging.basicConfig(

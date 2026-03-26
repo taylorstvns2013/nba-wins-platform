@@ -5,6 +5,7 @@
 // Include CLI-specific database connection (no authentication system)
 require_once '/data/www/default/nba-wins-platform/config/db_connection_cli.php';
 require_once(__DIR__ . '/../config/season_config.php');
+require_once(__DIR__ . '/../config/secrets.php');
 $season = getSeasonConfig();
 
 // API details

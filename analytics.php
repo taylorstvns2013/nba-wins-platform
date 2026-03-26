@@ -2197,7 +2197,7 @@ function getChartOptions() {
                 itemSort: (a, b) => b.parsed.y - a.parsed.y,
                 callbacks: {
                     title: ctx => {
-                        const d = new Date(ctx[0].label);
+                        const [y,m,day] = ctx[0].label.split('-'); const d = new Date(y, m-1, day);
                         return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                     }
                 }
@@ -2225,7 +2225,7 @@ function getChartOptions() {
                     padding: 8,
                     color: '#545d68',
                     callback: function (v) {
-                        const d = new Date(this.getLabelForValue(v));
+                        const lbl = this.getLabelForValue(v); const [y,m,day] = lbl.split('-'); const d = new Date(y, m-1, day);
                         return (d.getMonth() + 1) + '/' + d.getDate();
                     }
                 }

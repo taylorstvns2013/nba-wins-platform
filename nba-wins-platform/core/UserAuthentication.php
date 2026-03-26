@@ -119,6 +119,13 @@ class UserAuthentication {
      */
     public function login($username, $password) {
         try {
+            $ip = self::getRealIpAddress();
+            
+            // Check rate limiting before anything else
+            if ($this->isRateLimited($ip)) {
+                return ['success' => false, 'message' => 'Too many failed login attempts. Please try again in 15 minutes.'];
+            }
+            
             $stmt = $this->pdo->prepare("
                 SELECT id, username, email, password_hash, display_name 
                 FROM users 
@@ -128,6 +135,9 @@ class UserAuthentication {
             $user = $stmt->fetch();
             
             if ($user && password_verify($password, $user['password_hash'])) {
+                // Record successful attempt and clear failed attempts for this IP
+                $this->recordLoginAttempt($ip, $username, true);
+                
                 // Create session
                 $sessionId = $this->generateSecureToken();
                 $expiresAt = date('Y-m-d H:i:s', time() + $this->sessionLifetime);
@@ -172,8 +182,8 @@ class UserAuthentication {
                     $sessionId, 
                     $user['id'], 
                     $defaultLeague,
-                    $_SERVER['REMOTE_ADDR'] ?? null,
-                    $_SERVER['HTTP_USER_AGENT'] ?? null,
+                    $ip,
+                    isset($_SERVER['HTTP_USER_AGENT']) ? $_SERVER['HTTP_USER_AGENT'] : null,
                     $expiresAt
                 ]);
                 
@@ -186,6 +196,9 @@ class UserAuthentication {
                 
                 return ['success' => true, 'user' => $user];
             }
+            
+            // Record failed attempt
+            $this->recordLoginAttempt($ip, $username, false);
             
             return ['success' => false, 'message' => 'Invalid credentials'];
             
@@ -235,8 +248,8 @@ class UserAuthentication {
                 $sessionId,
                 $guest['id'],
                 $defaultLeague,
-                $_SERVER['REMOTE_ADDR'] ?? null,
-                $_SERVER['HTTP_USER_AGENT'] ?? null,
+                self::getRealIpAddress(),
+                isset($_SERVER['HTTP_USER_AGENT']) ? $_SERVER['HTTP_USER_AGENT'] : null,
                 $expiresAt
             ]);
             
@@ -447,12 +460,76 @@ class UserAuthentication {
      * Clean up expired sessions
      */
     public function cleanupExpiredSessions() {
-        $stmt = $this->pdo->prepare("DELETE FROM user_sessions WHERE expires_at < NOW()");
-        $stmt->execute();
+        $this->pdo->prepare("DELETE FROM user_sessions WHERE expires_at < NOW()")->execute();
+        // Clean login attempts older than 24 hours
+        $this->pdo->prepare("DELETE FROM login_attempts WHERE attempted_at < DATE_SUB(NOW(), INTERVAL 24 HOUR)")->execute();
     }
     
     private function generateSecureToken() {
         return bin2hex(random_bytes(32));
+    }
+    
+    // =====================================================================
+    // RATE LIMITING
+    // =====================================================================
+    
+    /**
+     * Check if an IP address is rate limited (5 failed attempts in 15 minutes)
+     */
+    private function isRateLimited($ip) {
+        $stmt = $this->pdo->prepare("
+            SELECT COUNT(*) as attempts 
+            FROM login_attempts 
+            WHERE ip_address = ? 
+            AND success = 0 
+            AND attempted_at > DATE_SUB(NOW(), INTERVAL 15 MINUTE)
+        ");
+        $stmt->execute([$ip]);
+        $result = $stmt->fetch();
+        
+        return $result['attempts'] >= 10;
+    }
+    
+    /**
+     * Record a login attempt (success or failure)
+     */
+    private function recordLoginAttempt($ip, $username, $success) {
+        $stmt = $this->pdo->prepare("
+            INSERT INTO login_attempts (ip_address, username, success) 
+            VALUES (?, ?, ?)
+        ");
+        $stmt->execute([$ip, $username, $success ? 1 : 0]);
+        
+        // On successful login, clear previous failed attempts for this IP
+        if ($success) {
+            $stmt = $this->pdo->prepare("
+                DELETE FROM login_attempts 
+                WHERE ip_address = ? AND success = 0
+            ");
+            $stmt->execute([$ip]);
+        }
+    }
+    
+    // =====================================================================
+    // IP ADDRESS HELPER
+    // =====================================================================
+    
+    /**
+     * Get real client IP behind Cloudflare tunnel
+     * Falls back gracefully if not behind Cloudflare
+     */
+    public static function getRealIpAddress() {
+        // Cloudflare sends the real client IP in this header
+        if (!empty($_SERVER['HTTP_CF_CONNECTING_IP'])) {
+            return $_SERVER['HTTP_CF_CONNECTING_IP'];
+        }
+        // Fallback for X-Forwarded-For (first IP in chain)
+        if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+            $ips = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
+            return trim($ips[0]);
+        }
+        // Direct connection fallback
+        return $_SERVER['REMOTE_ADDR'];
     }
 }
 ?>

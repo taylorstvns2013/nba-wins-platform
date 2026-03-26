@@ -5,6 +5,7 @@
 // Include database connection
 require_once(__DIR__ . '/../config/db_connection_cli.php');
 require_once(__DIR__ . '/../config/season_config.php');
+require_once(__DIR__ . '/../config/secrets.php');
 $season = getSeasonConfig();
 
 // RapidAPI configuration

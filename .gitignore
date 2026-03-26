@@ -33,3 +33,5 @@ nba-wins-platform/vendor/
 *.cache
 cache/
 .claude/
+**/__pycache__/
+*.pyc
