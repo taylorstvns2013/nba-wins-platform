@@ -20,7 +20,7 @@ DB_CONFIG = {
     'unix_socket': '/tmp/mysql.sock',  # Use socket instead of host
     'database': 'nba_wins_platform',
     'user': 'nba_app',
-    'password': 'DB_PASSWORD_REMOVED',
+    'password': DB_PASSWORD,
     'charset': 'utf8mb4'
 }
 
@@ -37,7 +37,7 @@ def connect_to_database():
                 'host': 'localhost',
                 'database': 'nba_wins_platform',
                 'user': 'nba_app',
-                'password': 'DB_PASSWORD_REMOVED',
+                'password': DB_PASSWORD,
                 'charset': 'utf8mb4'
             }
             connection = pymysql.connect(**fallback_config)

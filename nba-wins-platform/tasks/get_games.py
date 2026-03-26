@@ -225,7 +225,7 @@ def write_to_database(games_data, verbose=False, debug=False):
                 try:
                     connection = mysql.connector.connect(
                         user='nba_app',
-                        password='DB_PASSWORD_REMOVED',
+                        password=DB_PASSWORD,
                         charset='utf8mb4',
                         autocommit=False,
                         connection_timeout=10,

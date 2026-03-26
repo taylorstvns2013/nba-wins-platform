@@ -27,7 +27,7 @@ DB_CONFIG = {
     'unix_socket': '/tmp/mysql.sock',  # Use socket instead of host
     'database': 'nba_wins_platform',
     'user': 'nba_app',
-    'password': 'DB_PASSWORD_REMOVED',
+    'password': DB_PASSWORD,
     'charset': 'utf8mb4'
 }
 
@@ -44,7 +44,7 @@ def connect_to_database():
                 'host': 'localhost',
                 'database': 'nba_wins_platform',
                 'user': 'nba_app', 
-                'password': 'DB_PASSWORD_REMOVED',
+                'password': DB_PASSWORD,
                 'charset': 'utf8mb4'
             }
             connection = pymysql.connect(**fallback_config)
@@ -306,7 +306,7 @@ def get_quarter_scores_from_rapidapi(game_id, game_date):
     """
     try:
         # RapidAPI configuration
-        api_key = "RAPIDAPI_KEY_REMOVED"
+        api_key = RAPIDAPI_KEY
         api_host = "api-nba-v1.p.rapidapi.com"
         base_url = "https://api-nba-v1.p.rapidapi.com"
         

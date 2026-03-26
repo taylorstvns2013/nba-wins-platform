@@ -9,7 +9,7 @@ $season = getSeasonConfig();
 
 // API details
 $api_host = 'api-nba-v1.p.rapidapi.com';
-$api_key = 'RAPIDAPI_KEY_REMOVED';
+$api_key = RAPIDAPI_KEY;
 
 // Function to check if a column exists
 function columnExists($pdo, $table, $column) {

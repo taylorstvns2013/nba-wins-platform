@@ -28,6 +28,9 @@ import argparse
 import logging
 import time
 import os
+import sys
+sys.path.insert(0, '/data/www/default/nba-wins-platform/config')
+from db_secrets import DB_PASS as DB_PASSWORD, DB_USER, DB_NAME
 
 # Configure logging
 log_handlers = [logging.StreamHandler()]
@@ -120,7 +123,7 @@ def save_quarter_scores_to_db(games_dict, verbose=False, debug=False):
             try:
                 connection = mysql.connector.connect(
                     user='nba_app',
-                    password='DB_PASSWORD_REMOVED',
+                    password=DB_PASSWORD,
                     charset='utf8mb4',
                     autocommit=False,
                     connection_timeout=10,
