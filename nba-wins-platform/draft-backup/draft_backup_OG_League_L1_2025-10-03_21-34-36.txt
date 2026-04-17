@@ -1,0 +1,87 @@
+NBA WINS POOL - DRAFT BACKUP
+==============================
+
+League: OG League
+League ID: 1
+Draft Completed: 2025-10-03 21:34:36
+Backup Created: 2026-04-02 18:58:03
+Total Picks: 30
+
+DRAFT RESULTS (Pick Order)
+==========================
+
+Pick #01: DJ Jazzy Josh        selected Oklahoma City Thunder     (OKC) [60-16] at 21:14:13
+Pick #02: BasedKhan            selected Denver Nuggets            (DEN) [49-28] at 21:14:26
+Pick #03: Sweet Dick Miggy     selected Houston Rockets           (HOU) [47-29] at 21:14:49
+Pick #04: TayNasty             selected New York Knicks           (NYK) [50-28] at 21:15:14
+Pick #05: I ONLY WIPE WITH THE KING selected Los Angeles Lakers        (LAL) [50-26] at 21:15:32
+Pick #06: I ONLY WIPE WITH THE KING selected Dallas Mavericks          (DAL) [24-52] at 21:17:04
+Pick #07: TayNasty             selected Cleveland Cavaliers       (CLE) [47-29] at 21:17:55
+Pick #08: Sweet Dick Miggy     selected Detroit Pistons           (DET) [55-21] at 21:18:53
+Pick #09: BasedKhan            selected Minnesota Timberwolves    (MIN) [46-29] at 21:19:09
+Pick #10: DJ Jazzy Josh        selected LA Clippers               (LAC) [39-37] at 21:19:39
+Pick #11: DJ Jazzy Josh        selected Golden State Warriors     (GSW) [36-40] at 21:20:04
+Pick #12: BasedKhan            selected Orlando Magic             (ORL) [40-36] at 21:21:19
+Pick #13: Sweet Dick Miggy     selected San Antonio Spurs         (SAS) [58-18] at 21:23:18
+Pick #14: TayNasty             selected Atlanta Hawks             (ATL) [44-33] at 21:24:20
+Pick #15: I ONLY WIPE WITH THE KING selected Boston Celtics            (BOS) [51-25] at 21:24:49
+Pick #16: I ONLY WIPE WITH THE KING selected Indiana Pacers            (IND) [18-58] at 21:25:17
+Pick #17: TayNasty             selected Milwaukee Bucks           (MIL) [30-46] at 21:26:32
+Pick #18: Sweet Dick Miggy     selected New Orleans Pelicans      (NOP) [25-51] at 21:27:17
+Pick #19: BasedKhan            selected Memphis Grizzlies         (MEM) [25-51] at 21:27:35
+Pick #20: DJ Jazzy Josh        selected Philadelphia 76ers        (PHI) [42-34] at 21:27:46
+Pick #21: DJ Jazzy Josh        selected Miami Heat                (MIA) [40-37] at 21:28:37
+Pick #22: BasedKhan            selected Toronto Raptors           (TOR) [42-34] at 21:30:54
+Pick #23: Sweet Dick Miggy     selected Sacramento Kings          (SAC) [20-57] at 21:31:11
+Pick #24: TayNasty             selected Phoenix Suns              (PHX) [42-34] at 21:32:27
+Pick #25: I ONLY WIPE WITH THE KING selected Chicago Bulls             (CHI) [29-47] at 21:32:42
+Pick #26: I ONLY WIPE WITH THE KING selected Portland Trail Blazers    (POR) [39-38] at 21:33:26
+Pick #27: TayNasty             selected Charlotte Hornets         (CHA) [40-36] at 21:33:43
+Pick #28: Sweet Dick Miggy     selected Utah Jazz                 (UTA) [21-56] at 21:34:06
+Pick #29: BasedKhan            selected Brooklyn Nets             (BKN) [18-58] at 21:34:27
+Pick #30: DJ Jazzy Josh        selected Washington Wizards        (WAS) [17-59] at 21:34:36
+
+
+TEAMS BY PARTICIPANT
+====================
+
+DJ Jazzy Josh (234W-223L):
+  - Oklahoma City Thunder (OKC) [60-16]
+  - LA Clippers (LAC) [39-37]
+  - Golden State Warriors (GSW) [36-40]
+  - Philadelphia 76ers (PHI) [42-34]
+  - Miami Heat (MIA) [40-37]
+  - Washington Wizards (WAS) [17-59]
+
+BasedKhan (220W-236L):
+  - Denver Nuggets (DEN) [49-28]
+  - Minnesota Timberwolves (MIN) [46-29]
+  - Orlando Magic (ORL) [40-36]
+  - Memphis Grizzlies (MEM) [25-51]
+  - Toronto Raptors (TOR) [42-34]
+  - Brooklyn Nets (BKN) [18-58]
+
+Sweet Dick Miggy (226W-232L):
+  - Houston Rockets (HOU) [47-29]
+  - Detroit Pistons (DET) [55-21]
+  - San Antonio Spurs (SAS) [58-18]
+  - New Orleans Pelicans (NOP) [25-51]
+  - Sacramento Kings (SAC) [20-57]
+  - Utah Jazz (UTA) [21-56]
+
+TayNasty (253W-206L):
+  - New York Knicks (NYK) [50-28]
+  - Cleveland Cavaliers (CLE) [47-29]
+  - Atlanta Hawks (ATL) [44-33]
+  - Milwaukee Bucks (MIL) [30-46]
+  - Phoenix Suns (PHX) [42-34]
+  - Charlotte Hornets (CHA) [40-36]
+
+I ONLY WIPE WITH THE KING (211W-246L):
+  - Los Angeles Lakers (LAL) [50-26]
+  - Dallas Mavericks (DAL) [24-52]
+  - Boston Celtics (BOS) [51-25]
+  - Indiana Pacers (IND) [18-58]
+  - Chicago Bulls (CHI) [29-47]
+  - Portland Trail Blazers (POR) [39-38]
+

@@ -1,0 +1,87 @@
+NBA WINS POOL - DRAFT BACKUP
+==============================
+
+League: Expansion League
+League ID: 2
+Draft Completed: 2025-10-05 20:09:33
+Backup Created: 2026-04-02 17:09:51
+Total Picks: 30
+
+DRAFT RESULTS (Pick Order)
+==========================
+
+Pick #01: DeJong & DeRestless  selected Oklahoma City Thunder     (OKC) [60-16] at 19:54:29
+Pick #02: brianshane.com       selected Cleveland Cavaliers       (CLE) [47-29] at 19:54:29
+Pick #03: Max Bent             selected Houston Rockets           (HOU) [47-29] at 19:54:29
+Pick #04: Ronald Bueche        selected Denver Nuggets            (DEN) [49-28] at 19:55:34
+Pick #05: TayNasty             selected Minnesota Timberwolves    (MIN) [46-29] at 19:56:58
+Pick #06: TayNasty             selected Los Angeles Lakers        (LAL) [50-26] at 19:57:10
+Pick #07: Ronald Bueche        selected New York Knicks           (NYK) [50-28] at 19:57:44
+Pick #08: Max Bent             selected Orlando Magic             (ORL) [40-36] at 19:57:44
+Pick #09: brianshane.com       selected LA Clippers               (LAC) [39-37] at 19:57:44
+Pick #10: DeJong & DeRestless  selected Atlanta Hawks             (ATL) [44-33] at 19:58:08
+Pick #11: DeJong & DeRestless  selected Detroit Pistons           (DET) [55-21] at 19:58:49
+Pick #12: brianshane.com       selected Golden State Warriors     (GSW) [36-40] at 19:58:49
+Pick #13: Max Bent             selected San Antonio Spurs         (SAS) [58-18] at 19:58:49
+Pick #14: Ronald Bueche        selected Dallas Mavericks          (DAL) [24-52] at 19:59:43
+Pick #15: TayNasty             selected Milwaukee Bucks           (MIL) [30-46] at 20:00:25
+Pick #16: TayNasty             selected Miami Heat                (MIA) [40-37] at 20:01:13
+Pick #17: Ronald Bueche        selected Philadelphia 76ers        (PHI) [42-34] at 20:02:25
+Pick #18: Max Bent             selected Boston Celtics            (BOS) [51-25] at 20:02:25
+Pick #19: brianshane.com       selected Memphis Grizzlies         (MEM) [25-51] at 20:02:25
+Pick #20: DeJong & DeRestless  selected New Orleans Pelicans      (NOP) [25-51] at 20:02:44
+Pick #21: DeJong & DeRestless  selected Indiana Pacers            (IND) [18-58] at 20:03:54
+Pick #22: brianshane.com       selected Toronto Raptors           (TOR) [42-34] at 20:03:54
+Pick #23: Max Bent             selected Sacramento Kings          (SAC) [20-57] at 20:03:54
+Pick #24: Ronald Bueche        selected Portland Trail Blazers    (POR) [39-38] at 20:05:09
+Pick #25: TayNasty             selected Chicago Bulls             (CHI) [29-47] at 20:05:33
+Pick #26: TayNasty             selected Phoenix Suns              (PHX) [42-34] at 20:07:48
+Pick #27: Ronald Bueche        selected Charlotte Hornets         (CHA) [40-36] at 20:09:28
+Pick #28: Max Bent             selected Brooklyn Nets             (BKN) [18-58] at 20:09:28
+Pick #29: brianshane.com       selected Washington Wizards        (WAS) [17-59] at 20:09:28
+Pick #30: DeJong & DeRestless  selected Utah Jazz                 (UTA) [21-56] at 20:09:33
+
+
+TEAMS BY PARTICIPANT
+====================
+
+DeJong & DeRestless (223W-235L):
+  - Oklahoma City Thunder (OKC) [60-16]
+  - Atlanta Hawks (ATL) [44-33]
+  - Detroit Pistons (DET) [55-21]
+  - New Orleans Pelicans (NOP) [25-51]
+  - Indiana Pacers (IND) [18-58]
+  - Utah Jazz (UTA) [21-56]
+
+brianshane.com (206W-250L):
+  - Cleveland Cavaliers (CLE) [47-29]
+  - LA Clippers (LAC) [39-37]
+  - Golden State Warriors (GSW) [36-40]
+  - Memphis Grizzlies (MEM) [25-51]
+  - Toronto Raptors (TOR) [42-34]
+  - Washington Wizards (WAS) [17-59]
+
+Max Bent (234W-223L):
+  - Houston Rockets (HOU) [47-29]
+  - Orlando Magic (ORL) [40-36]
+  - San Antonio Spurs (SAS) [58-18]
+  - Boston Celtics (BOS) [51-25]
+  - Sacramento Kings (SAC) [20-57]
+  - Brooklyn Nets (BKN) [18-58]
+
+Ronald Bueche (244W-216L):
+  - Denver Nuggets (DEN) [49-28]
+  - New York Knicks (NYK) [50-28]
+  - Dallas Mavericks (DAL) [24-52]
+  - Philadelphia 76ers (PHI) [42-34]
+  - Portland Trail Blazers (POR) [39-38]
+  - Charlotte Hornets (CHA) [40-36]
+
+TayNasty (237W-219L):
+  - Minnesota Timberwolves (MIN) [46-29]
+  - Los Angeles Lakers (LAL) [50-26]
+  - Milwaukee Bucks (MIL) [30-46]
+  - Miami Heat (MIA) [40-37]
+  - Chicago Bulls (CHI) [29-47]
+  - Phoenix Suns (PHX) [42-34]
+

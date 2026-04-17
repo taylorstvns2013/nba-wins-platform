@@ -172,12 +172,20 @@ class DraftManager {
             error_log("AUTO-DRAFT: " . count($available_teams) . " teams available");
             
             // Try to get team based on user preferences
-            $selected_team = $this->getHighestRankedAvailableTeam($user_id, $available_teams);
+            $selected_team = $this->getHighestRankedAvailableTeam($user_id, $available_teams, $draft_session_id);
             
             if (!$selected_team) {
-                error_log("AUTO-DRAFT: No preferences found, picking randomly");
-                // No preferences - pick randomly
-                $selected_team = $available_teams[array_rand($available_teams)];
+                error_log("AUTO-DRAFT: No preferences found, picking best available over/under");
+                // No preferences - pick the available team with the best preseason over/under
+                $selected_team = $this->getBestOverUnderTeam($available_teams);
+                
+                if (!$selected_team) {
+                    // Final fallback if over_under table has no data
+                    error_log("AUTO-DRAFT: No over/under data, picking randomly");
+                    $selected_team = $available_teams[array_rand($available_teams)];
+                } else {
+                    error_log("AUTO-DRAFT: Selected best over/under team: " . $selected_team['team_name']);
+                }
             } else {
                 error_log("AUTO-DRAFT: Selected team based on preferences: " . $selected_team['team_name']);
             }
@@ -226,7 +234,7 @@ class DraftManager {
             'total_picks' => $this->getTotalPicks($draft['id']),
             'current_participant' => null,
             'time_remaining' => null,
-            'recent_picks' => $this->getRecentPicks($draft['id'], 5),
+            'recent_picks' => $this->getRecentPicks($draft['id'], 30),
             'available_teams' => $this->getAvailableTeams($draft['id']),
             'draft_order' => $this->getDraftOrder($draft['id'])
         ];
@@ -303,16 +311,44 @@ class DraftManager {
     /**
      * Get the highest-ranked available team based on user preferences
      */
-    private function getHighestRankedAvailableTeam($user_id, $available_teams) {
-        // Get user's team preferences ordered by priority_rank
-        $stmt = $this->pdo->prepare("
-            SELECT team_id, priority_rank 
-            FROM user_draft_preferences 
-            WHERE user_id = ? 
-            ORDER BY priority_rank ASC
-        ");
-        $stmt->execute([$user_id]);
-        $preferences = $stmt->fetchAll();
+    private function getHighestRankedAvailableTeam($user_id, $available_teams, $draft_session_id = null) {
+        // Get league_id from the draft session for league-specific preferences
+        $league_id = null;
+        if ($draft_session_id) {
+            $draft_info = $this->getDraftSessionById($draft_session_id);
+            $league_id = $draft_info['league_id'] ?? null;
+        }
+
+        // Try league-specific preferences first
+        $preferences = [];
+        if ($league_id) {
+            $stmt = $this->pdo->prepare("
+                SELECT team_id, priority_rank 
+                FROM user_draft_preferences 
+                WHERE user_id = ? AND league_id = ?
+                ORDER BY priority_rank ASC
+            ");
+            $stmt->execute([$user_id, $league_id]);
+            $preferences = $stmt->fetchAll();
+            if (!empty($preferences)) {
+                error_log("AUTO-DRAFT: Using league-specific preferences for user $user_id, league $league_id");
+            }
+        }
+
+        // Fall back to global preferences
+        if (empty($preferences)) {
+            $stmt = $this->pdo->prepare("
+                SELECT team_id, priority_rank 
+                FROM user_draft_preferences 
+                WHERE user_id = ? AND league_id IS NULL
+                ORDER BY priority_rank ASC
+            ");
+            $stmt->execute([$user_id]);
+            $preferences = $stmt->fetchAll();
+            if (!empty($preferences)) {
+                error_log("AUTO-DRAFT: Using global preferences for user $user_id");
+            }
+        }
         
         if (empty($preferences)) {
             error_log("AUTO-DRAFT: No preferences found for user $user_id");
@@ -335,7 +371,42 @@ class DraftManager {
             }
         }
         
-        error_log("AUTO-DRAFT: No preferred teams available, will pick randomly");
+        error_log("AUTO-DRAFT: No preferred teams available, will use over/under fallback");
+        return null;
+    }
+    
+    /**
+     * Get the available team with the best (highest) preseason over/under number.
+     * Used as fallback when a user has no draft preferences set.
+     */
+    private function getBestOverUnderTeam($available_teams) {
+        if (empty($available_teams)) return null;
+        
+        $available_ids = array_column($available_teams, 'id');
+        if (empty($available_ids)) return null;
+        
+        $placeholders = implode(',', array_fill(0, count($available_ids), '?'));
+        
+        $stmt = $this->pdo->prepare("
+            SELECT ou.id, ou.team_name, ou.over_under_number
+            FROM over_under ou
+            WHERE ou.id IN ($placeholders)
+            ORDER BY ou.over_under_number DESC
+            LIMIT 1
+        ");
+        $stmt->execute($available_ids);
+        $best = $stmt->fetch();
+        
+        if (!$best) return null;
+        
+        // Find the matching team in the available_teams array
+        foreach ($available_teams as $team) {
+            if ($team['id'] == $best['id']) {
+                error_log("AUTO-DRAFT: Best over/under pick: {$team['team_name']} (O/U: {$best['over_under_number']})");
+                return $team;
+            }
+        }
+        
         return null;
     }
     

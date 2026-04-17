@@ -2,6 +2,8 @@
 // nba-wins-platform/core/LeagueManager.php
 // League creation, joining, and management for user-created leagues
 
+require_once __DIR__ . '/../config/platform_settings.php';
+
 class LeagueManager {
     private $pdo;
 
@@ -14,6 +16,21 @@ class LeagueManager {
      */
     public function createLeague($userId, $leagueName, $leagueSize, $draftDate = null) {
         try {
+            // Check if league creation is enabled (season control)
+            if (!LEAGUE_CREATION_ENABLED) {
+                return ['success' => false, 'message' => LEAGUE_CREATION_DISABLED_MESSAGE];
+            }
+
+            // Check per-user league creation cap
+            $stmt = $this->pdo->prepare("
+                SELECT COUNT(*) FROM leagues 
+                WHERE commissioner_user_id = ? AND status = 'active'
+            ");
+            $stmt->execute([$userId]);
+            if ($stmt->fetchColumn() >= MAX_LEAGUES_PER_USER) {
+                return ['success' => false, 'message' => 'You have reached the maximum of ' . MAX_LEAGUES_PER_USER . ' active leagues.'];
+            }
+
             $this->pdo->beginTransaction();
 
             // Validate inputs
@@ -85,6 +102,11 @@ class LeagueManager {
      */
     public function joinLeague($userId, $pinCode) {
         try {
+            // Check if league joining is enabled (season control)
+            if (!LEAGUE_JOINING_ENABLED) {
+                return ['success' => false, 'message' => LEAGUE_JOINING_DISABLED_MESSAGE];
+            }
+
             $this->pdo->beginTransaction();
 
             $pinCode = strtoupper(trim($pinCode));

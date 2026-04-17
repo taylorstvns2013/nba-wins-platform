@@ -167,7 +167,8 @@ class UserAuthentication {
                         LIMIT 1
                     ");
                     $stmt->execute([$user['id']]);
-                    $defaultLeague = $stmt->fetchColumn();
+                    $result = $stmt->fetchColumn();
+                    $defaultLeague = ($result !== false) ? $result : null;
                 }
                 
                 // Store session in database

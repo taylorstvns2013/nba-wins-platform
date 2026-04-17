@@ -273,6 +273,255 @@ if ($is_own_profile && isset($participant['theme_preference'])) {
 }
 $current_theme = $_SESSION['theme_preference'] ?? 'dark';
 
+// ------ Check if draft has been completed ------
+$stmt = $pdo->prepare("SELECT draft_completed, display_name FROM leagues WHERE id = ?");
+$stmt->execute([$league_id]);
+$league_info = $stmt->fetch(PDO::FETCH_ASSOC);
+$draft_completed = $league_info ? (bool)$league_info['draft_completed'] : false;
+
+// If draft not complete, show a pre-draft profile
+if (!$draft_completed) {
+    // Get all participants for the selector
+    $stmt = $pdo->prepare("
+        SELECT lp.id, u.display_name, u.id AS user_id
+        FROM league_participants lp
+        JOIN users u ON lp.user_id = u.id
+        WHERE lp.league_id = ? AND lp.status = 'active'
+        ORDER BY u.display_name
+    ");
+    $stmt->execute([$league_id]);
+    $all_participants = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $currentLeagueId = $league_id;
+    ?>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="theme-color" content="<?= $current_theme === 'classic' ? '#f5f5f5' : '#0f1419' ?>">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title><?= htmlspecialchars($participant['display_name']) ?> - NBA Wins Pool</title>
+        <link rel="icon" type="image/png" href="/nba-wins-platform/public/assets/favicon/favicon.png">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+        <style>
+            :root {
+                --bg-primary: #0f1419; --bg-card: #1a2230; --bg-elevated: #243044;
+                --border-color: rgba(255,255,255,0.07); --text-primary: #e6edf3;
+                --text-secondary: #8b949e; --text-muted: #484f58; --accent-blue: #388bfd;
+                --accent-blue-dim: rgba(56,139,253,0.12); --accent-green: #3fb950;
+                --radius-md: 10px; --radius-lg: 14px;
+                --shadow-card: 0 1px 3px rgba(0,0,0,0.5), 0 0 0 1px var(--border-color);
+            }
+            <?php if ($current_theme === 'classic'): ?>
+            :root {
+                --bg-primary: #f3f4f6; --bg-card: #ffffff; --bg-elevated: #f0f1f4;
+                --border-color: rgba(0,0,0,0.08); --text-primary: #1a1d23;
+                --text-secondary: #5a6370; --text-muted: #9ca3af; --accent-blue: #2563eb;
+                --accent-blue-dim: rgba(37,99,235,0.08); --accent-green: #16a34a;
+                --shadow-card: 0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04);
+            }
+            <?php endif; ?>
+            *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+            body {
+                font-family: 'Outfit', -apple-system, sans-serif;
+                background: var(--bg-primary); color: var(--text-primary);
+                min-height: 100vh; padding: 20px 16px 100px;
+                -webkit-font-smoothing: antialiased;
+            }
+            .container { max-width: 640px; margin: 0 auto; }
+            .profile-card {
+                background: var(--bg-card); border: 1px solid var(--border-color);
+                border-radius: var(--radius-lg); padding: 32px; text-align: center;
+                box-shadow: var(--shadow-card); margin-bottom: 16px;
+            }
+            .avatar {
+                width: 80px; height: 80px; border-radius: 50%; object-fit: cover;
+                border: 3px solid var(--bg-elevated); margin: 0 auto 16px; display: block;
+            }
+            .display-name { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+            .league-name { font-size: 14px; color: var(--text-secondary); margin-bottom: 24px; }
+            .predraft-msg {
+                background: var(--accent-blue-dim); border: 1px solid rgba(56,139,253,0.2);
+                border-radius: var(--radius-md); padding: 20px; margin-top: 8px;
+            }
+            .predraft-msg i { font-size: 28px; color: var(--accent-blue); display: block; margin-bottom: 10px; }
+            .predraft-msg h3 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+            .predraft-msg p { font-size: 13px; color: var(--text-secondary); }
+            .participant-select {
+                width: 100%; padding: 10px 14px; border: 1px solid var(--border-color);
+                border-radius: var(--radius-md); background: var(--bg-card); color: var(--text-primary);
+                font-family: 'Outfit', sans-serif; font-size: 14px; cursor: pointer;
+                appearance: none; box-shadow: var(--shadow-card);
+            }
+            .back-link {
+                display: inline-flex; align-items: center; gap: 6px;
+                color: var(--accent-blue); text-decoration: none; font-size: 13px;
+                font-weight: 500; margin-bottom: 16px;
+            }
+            .back-link:hover { text-decoration: underline; }
+            .avatar-wrap { position: relative; display: inline-block; margin: 0 auto 16px; }
+            .avatar-wrap .avatar { display: block; cursor: default; }
+            .avatar-edit {
+                position: absolute; bottom: 0; right: 0; width: 26px; height: 26px;
+                border-radius: 50%; background: var(--accent-blue); color: #fff;
+                border: 2px solid var(--bg-card); display: none; align-items: center;
+                justify-content: center; font-size: 10px; cursor: pointer;
+            }
+            .avatar-wrap:hover .avatar-edit { display: flex; }
+            .display-name-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 4px; }
+            .edit-icon { color: var(--text-muted); font-size: 13px; cursor: pointer; }
+            .edit-icon:hover { color: var(--accent-blue); }
+            .edit-form {
+                display: none; margin-top: 14px; padding-top: 14px;
+                border-top: 1px solid var(--border-color); gap: 8px; align-items: center;
+            }
+            .edit-form.visible { display: flex; }
+            .edit-form input {
+                flex: 1; padding: 8px 12px; border: 1px solid var(--border-color);
+                border-radius: 6px; font-family: 'Outfit', sans-serif; font-size: 14px;
+                background: var(--bg-elevated); color: var(--text-primary); outline: none;
+            }
+            .edit-form input:focus { border-color: var(--accent-blue); }
+            .edit-form button {
+                padding: 8px 14px; border: none; border-radius: 6px;
+                font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer;
+            }
+            .btn-save { background: var(--accent-blue); color: #fff; }
+            .btn-cancel { background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border-color) !important; }
+            .flash-msg {
+                padding: 10px 16px; border-radius: var(--radius-md); margin-bottom: 14px;
+                font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 8px;
+            }
+            .flash-msg.success { background: rgba(63,185,80,0.12); color: var(--accent-green); border: 1px solid rgba(63,185,80,0.2); }
+            .flash-msg.error { background: rgba(248,81,73,0.1); color: #f85149; border: 1px solid rgba(248,81,73,0.2); }
+            .photo-overlay {
+                position: fixed; top:0; left:0; right:0; bottom:0;
+                background: rgba(0,0,0,0.7); z-index: 2000; display: none;
+                align-items: center; justify-content: center;
+            }
+            .photo-overlay.visible { display: flex; }
+            .photo-modal {
+                background: var(--bg-card); border: 1px solid var(--border-color);
+                border-radius: var(--radius-lg); padding: 28px; max-width: 340px; width: 90%;
+                text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            }
+            .photo-modal h3 { margin-bottom: 16px; font-size: 17px; }
+            .photo-modal-preview {
+                width: 80px; height: 80px; border-radius: 50%; object-fit: cover;
+                margin: 0 auto 16px; display: block; border: 3px solid var(--bg-elevated);
+            }
+            .photo-modal-btn {
+                display: flex; align-items: center; justify-content: center; gap: 8px;
+                width: 100%; padding: 10px; border: 1px solid var(--border-color);
+                border-radius: var(--radius-md); background: var(--bg-elevated); color: var(--text-primary);
+                cursor: pointer; font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 500;
+                margin-bottom: 8px; transition: all 0.15s;
+            }
+            .photo-modal-btn:hover { background: var(--bg-card); }
+            .photo-modal-btn.primary { background: var(--accent-blue); color: #fff; border-color: var(--accent-blue); }
+            .photo-modal-btn.danger { background: #f85149; color: #fff; border-color: #f85149; }
+            .photo-hint { font-size: 11px; color: var(--text-muted); margin-top: 10px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <a href="/nba-wins-platform/auth/league_hub.php" class="back-link">
+                <i class="fas fa-arrow-left"></i> Back to League Hub
+            </a>
+
+            <?php if ($success_message): ?>
+                <div class="flash-msg success"><i class="fas fa-check-circle"></i> <?= htmlspecialchars($success_message) ?></div>
+            <?php elseif ($error_message): ?>
+                <div class="flash-msg error"><i class="fas fa-exclamation-circle"></i> <?= htmlspecialchars($error_message) ?></div>
+            <?php endif; ?>
+
+            <div class="profile-card">
+                <?php if ($is_own_profile): ?>
+                <div class="avatar-wrap">
+                    <img src="<?= htmlspecialchars($profile_photo_url) ?>" alt="" class="avatar"
+                         onerror="this.src='/nba-wins-platform/public/assets/profile_photos/default.png'"
+                         onclick="document.getElementById('photoOverlay').classList.add('visible')">
+                    <div class="avatar-edit" onclick="document.getElementById('photoOverlay').classList.add('visible')">
+                        <i class="fas fa-camera"></i>
+                    </div>
+                </div>
+                <?php else: ?>
+                <img src="<?= htmlspecialchars($profile_photo_url) ?>" alt="" class="avatar"
+                     onerror="this.src='/nba-wins-platform/public/assets/profile_photos/default.png'">
+                <?php endif; ?>
+
+                <div class="display-name-row">
+                    <span class="display-name"><?= htmlspecialchars($participant['display_name']) ?></span>
+                    <?php if ($is_own_profile): ?>
+                    <i class="fas fa-pen edit-icon" onclick="var f=document.getElementById('editNameForm');f.classList.toggle('visible');if(f.classList.contains('visible')){f.querySelector('input').focus();}"></i>
+                    <?php endif; ?>
+                </div>
+                <div class="league-name"><?= htmlspecialchars($league_info['display_name'] ?? 'League') ?></div>
+
+                <?php if ($is_own_profile): ?>
+                <form method="POST" class="edit-form" id="editNameForm">
+                    <input type="hidden" name="action" value="update_display_name">
+                    <input type="text" name="display_name" value="<?= htmlspecialchars($participant['display_name']) ?>" maxlength="20" required>
+                    <button type="submit" class="btn-save">Save</button>
+                    <button type="button" class="btn-cancel" onclick="document.getElementById('editNameForm').classList.remove('visible')">Cancel</button>
+                </form>
+                <?php endif; ?>
+
+                <div class="predraft-msg">
+                    <h3>Waiting for Draft</h3>
+                    <p>Team stats and records will appear here once the draft is complete and the season is underway.</p>
+                </div>
+            </div>
+
+            <?php if (count($all_participants) > 1): ?>
+            <select class="participant-select" onchange="window.location.href='?league_id=<?= $league_id ?>&user_id=' + this.value">
+                <?php foreach ($all_participants as $p): ?>
+                <option value="<?= $p['user_id'] ?>" <?= $p['user_id'] == $user_id ? 'selected' : '' ?>>
+                    <?= htmlspecialchars($p['display_name']) ?>
+                </option>
+                <?php endforeach; ?>
+            </select>
+            <?php endif; ?>
+        </div>
+
+        <?php if ($is_own_profile): ?>
+        <!-- Photo Modal -->
+        <div class="photo-overlay" id="photoOverlay" onclick="if(event.target===this)this.classList.remove('visible')">
+            <div class="photo-modal">
+                <h3>Profile Photo</h3>
+                <img src="<?= htmlspecialchars($profile_photo_url) ?>" alt="" class="photo-modal-preview"
+                     onerror="this.src='/nba-wins-platform/public/assets/profile_photos/default.png'">
+                <button class="photo-modal-btn primary" onclick="document.getElementById('photoInput').click()">
+                    <i class="fas fa-camera"></i> Upload New Photo
+                </button>
+                <?php if ($participant['profile_photo']): ?>
+                <button class="photo-modal-btn danger" onclick="if(confirm('Delete photo?'))document.getElementById('deletePhotoForm').submit()">
+                    <i class="fas fa-trash"></i> Delete Photo
+                </button>
+                <?php endif; ?>
+                <button class="photo-modal-btn" onclick="document.getElementById('photoOverlay').classList.remove('visible')">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <div class="photo-hint">JPEG, PNG, GIF, WebP — Max 5 MB</div>
+            </div>
+        </div>
+        <form method="POST" enctype="multipart/form-data" id="photoUploadForm" style="display:none">
+            <input type="hidden" name="action" value="upload_photo">
+            <input type="file" id="photoInput" name="profile_photo" accept="image/jpeg,image/png,image/gif,image/webp"
+                   onchange="if(this.files[0]&&this.files[0].size>5242880){alert('Max 5MB');this.value='';return;}document.getElementById('photoUploadForm').submit()">
+        </form>
+        <form method="POST" id="deletePhotoForm" style="display:none">
+            <input type="hidden" name="action" value="delete_photo">
+        </form>
+        <?php endif; ?>
+
+        <?php $currentPage = 'profile'; include '/data/www/default/nba-wins-platform/components/pill_nav.php'; ?>
+    </body>
+    </html>
+    <?php
+    exit; // Stop here — don't run team/rival/badge queries
+}
+
 // ------ Drafted Teams + Records ------
 $stmt = $pdo->prepare("
     SELECT 
@@ -736,6 +985,111 @@ $earnedBadges  = $badgeCalc->getBadges($participant['user_id'], $league_id);
 $badgeProgress = $badgeCalc->getProgress($participant['id'], $league_id, $earnedBadges, $total_wins, $total_losses);
 $badgeDefs     = BadgeCalculator::BADGE_DEFINITIONS;
 
+// ---- Drafted the Champion badge (image-based) ----
+$badgeDefs['drafted_champion'] = [
+    'name'       => 'Drafted the Champ',
+    'desc'       => 'One of your drafted teams won the NBA Championship',
+    'icon'       => 'img:nba_champ.png',
+    'color'      => '#FFD700',
+    'glow'       => 'rgba(255,215,0,0.5)',
+    'repeatable' => true
+];
+
+$badgeDefs['drafted_cup'] = [
+    'name'       => 'Drafted the Cup Winner',
+    'desc'       => 'One of your drafted teams won the NBA Cup',
+    'icon'       => 'img:nba_cup.png',
+    'color'      => '#C0C0C0',
+    'glow'       => 'rgba(192,192,192,0.5)',
+    'repeatable' => true
+];
+
+// ---- Past Champions (Hall of Fame / Trophy Case) ----
+$pastChampionships = [];
+$leagueChampCount = 0;
+try {
+    $stmt = $pdo->prepare("
+        SELECT * FROM past_champions 
+        WHERE user_id = ? 
+        ORDER BY season DESC
+    ");
+    $stmt->execute([$user_id]);
+    $pastChampionships = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // League-specific count for trophy ribbon on header
+    $stmt = $pdo->prepare("SELECT COUNT(*) AS cnt FROM past_champions WHERE user_id = ? AND league_id = ?");
+    $stmt->execute([$user_id, $league_id]);
+    $leagueChampCount = (int)$stmt->fetch()['cnt'];
+} catch (Exception $e) {
+    error_log("Past champions query: " . $e->getMessage());
+}
+
+// ---- Drafted the NBA Champion Badge (standalone table) ----
+try {
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) AS cnt FROM nba_champ_drafters
+        WHERE user_id = ? AND league_id = ?
+    ");
+    $stmt->execute([$user_id, $league_id]);
+    $champBadgeCount = (int)$stmt->fetch()['cnt'];
+
+    if ($champBadgeCount > 0) {
+        $stmt = $pdo->prepare("
+            SELECT season, champ_team, awarded_at
+            FROM nba_champ_drafters
+            WHERE user_id = ? AND league_id = ?
+            ORDER BY season DESC LIMIT 1
+        ");
+        $stmt->execute([$user_id, $league_id]);
+        $latestChampBadge = $stmt->fetch();
+
+        $earnedBadges['drafted_champion'] = [
+            'earned_at'    => $latestChampBadge['awarded_at'],
+            'times_earned' => $champBadgeCount,
+            'metadata'     => [
+                'achieved_date' => $latestChampBadge['awarded_at'],
+                'team'          => $latestChampBadge['champ_team'],
+                'season'        => $latestChampBadge['season']
+            ]
+        ];
+    }
+} catch (Exception $e) {
+    error_log("NBA champ drafters query: " . $e->getMessage());
+}
+
+// ---- NBA Cup Winners Badge ----
+try {
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) AS cnt FROM nba_cup_winners
+        WHERE user_id = ? AND league_id = ?
+    ");
+    $stmt->execute([$user_id, $league_id]);
+    $cupBadgeCount = (int)$stmt->fetch()['cnt'];
+
+    if ($cupBadgeCount > 0) {
+        $stmt = $pdo->prepare("
+            SELECT season, cup_champion_team, awarded_at
+            FROM nba_cup_winners
+            WHERE user_id = ? AND league_id = ?
+            ORDER BY season DESC LIMIT 1
+        ");
+        $stmt->execute([$user_id, $league_id]);
+        $latestCup = $stmt->fetch();
+
+        $earnedBadges['drafted_cup'] = [
+            'earned_at'    => $latestCup['awarded_at'],
+            'times_earned' => $cupBadgeCount,
+            'metadata'     => [
+                'achieved_date' => $latestCup['awarded_at'],
+                'team'          => $latestCup['cup_champion_team'],
+                'season'        => $latestCup['season']
+            ]
+        ];
+    }
+} catch (Exception $e) {
+    error_log("NBA Cup winners query: " . $e->getMessage());
+}
+
 // Precompute the single next unearned badge per streak direction
 // Only this badge will show the active progress bar
 // Determine which streak badge to show the progress bar on based on current streak VALUE
@@ -767,7 +1121,7 @@ $badgeCategories = [
     'milestones'  => ['label' => 'Milestones',     'keys' => ['wins_100','wins_200','wins_300','weeks_lead_10','weeks_lead_15','weeks_lead_20']],
     'performance' => ['label' => 'Performance',    'keys' => ['elite_roster','hot_hand','comeback_20']],
     'rivals'      => ['label' => 'Rivals',         'keys' => ['bully_5','bully_10','bully_15','rivalmaster']],
-    'draft'       => ['label' => 'Draft & Teams',  'keys' => ['sleeper_pick','clean_sweep']],
+    'draft'       => ['label' => 'Draft & Teams',  'keys' => ['sleeper_pick','clean_sweep','drafted_champion','drafted_cup']],
     'profile'     => ['label' => 'Profile',        'keys' => ['loyal_fan']],
 ];
 ?>
@@ -1511,15 +1865,14 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
 .badges-tab-grid {
     padding: 20px 16px;
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 20px;
-    align-items: start;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
 }
-@media (max-width: 900px) {
-    .badges-tab-grid { grid-template-columns: repeat(2, 1fr); }
+@media (max-width: 1100px) {
+    .badges-tab-grid { grid-template-columns: repeat(2, 1fr); gap: 14px; }
 }
 @media (max-width: 600px) {
-    .badges-tab-grid { grid-template-columns: 1fr; padding: 14px 12px; }
+    .badges-tab-grid { grid-template-columns: 1fr; padding: 14px 12px; gap: 12px; }
 }
 /* ==========================================================================
    BADGES SECTION
@@ -1530,27 +1883,27 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
 /* Desktop: larger badges in tab view */
 @media (min-width: 1100px) {
     .badges-tab-grid .badge-grid {
-        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-        gap: 14px;
+        grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+        gap: 12px;
     }
     .badges-tab-grid .badge-tile {
-        padding: 16px 6px 12px;
-        gap: 8px;
+        padding: 14px 6px 10px;
+        gap: 7px;
     }
     .badges-tab-grid .badge-icon-wrap {
-        width: 58px;
-        height: 58px;
-        font-size: 24px;
+        width: 52px;
+        height: 52px;
+        font-size: 22px;
     }
     .badges-tab-grid .badge-name {
-        font-size: 0.78rem;
+        font-size: 0.74rem;
     }
     .badges-tab-grid .badge-count {
-        font-size: 0.72rem;
+        font-size: 0.7rem;
         padding: 2px 8px;
     }
     .badges-tab-grid .badge-category-label {
-        font-size: 0.82rem;
+        font-size: 0.78rem;
         margin-bottom: 12px;
     }
 }
@@ -1563,10 +1916,11 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
 }
 
 .badge-category {
-    background: transparent;
-    border: 1px solid transparent;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
     border-radius: 12px;
-    padding: 14px 14px 12px;
+    padding: 16px 16px 14px;
+    box-shadow: var(--shadow-card);
 }
 
 .badge-category-label {
@@ -1577,7 +1931,7 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
     color: var(--text-muted);
     margin-bottom: 12px;
     padding-bottom: 10px;
-    border-bottom: 1px solid rgba(255,255,255,0.07);
+    border-bottom: 1px solid var(--border-color);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -1698,6 +2052,110 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
     text-align: center;
 }
 
+/* ==========================================================================
+   TROPHY RIBBON (profile header)
+   ========================================================================== */
+.trophy-ribbon {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: linear-gradient(135deg, rgba(255,215,0,0.18), rgba(255,180,0,0.10));
+    border: 1px solid rgba(255,215,0,0.3);
+    border-radius: 20px;
+    padding: 3px 10px 3px 7px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #FFD700;
+    vertical-align: middle;
+    margin-left: 6px;
+    white-space: nowrap;
+    line-height: 1;
+}
+.trophy-ribbon .trophy-icon {
+    font-size: 0.75rem;
+    filter: drop-shadow(0 0 3px rgba(255,215,0,0.5));
+}
+.trophy-ribbon .trophy-count {
+    font-size: 0.68rem;
+    opacity: 0.85;
+}
+
+/* ==========================================================================
+   TROPHY CASE (compact card in badge grid)
+   ========================================================================== */
+.badge-cat-trophies {
+    border-color: rgba(255,215,0,0.15) !important;
+    background: var(--bg-card) !important;
+}
+.badge-cat-trophies .badge-category-label {
+    color: #d4a017;
+    border-bottom-color: rgba(255,215,0,0.15);
+}
+.badge-cat-trophies .badge-category-label::before { background: #FFD700; }
+
+.trophy-entry {
+    padding: 10px 12px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 8px;
+}
+.trophy-entry:last-child { margin-bottom: 0; }
+.trophy-entry-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.trophy-entry-season {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    flex: 1;
+}
+.trophy-entry-wins {
+    font-size: 0.82rem;
+    font-weight: 800;
+    color: #FFD700;
+}
+.trophy-entry-champ {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #FFD700;
+    margin-top: 4px;
+    padding-left: 22px;
+}
+.trophy-entry-logos {
+    display: flex;
+    gap: 3px;
+    margin-top: 6px;
+    padding-left: 22px;
+    flex-wrap: wrap;
+}
+.trophy-team-logo {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    object-fit: contain;
+}
+
+/* ==========================================================================
+   IMAGE-BASED BADGES
+   ========================================================================== */
+.badge-icon-wrap img.badge-icon-img {
+    width: 26px;
+    height: 26px;
+    object-fit: contain;
+}
+.badges-tab-grid .badge-icon-wrap img.badge-icon-img {
+    width: 32px;
+    height: 32px;
+}
+#badge-modal-icon-wrap img.badge-modal-img {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+}
+
 /* Badge Popup Modal */
 .badge-tile { cursor: pointer; }
 
@@ -1782,179 +2240,7 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
     color: #555;
 }
 
-    .floating-pill {
-        position: fixed;
-        bottom: 18px;
-        left: 50%;
-        z-index: 9999;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        background: rgba(24, 33, 47, 0.82);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 999px;
-        padding: 6px;
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03);
-        -webkit-backdrop-filter: blur(20px);
-        backdrop-filter: blur(20px);
-        -webkit-transform: translateX(-50%) translateZ(0);
-        transform: translateX(-50%) translateZ(0);
-        will-change: transform;
-        transition: border-radius 0.35s ease, padding 0.35s ease;
-    }
 
-    .floating-pill.expanded {
-        border-radius: 22px;
-        padding: 8px;
-    }
-
-    /* Main row (always visible) */
-    .pill-main-row {
-        display: flex;
-        align-items: center;
-        gap: 2px;
-    }
-
-    /* Expanded row (hidden by default) */
-    .pill-expanded-row {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 4px;
-        max-height: 0;
-        opacity: 0;
-        overflow: hidden;
-        transition: max-height 0.35s ease, opacity 0.25s ease, margin 0.35s ease, padding 0.35s ease;
-        margin-bottom: 0;
-        padding: 0 4px;
-    }
-    .floating-pill.expanded .pill-expanded-row {
-        max-height: 60px;
-        opacity: 1;
-        margin-bottom: 6px;
-        padding: 0 4px 6px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    }
-
-    .pill-expanded-item {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 2px;
-        width: 52px;
-        height: 44px;
-        border-radius: 12px;
-        text-decoration: none;
-        color: var(--text-muted);
-        font-size: 14px;
-        transition: all var(--transition-fast);
-        cursor: pointer;
-        border: none;
-        background: none;
-        -webkit-tap-highlight-color: transparent;
-    }
-    .pill-expanded-item span {
-        font-size: 9px;
-        font-weight: 600;
-        font-family: 'Outfit', sans-serif;
-        letter-spacing: 0.02em;
-        line-height: 1;
-        white-space: nowrap;
-    }
-    .pill-expanded-item:hover {
-        color: var(--text-primary);
-        background: rgba(255, 255, 255, 0.08);
-    }
-    .pill-expanded-item.logout-item:hover {
-        color: var(--accent-red);
-    }
-
-    /* Hamburger to X morph */
-    .pill-menu-btn .fa-bars,
-    .pill-menu-btn .fa-xmark { transition: transform 0.3s ease, opacity 0.2s ease; }
-    .pill-menu-btn .fa-xmark { position: absolute; opacity: 0; transform: rotate(-90deg); }
-    .floating-pill.expanded .pill-menu-btn .fa-bars { opacity: 0; transform: rotate(90deg); }
-    .floating-pill.expanded .pill-menu-btn .fa-xmark { opacity: 1; transform: rotate(0deg); }
-
-    /* Space at the bottom so content doesn't hide behind pill */
-    body { padding-bottom: 84px; }
-
-    @media (max-width: 600px) {
-        .floating-pill {
-            bottom: calc(14px + env(safe-area-inset-bottom, 0px));
-        }
-    }
-
-    .pill-item {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 46px;
-        height: 46px;
-        border-radius: 999px;
-        text-decoration: none;
-        color: var(--text-muted);
-        font-size: 17px;
-        transition: all var(--transition-fast);
-        cursor: pointer;
-        border: none;
-        background: none;
-        -webkit-tap-highlight-color: transparent;
-        position: relative;
-    }
-
-    .pill-item:hover {
-        color: var(--text-primary);
-        background: var(--bg-elevated);
-    }
-
-    .pill-item.active {
-        color: white;
-        background: var(--accent-blue);
-    }
-
-    .pill-item:active {
-        transform: scale(0.92);
-    }
-
-    .pill-divider {
-        width: 1px;
-        height: 26px;
-        background: var(--border-color);
-        flex-shrink: 0;
-    }
-
-    /* Tooltip on hover (desktop only) */
-    @media (min-width: 601px) {
-        .pill-item::after {
-            content: attr(data-label);
-            position: absolute;
-            bottom: calc(100% + 8px);
-            left: 50%;
-            transform: translateX(-50%) scale(0.9);
-            background: var(--bg-elevated);
-            color: var(--text-primary);
-            font-size: 11px;
-            font-weight: 600;
-            font-family: 'Outfit', sans-serif;
-            padding: 4px 10px;
-            border-radius: var(--radius-sm);
-            white-space: nowrap;
-            opacity: 0;
-            pointer-events: none;
-            transition: all 0.15s ease;
-            border: 1px solid var(--border-color);
-        }
-
-        .pill-item:hover::after {
-            opacity: 1;
-            transform: translateX(-50%) scale(1);
-        }
-
-        /* Hide tooltips when expanded (items have labels) */
-        .floating-pill.expanded .pill-item:hover::after { opacity: 0; }
-    }
 </style>
 </head>
 <body>
@@ -2189,6 +2475,12 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
                                 <i class="fas fa-edit"></i>
                             </button>
                         <?php endif; ?>
+                        <?php if ($leagueChampCount > 0): ?>
+                            <span class="trophy-ribbon" title="<?= $leagueChampCount ?>x League Champion">
+                                <i class="fas fa-trophy trophy-icon"></i>
+                                <span class="trophy-count">&times;<?= $leagueChampCount ?></span>
+                            </span>
+                        <?php endif; ?>
                     </h1>
 
                     <?php if (!empty($participant['participant_name']) && $participant['participant_name'] !== $participant['display_name']): ?>
@@ -2410,14 +2702,18 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
                     <a href="<?= $gu ?>" class="game-list-item clickable <?= strtolower($game['result']) ?>">
                         <div class="game-list-info">
                             <div class="game-list-date"><?= date('M j, Y', strtotime($game['game_date'])) ?></div>
+                            <?php
+                                $myCode = ($game['team_location'] === 'home') ? $game['home_team_code'] : $game['away_team_code'];
+                                $oppCode = ($game['team_location'] === 'home') ? $game['away_team_code'] : $game['home_team_code'];
+                            ?>
                             <div class="game-list-matchup">
                                 <img src="<?= htmlspecialchars(getTeamLogo($game['my_team'])) ?>" alt=""
                                      onerror="this.style.display='none'">
-                                <?= htmlspecialchars($game['my_team']) ?>
+                                <?= htmlspecialchars($myCode) ?>
                                 <?= $game['team_location'] === 'home' ? 'vs' : '@' ?>
                                 <img src="<?= htmlspecialchars(getTeamLogo($game['opponent'])) ?>" alt=""
                                      onerror="this.style.display='none'">
-                                <?= htmlspecialchars($game['opponent']) ?>
+                                <?= htmlspecialchars($oppCode) ?>
                             </div>
                             <?php if (!empty($game['opponent_owner'])): ?>
                                 <span class="game-list-owner">(<?= htmlspecialchars($game['opponent_owner']) ?>)</span>
@@ -2464,14 +2760,18 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
                     <a href="<?= $cu ?>" class="game-list-item clickable">
                         <div class="game-list-info">
                             <div class="game-list-date"><?= date('M j, Y', strtotime($game['game_date'])) ?></div>
+                            <?php
+                                $myCode = ($game['team_location'] === 'home') ? $game['home_team_code'] : $game['away_team_code'];
+                                $oppCode = ($game['team_location'] === 'home') ? $game['away_team_code'] : $game['home_team_code'];
+                            ?>
                             <div class="game-list-matchup">
                                 <img src="<?= htmlspecialchars(getTeamLogo($game['my_team'])) ?>" alt=""
                                      onerror="this.style.display='none'">
-                                <?= htmlspecialchars($game['my_team']) ?>
+                                <?= htmlspecialchars($myCode) ?>
                                 <?= $game['team_location'] === 'home' ? 'vs' : '@' ?>
                                 <img src="<?= htmlspecialchars(getTeamLogo($game['opponent'])) ?>" alt=""
                                      onerror="this.style.display='none'">
-                                <?= htmlspecialchars($game['opponent']) ?>
+                                <?= htmlspecialchars($oppCode) ?>
                             </div>
                             <?php if (!empty($game['opponent_owner'])): ?>
                                 <span class="game-list-owner">(<?= htmlspecialchars($game['opponent_owner']) ?>)</span>
@@ -2492,6 +2792,7 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
     <!-- TAB: BADGES -->
     <div id="tab-badges" class="tab-panel">
     <div class="badges-tab-grid">
+
         <?php foreach ($badgeCategories as $catKey => $cat): ?>
         <div class="badge-category badge-cat-<?= $catKey ?>">
             <div class="badge-category-label"><?= $cat['label'] ?></div>
@@ -2551,7 +2852,12 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
                      <?php endif; ?>
                      style="<?= $earned ? '--badge-glow: ' . $def['glow'] . ';' : '' ?>">
                     <div class="badge-icon-wrap" style="<?= $iconBg ?>">
-                        <i class="fas <?= $def['icon'] ?>"></i>
+                        <?php if (str_starts_with($def['icon'], 'img:')): ?>
+                            <img src="../public/assets/league_logos/<?= htmlspecialchars(substr($def['icon'], 4)) ?>" 
+                                 alt="" class="badge-icon-img">
+                        <?php else: ?>
+                            <i class="fas <?= $def['icon'] ?>"></i>
+                        <?php endif; ?>
                     </div>
                     <span class="badge-name"><?= htmlspecialchars($def['name']) ?></span>
                     <?php if ($earned && $def['repeatable'] && $data['times_earned'] > 1): ?>
@@ -2598,6 +2904,46 @@ input:checked + .toggle-slider:before { transform: translateX(22px); }
             </div>
         </div>
         <?php endforeach; ?>
+
+        <!-- Trophy Case: compact card matching badge category style -->
+        <div class="badge-category badge-cat-trophies">
+            <div class="badge-category-label">
+                Trophy Case
+            </div>
+            <?php if (empty($pastChampionships)): ?>
+                <div style="text-align:center; padding:18px 8px; color:var(--text-muted); font-size:0.78rem; font-style:italic;">
+                    <i class="fas fa-trophy" style="font-size:1.4rem; opacity:0.15; display:block; margin-bottom:8px;"></i>
+                    No titles yet
+                </div>
+            <?php else: ?>
+                <?php foreach ($pastChampionships as $champ):
+                    $teamsData = json_decode($champ['teams_json'], true) ?: [];
+                    $combinedWins = $champ['total_regular_season_wins'] + ($champ['total_playoff_wins'] ?? 0);
+                ?>
+                <div class="trophy-entry">
+                    <div class="trophy-entry-top">
+                        <i class="fas fa-trophy" style="color:#FFD700; font-size:0.9rem; filter:drop-shadow(0 0 4px rgba(255,215,0,0.35));"></i>
+                        <div class="trophy-entry-season"><?= htmlspecialchars($champ['season']) ?></div>
+                        <div class="trophy-entry-wins"><?= $combinedWins ?>W</div>
+                    </div>
+                    <?php if ($champ['nba_champion_team']): ?>
+                        <div class="trophy-entry-champ">
+                            <i class="fas fa-crown" style="font-size:0.55rem; margin-right:3px;"></i><?= htmlspecialchars($champ['nba_champion_team']) ?>
+                        </div>
+                    <?php endif; ?>
+                    <div class="trophy-entry-logos">
+                        <?php foreach ($teamsData as $ct): ?>
+                            <img src="<?= htmlspecialchars(getTeamLogo($ct['team_name'])) ?>"
+                                 alt="" class="trophy-team-logo"
+                                 title="<?= htmlspecialchars($ct['team_name']) ?> (<?= $ct['wins'] ?>-<?= $ct['losses'] ?>)"
+                                 onerror="this.style.display='none'">
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+
     </div><!-- /.badges-tab-grid -->
     </div><!-- /#tab-badges -->
 
@@ -2801,51 +3147,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 </script>
-    <!-- Floating Pill Navigation -->
-    <nav class="floating-pill" id="floatingPill">
-        <!-- Expanded row (hidden until menu tap) -->
-        <div class="pill-expanded-row" id="pillExpandedRow">
-            <a href="/nba_standings.php" class="pill-expanded-item">
-                <i class="fas fa-basketball-ball"></i>
-                <span>Standings</span>
-            </a>
-            <a href="/draft_summary.php" class="pill-expanded-item">
-                <i class="fas fa-file-alt"></i>
-                <span>Draft</span>
-            </a>
-            <a href="https://buymeacoffee.com/taylorstvns" target="_blank" class="pill-expanded-item">
-                <i class="fas fa-mug-hot"></i>
-                <span>Tip Jar</span>
-            </a>
-            <?php if (empty($is_guest)): ?>
-            <a href="/nba-wins-platform/auth/logout.php" class="pill-expanded-item logout-item">
-                <i class="fas fa-sign-out-alt"></i>
-                <span>Logout</span>
-            </a>
-            <?php endif; ?>
-        </div>
-        <!-- Main row -->
-        <div class="pill-main-row">
-            <a href="/index.php" class="pill-item" data-label="Home">
-                <i class="fas fa-home"></i>
-            </a>
-            <a href="/nba-wins-platform/profiles/participant_profile.php?league_id=<?php echo $currentLeagueId ?? ($_SESSION['current_league_id'] ?? 0); ?>&user_id=<?php echo $profileUserId ?? ($_SESSION['user_id'] ?? 0); ?>" class="pill-item active" data-label="Profile">
-                <i class="fas fa-user"></i>
-            </a>
-            <a href="/analytics.php" class="pill-item" data-label="Analytics">
-                <i class="fas fa-chart-line"></i>
-            </a>
-            <a href="/claudes-column.php" class="pill-item" data-label="Column" style="position:relative">
-                <i class="fa-solid fa-newspaper"></i>
-                <?php if ($hasNewArticles): ?><span style="position:absolute;top:2px;right:2px;width:7px;height:7px;background:#f85149;border-radius:50%;box-shadow:0 0 4px rgba(248,81,73,0.5)"></span><?php endif; ?>
-            </a>
-            <div class="pill-divider"></div>
-            <button class="pill-item pill-menu-btn" data-label="Menu" onclick="togglePillMenu()">
-                <i class="fas fa-bars"></i>
-                <i class="fas fa-xmark"></i>
-            </button>
-        </div>
-    </nav>
     <script>
     function getActiveTab() {
         var active = document.querySelector('.tab-panel.active');
@@ -2866,17 +3167,10 @@ document.addEventListener('DOMContentLoaded', function() {
             if (btn) switchTab(tab, btn);
         }
     })();
-    function togglePillMenu() {
-        document.getElementById('floatingPill').classList.toggle('expanded');
-    }
-    // Close expanded pill when clicking outside
-    document.addEventListener('click', function(e) {
-        var pill = document.getElementById('floatingPill');
-        if (pill.classList.contains('expanded') && !pill.contains(e.target)) {
-            pill.classList.remove('expanded');
-        }
-    });
     </script>
+
+
+    <?php $currentPage = 'profile'; include '/data/www/default/nba-wins-platform/components/pill_nav.php'; ?>
 
 <!-- Badge Modal -->
 <div id="badge-modal-overlay" onclick="closeBadgePopup(event)">
@@ -2910,12 +3204,31 @@ function openBadgePopup(el) {
 
     var wrap = document.getElementById('badge-modal-icon-wrap');
     var iconEl = document.getElementById('badge-modal-icon-i');
-    if (earned) {
+    var isImgBadge = icon && icon.indexOf('img:') === 0;
+
+    // Remove any previous image badge
+    var prevImg = wrap.querySelector('.badge-modal-img');
+    if (prevImg) prevImg.remove();
+
+    if (isImgBadge) {
+        // Image-based badge
+        iconEl.style.display = 'none';
+        var imgEl = document.createElement('img');
+        imgEl.src = '../public/assets/league_logos/' + icon.substring(4);
+        imgEl.className = 'badge-modal-img';
+        imgEl.alt = '';
+        wrap.appendChild(imgEl);
+        wrap.style.background = earned ? color + '22' : 'rgba(255,255,255,0.05)';
+        wrap.style.boxShadow = earned ? '0 0 18px ' + glow : 'none';
+        wrap.style.color = '';
+    } else if (earned) {
+        iconEl.style.display = '';
         wrap.style.background = color + '22';
         wrap.style.color = color;
         wrap.style.boxShadow = '0 0 18px ' + glow;
         iconEl.className = 'fas ' + icon;
     } else {
+        iconEl.style.display = '';
         wrap.style.background = 'rgba(255,255,255,0.05)';
         wrap.style.color = '#555';
         wrap.style.boxShadow = 'none';

@@ -13,10 +13,25 @@ requireAuthentication($auth);
 // Check if user is a guest
 $isGuest = $auth->isGuest();
 
+// Sync theme preference from DB so cross-device changes apply immediately
+if (!$isGuest && isset($_SESSION['user_id'])) {
+    $stmtTheme = $pdo->prepare("SELECT theme_preference FROM users WHERE id = ?");
+    $stmtTheme->execute([$_SESSION['user_id']]);
+    $userTheme = $stmtTheme->fetchColumn();
+    if ($userTheme !== false) {
+        $_SESSION['theme_preference'] = $userTheme;
+    }
+}
+
 // Get current league context
 $leagueContext = getCurrentLeagueContext($auth);
 if (!$leagueContext || !$leagueContext['league_id']) {
-    die('Error: No league selected. Please contact administrator.');
+    if ($isGuest) {
+        header('Location: /nba-wins-platform/auth/login.php');
+    } else {
+        header('Location: /nba-wins-platform/auth/league_hub.php');
+    }
+    exit;
 }
 
 // =============================================================================
@@ -388,6 +403,99 @@ $games = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $api_scores = $cached_api_scores;
 $latest_scores = getLatestGameScores($games, $api_scores);
 
+// Earliest non-final game start time (Unix ms) for auto-poll wake-up
+$earliestPendingGameMs = null;
+foreach ($games as $g) {
+    if (!in_array($g['status_long'], ['Final', 'Finished', 'Postponed', 'Cancelled', 'Canceled'])) {
+        $ts = strtotime($g['start_time']);
+        if ($ts && ($earliestPendingGameMs === null || $ts < $earliestPendingGameMs)) {
+            $earliestPendingGameMs = $ts;
+        }
+    }
+}
+$earliestPendingGameMs = $earliestPendingGameMs ? ($earliestPendingGameMs * 1000) : null;
+
+// =============================================================================
+// PLAYOFF SERIES TRACKING
+// =============================================================================
+$playoffsStartDate = $season['playoffs_start_date'] ?? '2026-04-19';
+$playInStartDate = $season['play_in_start_date'] ?? '2026-04-14';
+$previewStartDate = date('Y-m-d', strtotime($playInStartDate . ' -1 day'));
+$finalsStartDate = $season['finals_start_date'] ?? '2026-06-03';
+$isPlayoffDate = ($selectedDate >= $playoffsStartDate);
+$isPlayInDate = ($selectedDate >= $playInStartDate && $selectedDate < $playoffsStartDate);
+$isFinalsDate = ($selectedDate >= $finalsStartDate);
+$showPlayoffPreview = ($effectiveToday >= $previewStartDate) || (isset($_GET['preview']) && $_GET['preview'] === 'playoffs');
+$seriesData = [];
+
+if ($isPlayoffDate) {
+    // Query all Final/Finished playoff games to compute series wins
+    $stmtSeries = $pdo->prepare("
+        SELECT 
+            LEAST(home_team, away_team) AS team_a,
+            GREATEST(home_team, away_team) AS team_b,
+            home_team, away_team, home_points, away_points
+        FROM games 
+        WHERE date >= ? 
+          AND status_long IN ('Final', 'Finished')
+        ORDER BY date ASC, start_time ASC
+    ");
+    $stmtSeries->execute([$playoffsStartDate]);
+    $playoffGames = $stmtSeries->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($playoffGames as $pg) {
+        $key = $pg['team_a'] . '|' . $pg['team_b'];
+        if (!isset($seriesData[$key])) {
+            $seriesData[$key] = ['team_a' => $pg['team_a'], 'team_b' => $pg['team_b'], 'wins' => [$pg['team_a'] => 0, $pg['team_b'] => 0]];
+        }
+        // Determine winner
+        if ($pg['home_points'] > $pg['away_points']) {
+            $seriesData[$key]['wins'][$pg['home_team']]++;
+        } else {
+            $seriesData[$key]['wins'][$pg['away_team']]++;
+        }
+    }
+
+    // Filter out Scheduled games where a team already has 4 wins (series over)
+    $games = array_values(array_filter($games, function($g) use ($seriesData) {
+        if (in_array($g['status_long'], ['Final', 'Finished'])) return true; // always show completed
+        $key = min($g['home_team'], $g['away_team']) . '|' . max($g['home_team'], $g['away_team']);
+        if (isset($seriesData[$key])) {
+            $wins = $seriesData[$key]['wins'];
+            if (max($wins) >= 4) return false; // series over, hide future game
+        }
+        return true;
+    }));
+}
+
+/**
+ * Get series badge text for a game card
+ */
+function getSeriesBadge($homeTeam, $awayTeam, $seriesData, $isPlayoffDate) {
+    if (!$isPlayoffDate || empty($seriesData)) return null;
+    
+    $key = min($homeTeam, $awayTeam) . '|' . max($homeTeam, $awayTeam);
+    if (!isset($seriesData[$key])) return null;
+    
+    $wins = $seriesData[$key]['wins'];
+    $homeWins = $wins[$homeTeam] ?? 0;
+    $awayWins = $wins[$awayTeam] ?? 0;
+    
+    if ($homeWins == 0 && $awayWins == 0) return null;
+    
+    if ($homeWins >= 4) {
+        return ['text' => $homeTeam . ' wins series ' . $homeWins . '-' . $awayWins, 'class' => 'series-won'];
+    } elseif ($awayWins >= 4) {
+        return ['text' => $awayTeam . ' wins series ' . $awayWins . '-' . $homeWins, 'class' => 'series-won'];
+    } elseif ($homeWins === $awayWins) {
+        return ['text' => 'Series tied ' . $homeWins . '-' . $awayWins, 'class' => 'series-tied'];
+    } elseif ($homeWins > $awayWins) {
+        return ['text' => $homeTeam . ' leads ' . $homeWins . '-' . $awayWins, 'class' => 'series-lead'];
+    } else {
+        return ['text' => $awayTeam . ' leads ' . $awayWins . '-' . $homeWins, 'class' => 'series-lead'];
+    }
+}
+
 $stmt = $pdo->prepare("
     SELECT home_team, away_team, stream_url 
     FROM game_stream_urls 
@@ -565,12 +673,23 @@ while ($current <= $rangeEnd) {
     .left-column::-webkit-scrollbar-thumb { background: #ccc; }
     .games-section::-webkit-scrollbar-thumb { background: #ccc; }
     .game-footer { background: #e8ecef !important; }
+    .series-badge { background: rgba(0, 0, 0, 0.04); color: #555; }
+    .series-badge.series-won { background: rgba(40, 167, 69, 0.1); color: #28a745; }
     .watch-btn { background: var(--accent-blue); color: white; }
     .stats-btn { background: #e6f0ff; color: var(--accent-blue); }
     .stats-btn:hover { background: #cce0ff; }
     .dw-card { border-color: #e0e0e0; }
     .dw-edit-bar { background: var(--bg-elevated); border-color: #e0e0e0; }
     .modal-content { background: white; }
+    .playoff-preview-banner {
+        background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(245, 158, 11, 0.08));
+        border-color: rgba(139, 92, 246, 0.2);
+        color: #333;
+    }
+    .playoff-preview-banner:hover {
+        background: linear-gradient(135deg, rgba(139, 92, 246, 0.18), rgba(245, 158, 11, 0.12));
+    }
+    .game-special-logo { filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2)); }
     <?php endif; ?>
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1219,13 +1338,16 @@ while ($current <= $rangeEnd) {
         max-width: calc(50% - 5px);
         background: var(--bg-secondary);
         border-radius: var(--radius-md);
-        overflow: hidden;
+        overflow: visible;
         border: 1px solid var(--border-subtle);
         transition: all var(--transition-fast);
+        position: relative;
     }
 
     .game-card:hover { border-color: var(--border-color); box-shadow: var(--shadow-elevated); }
     .game-card.hidden { display: none !important; }
+    .game-card-body { border-radius: var(--radius-md) var(--radius-md) 0 0; overflow: hidden; }
+    .game-card > :last-child { border-radius: 0 0 var(--radius-md) var(--radius-md); overflow: hidden; }
 
     .game-team-row {
         display: flex;
@@ -1316,6 +1438,21 @@ while ($current <= $rangeEnd) {
 
     @keyframes livePulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.75; } }
 
+    /* Playoff series badge */
+    .series-badge {
+        text-align: center;
+        padding: 5px 10px;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--text-muted);
+        background: var(--bg-elevated);
+        border-top: 1px solid var(--border-subtle);
+        letter-spacing: 0.02em;
+    }
+    .series-badge.series-lead { color: var(--accent-blue); }
+    .series-badge.series-tied { color: var(--text-secondary); }
+    .series-badge.series-won { color: var(--accent-green); background: rgba(63, 185, 80, 0.08); }
+
     /* AJAX date-switch transitions */
     .games-section.loading-games {
         opacity: 0.4;
@@ -1361,6 +1498,47 @@ while ($current <= $rangeEnd) {
 
     .nba-cup-badge { display: flex; align-items: center; justify-content: center; padding: 8px 0 4px; }
     .nba-cup-badge img { height: 32px; }
+
+    /* Game card special event logo (Cup / Finals) — top-left badge overlay */
+    .game-special-logo {
+        position: absolute;
+        top: -8px;
+        left: -8px;
+        width: 26px;
+        height: 26px;
+        object-fit: contain;
+        z-index: 2;
+        filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45));
+        pointer-events: none;
+    }
+
+    /* Playoff Preview banner under leaderboard */
+    .playoff-preview-banner {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        margin-top: 10px;
+        padding: 10px 16px;
+        background: linear-gradient(135deg, rgba(139, 92, 246, 0.18), rgba(245, 158, 11, 0.12));
+        border: 1px solid rgba(139, 92, 246, 0.25);
+        border-radius: var(--radius-md);
+        color: var(--text-primary);
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 14px;
+        transition: all var(--transition-fast);
+    }
+    .playoff-preview-banner:hover {
+        background: linear-gradient(135deg, rgba(139, 92, 246, 0.28), rgba(245, 158, 11, 0.18));
+        border-color: rgba(139, 92, 246, 0.4);
+        transform: translateY(-1px);
+    }
+    .playoff-preview-banner img {
+        height: 20px;
+        width: auto;
+        object-fit: contain;
+    }
 
     /* ===== RESPONSIVE ===== */
     @media (max-width: 600px) {
@@ -2011,180 +2189,6 @@ while ($current <= $rangeEnd) {
         .dw-team-stat-row { padding: 8px 10px; }
     }
 
-    /* ===== FLOATING PILL NAV ===== */
-    .floating-pill {
-        position: fixed;
-        bottom: 18px;
-        left: 50%;
-        z-index: 9999;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        background: rgba(24, 33, 47, 0.82);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 999px;
-        padding: 6px;
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03);
-        -webkit-backdrop-filter: blur(20px);
-        backdrop-filter: blur(20px);
-        -webkit-transform: translateX(-50%) translateZ(0);
-        transform: translateX(-50%) translateZ(0);
-        will-change: transform;
-        transition: border-radius 0.35s ease, padding 0.35s ease;
-    }
-
-    .floating-pill.expanded {
-        border-radius: 22px;
-        padding: 8px;
-    }
-
-    /* Main row (always visible) */
-    .pill-main-row {
-        display: flex;
-        align-items: center;
-        gap: 2px;
-    }
-
-    /* Expanded row (hidden by default) */
-    .pill-expanded-row {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 4px;
-        max-height: 0;
-        opacity: 0;
-        overflow: hidden;
-        transition: max-height 0.35s ease, opacity 0.25s ease, margin 0.35s ease, padding 0.35s ease;
-        margin-bottom: 0;
-        padding: 0 4px;
-    }
-    .floating-pill.expanded .pill-expanded-row {
-        max-height: 60px;
-        opacity: 1;
-        margin-bottom: 6px;
-        padding: 0 4px 6px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    }
-
-    .pill-expanded-item {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 2px;
-        width: 52px;
-        height: 44px;
-        border-radius: 12px;
-        text-decoration: none;
-        color: var(--text-muted);
-        font-size: 14px;
-        transition: all var(--transition-fast);
-        cursor: pointer;
-        border: none;
-        background: none;
-        -webkit-tap-highlight-color: transparent;
-    }
-    .pill-expanded-item span {
-        font-size: 9px;
-        font-weight: 600;
-        font-family: 'Outfit', sans-serif;
-        letter-spacing: 0.02em;
-        line-height: 1;
-        white-space: nowrap;
-    }
-    .pill-expanded-item:hover {
-        color: var(--text-primary);
-        background: rgba(255, 255, 255, 0.08);
-    }
-    .pill-expanded-item.logout-item:hover {
-        color: var(--accent-red);
-    }
-
-    /* Hamburger to X morph */
-    .pill-menu-btn .fa-bars,
-    .pill-menu-btn .fa-xmark { transition: transform 0.3s ease, opacity 0.2s ease; }
-    .pill-menu-btn .fa-xmark { position: absolute; opacity: 0; transform: rotate(-90deg); }
-    .floating-pill.expanded .pill-menu-btn .fa-bars { opacity: 0; transform: rotate(90deg); }
-    .floating-pill.expanded .pill-menu-btn .fa-xmark { opacity: 1; transform: rotate(0deg); }
-
-    /* Space at the bottom so content doesn't hide behind pill */
-    body { padding-bottom: 84px; }
-
-    @media (max-width: 600px) {
-        .floating-pill {
-            bottom: calc(14px + env(safe-area-inset-bottom, 0px));
-        }
-    }
-
-    .pill-item {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 46px;
-        height: 46px;
-        border-radius: 999px;
-        text-decoration: none;
-        color: var(--text-muted);
-        font-size: 17px;
-        transition: all var(--transition-fast);
-        cursor: pointer;
-        border: none;
-        background: none;
-        -webkit-tap-highlight-color: transparent;
-        position: relative;
-    }
-
-    .pill-item:hover {
-        color: var(--text-primary);
-        background: var(--bg-elevated);
-    }
-
-    .pill-item.active {
-        color: white;
-        background: var(--accent-blue);
-    }
-
-    .pill-item:active {
-        transform: scale(0.92);
-    }
-
-    .pill-divider {
-        width: 1px;
-        height: 26px;
-        background: var(--border-color);
-        flex-shrink: 0;
-    }
-
-    /* Tooltip on hover (desktop only) */
-    @media (min-width: 601px) {
-        .pill-item::after {
-            content: attr(data-label);
-            position: absolute;
-            bottom: calc(100% + 8px);
-            left: 50%;
-            transform: translateX(-50%) scale(0.9);
-            background: var(--bg-elevated);
-            color: var(--text-primary);
-            font-size: 11px;
-            font-weight: 600;
-            font-family: 'Outfit', sans-serif;
-            padding: 4px 10px;
-            border-radius: var(--radius-sm);
-            white-space: nowrap;
-            opacity: 0;
-            pointer-events: none;
-            transition: all 0.15s ease;
-            border: 1px solid var(--border-color);
-        }
-
-        .pill-item:hover::after {
-            opacity: 1;
-            transform: translateX(-50%) scale(1);
-        }
-
-        /* Hide tooltips when expanded (items have labels) */
-        .floating-pill.expanded .pill-item:hover::after { opacity: 0; }
-    }
 </style>
 </head>
 <body>
@@ -2293,6 +2297,13 @@ while ($current <= $rangeEnd) {
                 </div>
                 <?php endforeach; ?>
             </div>
+
+            <?php if ($showPlayoffPreview): ?>
+            <a href="/nba-wins-platform/recap/playoff_preview.php" class="playoff-preview-banner">
+                <img src="/nba-wins-platform/public/assets/league_logos/nba_champ.png" alt="">
+                Playoff Analysis
+            </a>
+            <?php endif; ?>
         </div>
 
         <!-- Dashboard Widgets (inside left column on desktop, hidden for guests) -->
@@ -2341,12 +2352,6 @@ while ($current <= $rangeEnd) {
                     <i class="fas fa-chevron-right"></i>
                 </button>
             </div>
-
-            <?php if ($isNbaCupDate): ?>
-            <div class="nba-cup-badge">
-                <img src="/nba-wins-platform/public/assets/league_logos/nba_cup.png" alt="NBA Cup">
-            </div>
-            <?php endif; ?>
 
             <!-- Filter Bar -->
             <div class="games-filter-bar">
@@ -2415,6 +2420,11 @@ while ($current <= $rangeEnd) {
                     <div class="game-card" 
                          data-home-participant="<?php echo htmlspecialchars($game['home_participant'] ?? ''); ?>"
                          data-away-participant="<?php echo htmlspecialchars($game['away_participant'] ?? ''); ?>">
+                        <?php if ($isNbaCupDate): ?>
+                            <img class="game-special-logo" src="/nba-wins-platform/public/assets/league_logos/nba_cup.png" alt="">
+                        <?php elseif ($isFinalsDate): ?>
+                            <img class="game-special-logo" src="/nba-wins-platform/public/assets/league_logos/nba_champ.png" alt="">
+                        <?php endif; ?>
                         <div class="game-card-body">
                             <div class="game-team-row <?php echo ($is_final && $away_points > $home_points) ? 'winner' : ''; ?>">
                                 <div class="game-team-left">
@@ -2483,6 +2493,11 @@ while ($current <= $rangeEnd) {
                                 </a>
                             <?php endif; ?>
                         </div>
+                        <?php 
+                        $badge = getSeriesBadge($game['home_team'], $game['away_team'], $seriesData, $isPlayoffDate);
+                        if ($badge): ?>
+                            <div class="series-badge <?php echo $badge['class']; ?>"><?php echo htmlspecialchars($badge['text']); ?></div>
+                        <?php endif; ?>
                     </div>
                     <?php endforeach; ?>
                 </div>
@@ -2646,6 +2661,19 @@ while ($current <= $rangeEnd) {
                         const newFooter = newCard.querySelector('.game-footer');
                         if (oldFooter && newFooter) {
                             oldFooter.innerHTML = newFooter.innerHTML;
+                        }
+
+                        // Update series badge
+                        const oldBadge = card.querySelector('.series-badge');
+                        const newBadge = newCard.querySelector('.series-badge');
+                        if (newBadge) {
+                            if (oldBadge) {
+                                oldBadge.outerHTML = newBadge.outerHTML;
+                            } else {
+                                card.appendChild(newBadge.cloneNode(true));
+                            }
+                        } else if (oldBadge) {
+                            oldBadge.remove();
                         }
                     });
 
@@ -2838,9 +2866,14 @@ while ($current <= $rangeEnd) {
                 .finally(() => { _autoRefreshInFlight = false; });
         }
 
-        // Auto-refresh every 30s when live games are showing
+        // Auto-refresh every 15s when live games showing OR within game window
+        const _earliestGameMs = <?= $earliestPendingGameMs ?? 'null' ?>;
+        const _pollLeadMs = 30 * 60 * 1000; // 30 minutes before first tip
+
         setInterval(function() {
-            if (document.querySelector('.game-btn-primary.live')) {
+            const hasLive = document.querySelector('.game-btn-primary.live');
+            const inGameWindow = _earliestGameMs && (Date.now() >= _earliestGameMs - _pollLeadMs);
+            if (hasLive || inGameWindow) {
                 autoRefreshScores();
             }
         }, 15000);
@@ -3317,62 +3350,6 @@ while ($current <= $rangeEnd) {
         })();
     </script>
 
-    <!-- Floating Pill Navigation -->
-    <nav class="floating-pill" id="floatingPill">
-        <!-- Expanded row (hidden until menu tap) -->
-        <div class="pill-expanded-row" id="pillExpandedRow">
-            <a href="/nba_standings.php" class="pill-expanded-item">
-                <i class="fas fa-basketball-ball"></i>
-                <span>Standings</span>
-            </a>
-            <a href="/draft_summary.php" class="pill-expanded-item">
-                <i class="fas fa-file-alt"></i>
-                <span>Draft</span>
-            </a>
-            <a href="https://buymeacoffee.com/taylorstvns" target="_blank" class="pill-expanded-item">
-                <i class="fas fa-mug-hot"></i>
-                <span>Tip Jar</span>
-            </a>
-            <?php if (!$isGuest): ?>
-            <a href="/nba-wins-platform/auth/logout.php" class="pill-expanded-item logout-item">
-                <i class="fas fa-sign-out-alt"></i>
-                <span>Logout</span>
-            </a>
-            <?php endif; ?>
-        </div>
-        <!-- Main row -->
-        <div class="pill-main-row">
-            <a href="/index.php" class="pill-item active" data-label="Home">
-                <i class="fas fa-home"></i>
-            </a>
-            <a href="/nba-wins-platform/profiles/participant_profile.php?league_id=<?php echo $currentLeagueId; ?>&user_id=<?php echo $profileUserId ?? ($_SESSION['user_id'] ?? 0); ?>" class="pill-item" data-label="Profile">
-                <i class="fas fa-user"></i>
-            </a>
-            <a href="/analytics.php" class="pill-item" data-label="Analytics">
-                <i class="fas fa-chart-line"></i>
-            </a>
-            <a href="/claudes-column.php" class="pill-item" data-label="Column" style="position:relative">
-                <i class="fa-solid fa-newspaper"></i>
-                <?php if ($hasNewArticles): ?><span style="position:absolute;top:2px;right:2px;width:7px;height:7px;background:#f85149;border-radius:50%;box-shadow:0 0 4px rgba(248,81,73,0.5)"></span><?php endif; ?>
-            </a>
-            <div class="pill-divider"></div>
-            <button class="pill-item pill-menu-btn" data-label="Menu" onclick="togglePillMenu()">
-                <i class="fas fa-bars"></i>
-                <i class="fas fa-xmark"></i>
-            </button>
-        </div>
-    </nav>
-    <script>
-    function togglePillMenu() {
-        document.getElementById('floatingPill').classList.toggle('expanded');
-    }
-    // Close expanded pill when clicking outside
-    document.addEventListener('click', function(e) {
-        var pill = document.getElementById('floatingPill');
-        if (pill.classList.contains('expanded') && !pill.contains(e.target)) {
-            pill.classList.remove('expanded');
-        }
-    });
-    </script>
+    <?php $currentPage = 'home'; include '/data/www/default/nba-wins-platform/components/pill_nav.php'; ?>
 </body>
 </html>

@@ -68,117 +68,16 @@ function getTeamLogo($teamName) {
 }
 
 /**
- * Format NBA API gameClock (ISO 8601 duration) to readable time
- * Converts PT05M30.00S → 5:30, PT00M45.60S → 0:45, already formatted → pass through
+ * Format NBA API gameClock — kept for any future local use
+ * (Primary clock parsing now handled by parseGameClock in game_scores_helper.php)
  */
-function formatGameClock($clock) {
-    if (empty($clock)) return '';
-    
-    // Already formatted (e.g., "5:30" or "0:45") — pass through
-    if (preg_match('/^\d{1,2}:\d{2}$/', trim($clock))) {
-        return trim($clock);
-    }
-    
-    // ISO 8601 duration: PT05M30.00S or PT5M30.0S
-    if (preg_match('/^PT(\d+)M([\d.]+)S$/i', trim($clock), $m)) {
-        $minutes = intval($m[1]);
-        $seconds = intval(floor(floatval($m[2])));
-        return $minutes . ':' . str_pad($seconds, 2, '0', STR_PAD_LEFT);
-    }
-    
-    // Fallback: strip PT prefix and S suffix for any other format
-    $cleaned = preg_replace('/^PT/i', '', trim($clock));
-    $cleaned = preg_replace('/S$/i', '', $cleaned);
-    if (preg_match('/(\d+)M([\d.]+)/', $cleaned, $m)) {
-        return intval($m[1]) . ':' . str_pad(intval(floor(floatval($m[2]))), 2, '0', STR_PAD_LEFT);
-    }
-    
-    return trim($clock); // Return as-is if no pattern matches
-}
 
-/**
- * Fetch live scores from the NBA API via Python script
- */
-function getAPIScores() {
-    try {
-        $command = "python3 /data/www/default/nba-wins-platform/tasks/get_games.py 2>&1";
-        $output  = shell_exec($command);
-
-        if (!$output) return ['scoreboard' => ['games' => []]];
-
-        $data = json_decode($output, true);
-        if (!$data || !isset($data['scoreboard'])) {
-            return ['scoreboard' => ['games' => []]];
-        }
-
-        return $data;
-    } catch (Exception $e) {
-        return ['scoreboard' => ['games' => []]];
-    }
-}
-
-/**
- * Merge live API scores with database game data
- */
-function getLatestGameScores($games, $api_scores) {
-    $latest_scores = [];
-
-    if (!isset($api_scores['scoreboard']['games'])) return $latest_scores;
-
-    foreach ($games as $game) {
-        $game_key = $game['home_team'] . ' vs ' . $game['away_team'];
-
-        // Default: use database values
-        $latest_scores[$game_key] = [
-            'home_points' => $game['home_points'] ?? 0,
-            'away_points' => $game['away_points'] ?? 0,
-            'status'      => $game['status_long'] ?? 'Scheduled',
-            'source'      => 'database'
-        ];
-
-        // Override with live API data if available
-        foreach ($api_scores['scoreboard']['games'] as $api_game) {
-            $api_home = $api_game['homeTeam']['teamCity'] . ' ' . $api_game['homeTeam']['teamName'];
-            $api_away = $api_game['awayTeam']['teamCity'] . ' ' . $api_game['awayTeam']['teamName'];
-
-            if ($api_home === $game['home_team'] && $api_away === $game['away_team']) {
-                $status = 'Scheduled';
-                $formattedClock = formatGameClock($api_game['gameClock'] ?? '');
-                
-                if ($api_game['gameStatus'] == 1) {
-                    $status = 'Scheduled';
-                } elseif ($api_game['gameStatus'] == 2) {
-                    // Match index page format: "5:30 Q2"
-                    if (!empty($formattedClock)) {
-                        $status = $formattedClock . ' Q' . $api_game['period'];
-                    } else {
-                        $status = 'Q' . $api_game['period'];
-                    }
-                } elseif ($api_game['gameStatus'] == 3) {
-                    $status = 'Final';
-                }
-
-                $latest_scores[$game_key] = [
-                    'home_points' => $api_game['homeTeam']['score'] ?? 0,
-                    'away_points' => $api_game['awayTeam']['score'] ?? 0,
-                    'status'      => $status,
-                    'source'      => 'api',
-                    'game_status' => $api_game['gameStatus'],
-                    'period'      => $api_game['period'] ?? 0,
-                    'clock'       => $formattedClock
-                ];
-                break;
-            }
-        }
-    }
-
-    return $latest_scores;
-}
+// getAPIScores, getLatestGameScores removed — now provided by game_scores_helper.php
 
 /**
  * Extract quarter-by-quarter scores from the API response
  */
-function getQuarterScores($home_team, $away_team, $api_scores) {
+function getQuarterScoresDetailed($home_team, $away_team, $api_scores) {
     if (!isset($api_scores['scoreboard']['games'])) return [];
 
     foreach ($api_scores['scoreboard']['games'] as $api_game) {
@@ -249,6 +148,7 @@ function normalizeTeamName($teamName) {
 // ==========================================================================
 require_once '/data/www/default/nba-wins-platform/config/db_connection.php';
 require_once '/data/www/default/nba-wins-platform/config/season_config.php';
+require_once '/data/www/default/nba-wins-platform/core/game_scores_helper.php';
 $season = getSeasonConfig();
 
 $league_id = $_SESSION['current_league_id'] ?? null;
@@ -435,14 +335,20 @@ $gd_h2hStmt->execute([
 $gd_seasonMatchups = $gd_h2hStmt->fetchAll(PDO::FETCH_ASSOC);
 
 
-// ------ Live API Scores (today's games only) ------
-$today      = date('Y-m-d');
-$api_scores = ($date === $today) ? getAPIScores() : ['scoreboard' => ['games' => []]];
+// ------ Live API Scores (today's games + after-midnight late games) ------
+$today     = date('Y-m-d');
+$yesterday = date('Y-m-d', strtotime('-1 day'));
+$currentHour = (int) date('G');
+
+// Fetch API scores if game is today, OR yesterday and it's before 3 AM (late games still in progress)
+$shouldFetchApi = ($date === $today) || ($date === $yesterday && $currentHour < 3);
+$api_scores = $shouldFetchApi ? getAPIScores() : ['scoreboard' => ['games' => []]];
 
 $games_for_api = [$game];
 $latest_scores = getLatestGameScores($games_for_api, $api_scores);
 
-$game_key       = $game['home_team'] . ' vs ' . $game['away_team'];
+// Game key uses date prefix to match helper format
+$game_key       = $game['date'] . '_' . $game['home_team'] . ' vs ' . $game['away_team'];
 $current_scores = $latest_scores[$game_key] ?? null;
 
 if ($current_scores) {
@@ -460,33 +366,8 @@ $isLiveGame = ($game['game_status_code'] ?? 0) == 2;
 // ------ Latest Play-by-Play (live games only) ------
 $latestPlay = null;
 if ($isLiveGame) {
-    // Find game ID from the scoreboard data we already fetched
-    $nba_game_id = null;
-    if (isset($api_scores['scoreboard']['games'])) {
-        foreach ($api_scores['scoreboard']['games'] as $ag) {
-            $agHome = $ag['homeTeam']['teamCity'] . ' ' . $ag['homeTeam']['teamName'];
-            $agAway = $ag['awayTeam']['teamCity'] . ' ' . $ag['awayTeam']['teamName'];
-            if ($agHome === $game['home_team'] && $agAway === $game['away_team']) {
-                $nba_game_id = $ag['gameId'] ?? null;
-                break;
-            }
-        }
-    }
-    if ($nba_game_id) {
-        try {
-            $pbp_script = '/data/www/default/nba-wins-platform/core/get_playbyplay.py';
-            $pbp_cmd = "timeout 8 python3 " . $pbp_script . " " . escapeshellarg($nba_game_id) . " 2>&1";
-            $pbp_output = shell_exec($pbp_cmd);
-            if ($pbp_output) {
-                $pbp_data = json_decode($pbp_output, true);
-                if ($pbp_data && !isset($pbp_data['error']) && !empty($pbp_data['play'])) {
-                    $latestPlay = $pbp_data['play'];
-                }
-            }
-        } catch (Exception $e) {
-            error_log("Play-by-play fetch error: " . $e->getMessage());
-        }
-    }
+    $nba_game_id = getGameIdFromScoreboard($game['home_team'], $game['away_team'], $api_scores);
+    $latestPlay = getLatestPlay($nba_game_id);
 }
 
 // ------ Score Fallback: Quarter Scores Table ------
@@ -532,7 +413,7 @@ if (empty($game['home_points']) && empty($game['away_points'])) {
 
 
 // ------ Quarter Scores ------
-$quarter_data  = getQuarterScores($game['home_team'], $game['away_team'], $api_scores);
+$quarter_data  = getQuarterScoresDetailed($game['home_team'], $game['away_team'], $api_scores);
 $quarterScores = [];
 $numOvertimes  = 0;
 
@@ -1205,181 +1086,6 @@ td.font-bold { font-weight: 700; color: var(--text-primary); }
     .player-stats-table td:last-child { display: none; }
 }
     
-/* ===== FLOATING PILL NAV ===== */
-    .floating-pill {
-        position: fixed;
-        bottom: 18px;
-        left: 50%;
-        z-index: 9999;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        background: rgba(24, 33, 47, 0.82);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 999px;
-        padding: 6px;
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03);
-        -webkit-backdrop-filter: blur(20px);
-        backdrop-filter: blur(20px);
-        -webkit-transform: translateX(-50%) translateZ(0);
-        transform: translateX(-50%) translateZ(0);
-        will-change: transform;
-        transition: border-radius 0.35s ease, padding 0.35s ease;
-    }
-
-    .floating-pill.expanded {
-        border-radius: 22px;
-        padding: 8px;
-    }
-
-    /* Main row (always visible) */
-    .pill-main-row {
-        display: flex;
-        align-items: center;
-        gap: 2px;
-    }
-
-    /* Expanded row (hidden by default) */
-    .pill-expanded-row {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 4px;
-        max-height: 0;
-        opacity: 0;
-        overflow: hidden;
-        transition: max-height 0.35s ease, opacity 0.25s ease, margin 0.35s ease, padding 0.35s ease;
-        margin-bottom: 0;
-        padding: 0 4px;
-    }
-    .floating-pill.expanded .pill-expanded-row {
-        max-height: 60px;
-        opacity: 1;
-        margin-bottom: 6px;
-        padding: 0 4px 6px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    }
-
-    .pill-expanded-item {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 2px;
-        width: 52px;
-        height: 44px;
-        border-radius: 12px;
-        text-decoration: none;
-        color: var(--text-muted);
-        font-size: 14px;
-        transition: all var(--transition-fast);
-        cursor: pointer;
-        border: none;
-        background: none;
-        -webkit-tap-highlight-color: transparent;
-    }
-    .pill-expanded-item span {
-        font-size: 9px;
-        font-weight: 600;
-        font-family: 'Outfit', sans-serif;
-        letter-spacing: 0.02em;
-        line-height: 1;
-        white-space: nowrap;
-    }
-    .pill-expanded-item:hover {
-        color: var(--text-primary);
-        background: rgba(255, 255, 255, 0.08);
-    }
-    .pill-expanded-item.logout-item:hover {
-        color: var(--accent-red);
-    }
-
-    /* Hamburger to X morph */
-    .pill-menu-btn .fa-bars,
-    .pill-menu-btn .fa-xmark { transition: transform 0.3s ease, opacity 0.2s ease; }
-    .pill-menu-btn .fa-xmark { position: absolute; opacity: 0; transform: rotate(-90deg); }
-    .floating-pill.expanded .pill-menu-btn .fa-bars { opacity: 0; transform: rotate(90deg); }
-    .floating-pill.expanded .pill-menu-btn .fa-xmark { opacity: 1; transform: rotate(0deg); }
-
-    /* Space at the bottom so content doesn't hide behind pill */
-    body { padding-bottom: 84px; }
-
-    @media (max-width: 600px) {
-        .floating-pill {
-            bottom: calc(14px + env(safe-area-inset-bottom, 0px));
-        }
-    }
-
-    .pill-item {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 46px;
-        height: 46px;
-        border-radius: 999px;
-        text-decoration: none;
-        color: var(--text-muted);
-        font-size: 17px;
-        transition: all var(--transition-fast);
-        cursor: pointer;
-        border: none;
-        background: none;
-        -webkit-tap-highlight-color: transparent;
-        position: relative;
-    }
-
-    .pill-item:hover {
-        color: var(--text-primary);
-        background: var(--bg-elevated);
-    }
-
-    .pill-item.active {
-        color: white;
-        background: var(--accent-blue);
-    }
-
-    .pill-item:active {
-        transform: scale(0.92);
-    }
-
-    .pill-divider {
-        width: 1px;
-        height: 26px;
-        background: var(--border-color);
-        flex-shrink: 0;
-    }
-
-    /* Tooltip on hover (desktop only) */
-    @media (min-width: 601px) {
-        .pill-item::after {
-            content: attr(data-label);
-            position: absolute;
-            bottom: calc(100% + 8px);
-            left: 50%;
-            transform: translateX(-50%) scale(0.9);
-            background: var(--bg-elevated);
-            color: var(--text-primary);
-            font-size: 11px;
-            font-weight: 600;
-            font-family: 'Outfit', sans-serif;
-            padding: 4px 10px;
-            border-radius: var(--radius-sm);
-            white-space: nowrap;
-            opacity: 0;
-            pointer-events: none;
-            transition: all 0.15s ease;
-            border: 1px solid var(--border-color);
-        }
-
-        .pill-item:hover::after {
-            opacity: 1;
-            transform: translateX(-50%) scale(1);
-        }
-
-        /* Hide tooltips when expanded (items have labels) */
-        .floating-pill.expanded .pill-item:hover::after { opacity: 0; }
-    }
-
 </style>
 </head>
 <body>
@@ -1703,6 +1409,8 @@ td.font-bold { font-weight: 700; color: var(--text-primary); }
         var isLive = <?= $isLiveGame ? 'true' : 'false' ?>;
         var gameStatus = '<?= addslashes($game['status_long'] ?? 'Scheduled') ?>';
         var refreshInFlight = false;
+        var gameStartMs = <?= strtotime($game['start_time']) ? (strtotime($game['start_time']) * 1000) : 'null' ?>;
+        var pollLeadMs = 5 * 60 * 1000; // 5 minutes before tip for box score page
 
         function refreshBoxScore() {
             if (refreshInFlight) return;
@@ -1772,70 +1480,14 @@ td.font-bold { font-weight: 700; color: var(--text-primary); }
                 .finally(function() { refreshInFlight = false; });
         }
 
-        // Poll every 15 seconds while game is live
+        // Poll every 15 seconds while game is live OR approaching game time
         setInterval(function() {
-            if (isLive) refreshBoxScore();
+            var inGameWindow = gameStartMs && (Date.now() >= gameStartMs - pollLeadMs);
+            if (isLive || inGameWindow) refreshBoxScore();
         }, 15000);
     })();
     </script>
 
-    <!-- Floating Pill Navigation -->
-    <nav class="floating-pill" id="floatingPill">
-        <!-- Expanded row (hidden until menu tap) -->
-        <div class="pill-expanded-row" id="pillExpandedRow">
-            <a href="/nba_standings.php" class="pill-expanded-item">
-                <i class="fas fa-basketball-ball"></i>
-                <span>Standings</span>
-            </a>
-            <a href="/draft_summary.php" class="pill-expanded-item">
-                <i class="fas fa-file-alt"></i>
-                <span>Draft</span>
-            </a>
-            <a href="https://buymeacoffee.com/taylorstvns" target="_blank" class="pill-expanded-item">
-                <i class="fas fa-mug-hot"></i>
-                <span>Tip Jar</span>
-            </a>
-            <?php if (empty($isGuest)): ?>
-            <a href="/nba-wins-platform/auth/logout.php" class="pill-expanded-item logout-item">
-                <i class="fas fa-sign-out-alt"></i>
-                <span>Logout</span>
-            </a>
-            <?php endif; ?>
-        </div>
-        <!-- Main row -->
-        <div class="pill-main-row">
-            <a href="/index.php" class="pill-item" data-label="Home">
-                <i class="fas fa-home"></i>
-            </a>
-            <a href="/nba-wins-platform/profiles/participant_profile.php?league_id=<?php echo $currentLeagueId ?? ($_SESSION['current_league_id'] ?? 0); ?>&user_id=<?php echo $profileUserId ?? ($_SESSION['user_id'] ?? 0); ?>" class="pill-item" data-label="Profile">
-                <i class="fas fa-user"></i>
-            </a>
-            <a href="/analytics.php" class="pill-item" data-label="Analytics">
-                <i class="fas fa-chart-line"></i>
-            </a>
-            <a href="/claudes-column.php" class="pill-item" data-label="Column" style="position:relative">
-                <i class="fa-solid fa-newspaper"></i>
-                <?php if ($hasNewArticles): ?><span style="position:absolute;top:2px;right:2px;width:7px;height:7px;background:#f85149;border-radius:50%;box-shadow:0 0 4px rgba(248,81,73,0.5)"></span><?php endif; ?>
-            </a>
-            <div class="pill-divider"></div>
-            <button class="pill-item pill-menu-btn" data-label="Menu" onclick="togglePillMenu()">
-                <i class="fas fa-bars"></i>
-                <i class="fas fa-xmark"></i>
-            </button>
-        </div>
-    </nav>
-    <script>
-    function togglePillMenu() {
-        document.getElementById('floatingPill').classList.toggle('expanded');
-    }
-    // Close expanded pill when clicking outside
-    document.addEventListener('click', function(e) {
-        var pill = document.getElementById('floatingPill');
-        if (pill.classList.contains('expanded') && !pill.contains(e.target)) {
-            pill.classList.remove('expanded');
-        }
-    });
-    </script>
-
+    <?php include '/data/www/default/nba-wins-platform/components/pill_nav.php'; ?>
 </body>
 </html>

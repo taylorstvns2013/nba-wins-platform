@@ -12,7 +12,8 @@
     "preseason_start_date": "2025-10-02",
     "all_star_break_start": "2026-02-13",
     "all_star_break_end": "2026-02-18",
-    "playoffs_start_date": "2026-04-19",
+    "play_in_start_date": "2026-04-14",
+    "playoffs_start_date": "2026-04-18",
     "season_end_date": "2026-04-13",
     "nba_cup_dates": [
         "2025-10-31", "2025-11-07", "2025-11-14", "2025-11-21",

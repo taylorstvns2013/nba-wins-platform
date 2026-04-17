@@ -1,12 +1,9 @@
 <?php
-
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-// draft.php - Simplified draft interface with 30-pick completion check
+// /data/www/default/draft.php - Live Draft Interface
 session_start();
 
 if (!isset($_SESSION['user_id']) || !isset($_SESSION['current_league_id'])) {
-    header('Location: auth/login.php');
+    header('Location: /nba-wins-platform/auth/login.php');
     exit;
 }
 
@@ -16,20 +13,14 @@ require_once '/data/www/default/nba-wins-platform/core/DraftManager.php';
 $user_id = $_SESSION['user_id'];
 $league_id = $_SESSION['current_league_id'];
 
-$user_id = $_SESSION['user_id'];
-$league_id = $_SESSION['current_league_id'];
-$currentLeagueId = $league_id; // Define for navigation menu
-
-// Logo path helper function (matching index.php exactly)
+// Logo path helper
 function fixLogoPath($logoPath) {
-    // If it's already a local path, make it use the new structure
     if (strpos($logoPath, '/media/') === 0) {
         return 'nba-wins-platform/public/assets/team_logos/' . basename($logoPath);
     }
     if (strpos($logoPath, 'nba-wins-platform/public/assets/') === 0) {
         return $logoPath;
     }
-    // If it's just a filename, prepend the assets path
     return 'nba-wins-platform/public/assets/team_logos/' . basename($logoPath);
 }
 
@@ -37,27 +28,20 @@ function fixLogoPath($logoPath) {
 $stmt = $pdo->prepare("SELECT * FROM leagues WHERE id = ?");
 $stmt->execute([$league_id]);
 $league = $stmt->fetch();
+if (!$league) { die("League not found"); }
 
-if (!$league) {
-    die("League not found");
-}
-
-// SIMPLE COMPLETION CHECK - Just check if 30 picks have been made
+// Check 30-pick completion → redirect
 $stmt = $pdo->prepare("
     SELECT COUNT(dp.id) as total_picks
     FROM draft_sessions ds
     LEFT JOIN draft_picks dp ON ds.id = dp.draft_session_id
     WHERE ds.league_id = ?
-    ORDER BY ds.created_at DESC
-    LIMIT 1
+    ORDER BY ds.created_at DESC LIMIT 1
 ");
 $stmt->execute([$league_id]);
-$pick_count_result = $stmt->fetch();
-$total_picks = $pick_count_result ? $pick_count_result['total_picks'] : 0;
-
-// Simple redirect: If 30 picks made, go to summary
-if ($total_picks >= 30) {
-    error_log("Draft completed: $total_picks picks made, redirecting to summary");
+$pickResult = $stmt->fetch();
+$totalPicks = $pickResult ? $pickResult['total_picks'] : 0;
+if ($totalPicks >= 30) {
     header('Location: draft_summary.php');
     exit;
 }
@@ -67,7 +51,7 @@ $draft_status = $draftManager->getDraftStatus($league_id);
 
 // Get user info
 $stmt = $pdo->prepare("
-    SELECT lp.id as participant_id, lp.participant_name, 
+    SELECT lp.id as participant_id, lp.participant_name, lp.auto_draft_enabled,
            l.commissioner_user_id, u.display_name
     FROM league_participants lp
     JOIN leagues l ON lp.league_id = l.id
@@ -78,94 +62,47 @@ $stmt->execute([$user_id, $league_id]);
 $user_info = $stmt->fetch();
 
 $is_commissioner = $league['commissioner_user_id'] == $user_id || $league['commissioner_user_id'] === null;
-
-// Get draft log if draft exists
-$draft_log = [];
-if ($draft_status['status'] !== 'not_started') {
-    try {
-        $stmt = $pdo->prepare("
-            SELECT ds.id FROM draft_sessions ds 
-            WHERE ds.league_id = ? 
-            ORDER BY ds.created_at DESC LIMIT 1
-        ");
-        $stmt->execute([$league_id]);
-        $session = $stmt->fetch();
-        
-        if ($session) {
-            $stmt = $pdo->prepare("
-                SELECT dl.*, u.display_name as participant_name, t.team_name
-                FROM draft_log dl
-                LEFT JOIN league_participants lp ON dl.league_participant_id = lp.id
-                LEFT JOIN users u ON lp.user_id = u.id
-                LEFT JOIN draft_picks dp ON dl.draft_session_id = dp.draft_session_id AND dl.league_participant_id = dp.league_participant_id
-                LEFT JOIN teams t ON dp.team_id = t.id
-                WHERE dl.draft_session_id = ?
-                ORDER BY dl.created_at DESC
-                LIMIT 50
-            ");
-            $stmt->execute([$session['id']]);
-            $draft_log = $stmt->fetchAll();
-        }
-    } catch (Exception $e) {
-        error_log("Error fetching draft log: " . $e->getMessage());
-    }
-}
+$theme = $_SESSION['theme_preference'] ?? 'dark';
+$isDark = $theme !== 'classic';
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="theme-color" content="<?= ($_SESSION['theme_preference'] ?? 'dark') === 'classic' ? '#f5f5f5' : '#0d1117' ?>">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="<?= $isDark ? '#0d1117' : '#f5f5f5' ?>">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta charset="UTF-8">
     <title>Live Draft - <?= htmlspecialchars($league['display_name']) ?></title>
     <link rel="apple-touch-icon" type="image/png" href="nba-wins-platform/public/assets/favicon/favicon.png">
     <link rel="icon" type="image/png" href="nba-wins-platform/public/assets/favicon/favicon.png">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    
-    <!-- React and Babel for Navigation Component -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
+        /* ============================================================
+           CSS VARIABLES — DARK THEME (default)
+           ============================================================ */
         :root {
-            /* Core backgrounds */
             --bg-primary: #151d28;
             --bg-secondary: #1a222c;
             --bg-card: #161e28;
             --bg-elevated: #1c2634;
             --bg-card-hover: #1e2a3a;
-
-            /* Text */
             --text-primary: #e6edf3;
             --text-secondary: #8b949e;
             --text-muted: #546070;
-
-            /* Borders */
-            --border-color: rgba(255, 255, 255, 0.08);
-            --border-subtle: rgba(255, 255, 255, 0.04);
-
-            /* Accents */
+            --border-color: rgba(255,255,255,0.08);
+            --border-subtle: rgba(255,255,255,0.04);
             --accent-blue: #388bfd;
-            --accent-blue-dim: rgba(56, 139, 253, 0.10);
+            --accent-blue-dim: rgba(56,139,253,0.10);
             --accent-green: #3fb950;
-            --accent-green-dim: rgba(63, 185, 80, 0.10);
+            --accent-green-dim: rgba(63,185,80,0.10);
             --accent-red: #f85149;
-            --accent-red-dim: rgba(248, 81, 73, 0.10);
+            --accent-red-dim: rgba(248,81,73,0.10);
             --accent-orange: #d29922;
-            --accent-orange-dim: rgba(210, 153, 34, 0.12);
-            --accent-gold: #f0c644;
-            --accent-silver: #a0aec0;
-            --accent-bronze: #cd7f32;
-
-            /* Shadows */
+            --accent-orange-dim: rgba(210,153,34,0.12);
             --shadow-card: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px var(--border-color);
             --shadow-elevated: 0 4px 12px rgba(0,0,0,0.5);
-
-            /* Radius & Transitions */
             --radius-sm: 6px;
             --radius-md: 8px;
             --radius-lg: 10px;
@@ -173,10 +110,13 @@ if ($draft_status['status'] !== 'not_started') {
             --transition-normal: 0.25s ease;
         }
 
-        <?php if (($_SESSION['theme_preference'] ?? 'dark') === 'classic'): ?>
+        /* ============================================================
+           CLASSIC / LIGHT THEME OVERRIDES
+           ============================================================ */
+        <?php if (!$isDark): ?>
         :root {
             --bg-primary: #f5f5f5;
-            --bg-secondary: rgba(245, 245, 245, 0.95);
+            --bg-secondary: rgba(245,245,245,0.95);
             --bg-card: #ffffff;
             --bg-elevated: #f0f0f2;
             --bg-card-hover: #f8f9fa;
@@ -184,1391 +124,1460 @@ if ($draft_status['status'] !== 'not_started') {
             --text-secondary: #666666;
             --text-muted: #999999;
             --border-color: #e0e0e0;
-            --border-subtle: rgba(0, 0, 0, 0.06);
+            --border-subtle: rgba(0,0,0,0.06);
             --accent-blue: #0066ff;
-            --accent-blue-dim: rgba(0, 102, 255, 0.08);
+            --accent-blue-dim: rgba(0,102,255,0.08);
             --accent-green: #28a745;
-            --accent-green-dim: rgba(40, 167, 69, 0.08);
+            --accent-green-dim: rgba(40,167,69,0.08);
             --accent-red: #dc3545;
-            --accent-red-dim: rgba(220, 53, 69, 0.08);
+            --accent-red-dim: rgba(220,53,69,0.08);
             --accent-orange: #d4a017;
-            --accent-orange-dim: rgba(212, 160, 23, 0.08);
-            --accent-gold: #d4a017;
-            --accent-silver: #8a8a8a;
-            --accent-bronze: #b5651d;
-            --shadow-card: 0 1px 4px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
-            --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.06);
+            --accent-orange-dim: rgba(212,160,23,0.08);
+            --shadow-card: 0 1px 4px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04);
+            --shadow-elevated: 0 4px 16px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.06);
         }
-        body {
-            background-image: url('nba-wins-platform/public/assets/background/geometric_white.png');
-            background-repeat: repeat;
-            background-attachment: fixed;
-        }
+        body { background-image: url('nba-wins-platform/public/assets/background/geometric_white.png'); background-repeat: repeat; background-attachment: fixed; }
         <?php endif; ?>
 
-        * { box-sizing: border-box; }
-
-        html {
-            height: -webkit-fill-available;
-            background-color: var(--bg-primary);
-        }
-        
+        /* ============================================================
+           BASE
+           ============================================================ */
+        *, *::before, *::after { box-sizing: border-box; }
+        html { background: var(--bg-primary); }
         body {
             font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            line-height: 1.6;
+            line-height: 1.5;
             margin: 0;
-            padding: 10px;
+            padding: 0;
             background: var(--bg-primary);
             color: var(--text-primary);
             min-height: 100vh;
-            min-height: -webkit-fill-available;
             -webkit-font-smoothing: antialiased;
         }
-        
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        
-        .header {
+        .container { max-width: 1280px; margin: 0 auto; padding: 16px; }
+
+        /* ============================================================
+           HEADER
+           ============================================================ */
+        .draft-header {
             display: flex;
-            flex-direction: column;
             align-items: center;
-            justify-content: center;
-            text-align: center;
-            margin-bottom: 16px;
+            justify-content: space-between;
+            padding: 16px 20px;
             background: var(--bg-card);
-            padding: 20px;
             border-radius: var(--radius-lg);
             box-shadow: var(--shadow-card);
-        }
-        
-        .basketball-logo {
-            max-width: 56px;
-            margin-bottom: 10px;
-        }
-        
-        h1 {
-            margin: 8px 0;
-            font-size: 1.6rem;
-            font-weight: 800;
-            color: var(--text-primary);
-            letter-spacing: -0.02em;
-        }
-        
-        h2 {
-            margin: 4px 0;
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: var(--text-secondary);
-        }
-
-        .header p {
-            color: var(--text-muted);
-            font-size: 0.9rem;
-            margin: 4px 0 0;
-        }
-        
-        /* Draft Controls */
-        .draft-controls {
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            margin-bottom: 16px;
+            margin-bottom: 14px;
+            gap: 12px;
             flex-wrap: wrap;
         }
-        
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: var(--radius-sm);
-            font-weight: 600;
-            cursor: pointer;
-            transition: all var(--transition-fast);
-            text-decoration: none;
-            display: inline-block;
-            font-size: 0.9rem;
-            font-family: 'Outfit', sans-serif;
+        .draft-header-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            min-width: 0;
         }
-        
-        .btn-primary { background: var(--accent-green); color: #fff; }
-        .btn-danger  { background: var(--accent-red); color: #fff; }
-        .btn-warning { background: var(--accent-orange); color: #fff; }
-        .btn-secondary { background: var(--bg-elevated); color: var(--text-primary); border: 1px solid var(--border-color); }
-        .btn-success { background: var(--accent-green); color: #fff; }
-        
-        .btn:hover { 
-            transform: translateY(-1px); 
-            box-shadow: 0 4px 12px rgba(0,0,0,0.4); 
-            filter: brightness(1.1);
+        .draft-header-left img { width: 44px; height: 44px; flex-shrink: 0; }
+        .draft-header-left h1 {
+            font-size: 1.35rem;
+            font-weight: 800;
+            margin: 0;
+            letter-spacing: -0.02em;
+            white-space: nowrap;
         }
-        .btn:disabled { 
-            opacity: 0.5; 
-            cursor: not-allowed; 
-            transform: none; 
-            filter: none;
-        }
-        
-        /* Draft Status Bar */
-        .draft-status {
-            background: var(--bg-card);
-            padding: 14px;
-            border-radius: var(--radius-lg);
-            margin-bottom: 16px;
-            text-align: center;
-            box-shadow: var(--shadow-card);
-        }
-        
-        .draft-status h2 {
-            font-size: 1.1rem;
-            margin: 4px 0;
+        .draft-header-left .league-label {
+            font-size: 0.82rem;
             color: var(--text-secondary);
+            font-weight: 500;
         }
+        .draft-header-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+        .user-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            background: var(--bg-elevated);
+            padding: 6px 12px;
+            border-radius: 999px;
+            border: 1px solid var(--border-color);
+        }
+        .user-badge i { color: var(--accent-blue); font-size: 0.75rem; }
 
-        .draft-status h3 {
-            font-size: 1.05rem;
-            margin: 4px 0;
-            color: var(--text-primary);
-            font-weight: 700;
-        }
-        
-        .current-pick {
-            font-size: 1.15rem;
-            margin-bottom: 8px;
-            color: var(--accent-orange);
-            font-weight: 700;
-        }
-        
-        /* Draft Board Grid */
-        .draft-board {
-            display: grid;
-            grid-template-columns: 2fr 1fr 1fr;
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-        
-        @media (max-width: 768px) {
-            .draft-board { grid-template-columns: 1fr; }
-        }
-        
-        .available-teams, .draft-order, .recent-picks {
+        /* ============================================================
+           PRE-DRAFT COUNTDOWN
+           ============================================================ */
+        .pre-draft-panel {
+            text-align: center;
+            padding: 60px 24px;
             background: var(--bg-card);
             border-radius: var(--radius-lg);
-            padding: 16px;
             box-shadow: var(--shadow-card);
+            margin-bottom: 14px;
         }
-        
-        .available-teams { max-height: 600px; overflow-y: auto; }
-        
-        .available-teams h3, .draft-order h3, .recent-picks h3 {
-            color: var(--text-primary);
-            margin: 0 0 14px;
-            font-size: 1rem;
+        .pre-draft-panel h2 {
+            font-size: 1.15rem;
             font-weight: 700;
+            color: var(--text-secondary);
+            margin: 0 0 24px;
         }
-
-        /* Custom scrollbar for dark theme */
-        .available-teams::-webkit-scrollbar,
-        .order-list::-webkit-scrollbar,
-        .picks-list::-webkit-scrollbar {
-            width: 6px;
+        .countdown-grid {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-bottom: 28px;
+            flex-wrap: wrap;
         }
-        .available-teams::-webkit-scrollbar-track,
-        .order-list::-webkit-scrollbar-track,
-        .picks-list::-webkit-scrollbar-track {
-            background: transparent;
+        .countdown-unit {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 72px;
         }
-        .available-teams::-webkit-scrollbar-thumb,
-        .order-list::-webkit-scrollbar-thumb,
-        .picks-list::-webkit-scrollbar-thumb {
-            background: var(--text-muted);
-            border-radius: 3px;
+        .countdown-value {
+            font-size: 2.6rem;
+            font-weight: 800;
+            color: var(--accent-orange);
+            line-height: 1;
+            letter-spacing: -0.03em;
         }
-        
-        /* Team Grid */
-        .team-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-            gap: 10px;
-            margin-top: 12px;
+        .countdown-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-top: 4px;
         }
-        
-        .team-card {
-            background: var(--bg-elevated);
-            padding: 12px;
-            border-radius: var(--radius-md);
-            cursor: pointer;
-            transition: all var(--transition-fast);
-            text-align: center;
-            border: 2px solid var(--border-color);
-            position: relative;
-            min-height: 115px;
-        }
-        
-        .team-card:hover {
-            background: var(--bg-card-hover);
-            transform: translateY(-1px);
-            box-shadow: var(--shadow-elevated);
-            border-color: rgba(56, 139, 253, 0.25);
-        }
-        
-        .team-card.selected {
-            border-color: var(--accent-green);
-            background: var(--accent-green-dim);
-            padding-bottom: 55px;
-        }
-        
-        .team-card.disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-        }
-        .team-card.disabled:hover {
-            transform: none;
-            box-shadow: var(--shadow-card);
-            border-color: var(--border-color);
-        }
-        
-        .team-logo {
-            width: 40px;
-            height: 40px;
-            margin: 0 auto 8px;
-            border-radius: 50%;
-            display: block;
-        }
-        
-        .team-name { 
-            font-weight: 600; 
-            margin-bottom: 3px;
-            color: var(--text-primary);
+        .pre-draft-note {
             font-size: 0.85rem;
-        }
-        .team-abbr { 
-            font-size: 0.8rem; 
             color: var(--text-muted);
         }
-        
-        /* Selection buttons on card */
-        .team-selection-buttons {
-            position: absolute;
-            bottom: 8px;
-            left: 8px;
-            right: 8px;
-            display: none;
-            gap: 5px;
-            flex-direction: column;
-        }
-        
-        .team-card.selected .team-selection-buttons {
-            display: flex;
-        }
-        
-        .team-selection-btn {
-            padding: 6px 12px;
-            border: none;
-            border-radius: var(--radius-sm);
-            font-size: 0.75rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all var(--transition-fast);
-            font-family: 'Outfit', sans-serif;
-        }
-        
-        .team-selection-btn.confirm {
-            background: var(--accent-green);
-            color: #fff;
-        }
-        
-        .team-selection-btn.clear {
-            background: var(--bg-elevated);
-            color: var(--text-secondary);
-            border: 1px solid var(--border-color);
-        }
-        
-        .team-selection-btn:hover {
-            filter: brightness(1.15);
-            transform: translateY(-1px);
-        }
-        
-        /* Order & Picks Lists */
-        .order-list, .picks-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-            max-height: 600px;
-            overflow-y: auto;
-        }
-        
-        .recent-picks {
+
+        /* ============================================================
+           COMBINED DRAFT INFO CARD
+           ============================================================ */
+        .draft-info-card {
             background: var(--bg-card);
             border-radius: var(--radius-lg);
-            padding: 16px;
             box-shadow: var(--shadow-card);
+            margin-bottom: 14px;
+            overflow: hidden;
         }
-        
-        .recent-picks h3 {
-            color: var(--accent-orange) !important;
-            font-size: 1.05rem !important;
-            margin-bottom: 14px !important;
-            text-align: center;
-            font-weight: 700;
-        }
-        
-        .order-item, .pick-item {
-            padding: 10px 12px;
-            margin: 6px 0;
-            background: var(--bg-elevated);
-            border-radius: var(--radius-sm);
+        .di-top {
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            border: 1px solid var(--border-color);
-            font-size: 0.9rem;
-            color: var(--text-primary);
+            justify-content: space-between;
+            padding: 12px 18px;
+            gap: 12px;
         }
-        
-        .order-item.current {
-            background: var(--accent-orange-dim);
-            border: 2px solid var(--accent-orange);
-            animation: currentGlow 2s infinite;
+        .di-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 0;
         }
-        
-        @keyframes currentGlow {
-            0%, 100% { box-shadow: 0 0 5px rgba(210, 153, 34, 0.2); }
-            50% { box-shadow: 0 0 14px rgba(210, 153, 34, 0.4); }
+        .di-right {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex-shrink: 0;
         }
-        
-        .pick-number {
+        .di-auto-toggle {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            cursor: pointer;
+        }
+        .di-auto-label { white-space: nowrap; }
+        .status-pick-badge {
             background: var(--accent-blue);
             color: #fff;
-            padding: 3px 8px;
-            border-radius: 10px;
-            font-size: 0.75rem;
+            padding: 5px 12px;
+            border-radius: 999px;
+            font-size: 0.78rem;
             font-weight: 700;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
-        
-        .pick-team-info {
+        .status-now-picking { font-size: 0.85rem; color: var(--text-secondary); }
+        .status-now-picking strong { color: var(--text-primary); font-weight: 700; }
+        .status-your-turn { font-size: 0.78rem; font-weight: 600; color: var(--accent-green); margin-top: 2px; }
+
+        /* Timer ring */
+        .timer-ring-wrap { position: relative; width: 50px; height: 50px; flex-shrink: 0; }
+        .timer-ring-svg { width: 50px; height: 50px; transform: rotate(-90deg); }
+        .timer-ring-bg { fill: none; stroke: var(--border-color); stroke-width: 4; }
+        .timer-ring-fg {
+            fill: none; stroke: var(--accent-green); stroke-width: 4;
+            stroke-linecap: round; transition: stroke-dashoffset 1s linear, stroke 0.3s ease;
+        }
+        .timer-ring-fg.warning { stroke: var(--accent-orange); }
+        .timer-ring-fg.danger  { stroke: var(--accent-red); }
+        .timer-seconds {
+            position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+            font-size: 0.95rem; font-weight: 700; color: var(--text-primary);
+        }
+        .timer-seconds.warning { color: var(--accent-orange); }
+        .timer-seconds.danger  { color: var(--accent-red); }
+        .status-paused-badge {
+            display: flex; align-items: center; gap: 6px;
+            background: var(--accent-orange-dim); color: var(--accent-orange);
+            padding: 6px 14px; border-radius: 999px; font-size: 0.8rem; font-weight: 700;
+        }
+
+        /* Last pick row inside the card */
+        .di-last-pick {
+            display: none;
+            align-items: center;
+            gap: 14px;
+            padding: 12px 18px;
+            border-top: 1px solid var(--border-subtle);
+            border-left: 3px solid var(--accent-orange);
+            transition: all 0.3s ease;
+        }
+        .di-last-pick.show { display: flex; }
+        .di-last-pick img { width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; }
+        .di-last-pick .lp-text { font-size: 0.95rem; color: var(--text-secondary); }
+        .di-last-pick .lp-text strong { color: var(--text-primary); font-size: 1rem; }
+        .di-last-pick .lp-pick-num { font-size: 0.78rem; font-weight: 700; color: var(--accent-orange); margin-top: 1px; }
+        .di-last-pick .lp-auto-badge {
+            display: inline-block; font-size: 0.65rem; font-weight: 700;
+            color: var(--accent-orange); background: var(--accent-orange-dim);
+            padding: 2px 7px; border-radius: 999px; margin-left: 6px; vertical-align: middle;
+        }
+        .di-last-pick.auto-highlight {
+            border-left-color: var(--accent-red);
+            background: var(--accent-red-dim);
+        }
+        .di-last-pick.auto-highlight .lp-pick-num { color: var(--accent-red); }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+        .di-last-pick.flash { animation: bannerFlash 1.5s ease-out; }
+        @keyframes bannerFlash {
+            0%   { background: var(--accent-blue-dim); border-left-color: var(--accent-blue); }
+            30%  { background: var(--accent-blue-dim); border-left-color: var(--accent-blue); }
+            100% { background: transparent; border-left-color: var(--accent-orange); }
+        }
+
+        /* ============================================================
+           DRAFT BOARD — 3-column layout
+           ============================================================ */
+        .draft-board {
+            display: grid;
+            grid-template-columns: 1fr 260px;
+            grid-template-rows: auto 1fr;
+            gap: 14px;
+            margin-bottom: 14px;
+        }
+        .panel {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-card);
+            overflow: hidden;
+        }
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 16px 10px;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+        .panel-title {
+            font-size: 0.88rem;
+            font-weight: 700;
+            color: var(--text-primary);
             display: flex;
             align-items: center;
             gap: 8px;
         }
-        
-        .pick-team-logo {
-            width: 28px;
-            height: 28px;
-            border-radius: 50%;
-        }
-
-        .pick-team-info strong {
-            color: var(--text-primary);
-            font-size: 0.85rem;
-        }
-
-        .pick-team-info small {
-            color: var(--text-muted);
-            font-size: 0.75rem;
-        }
-        
-        /* Last Pick Banner */
-        .last-pick-display {
-            background: var(--bg-card);
-            border: 2px solid var(--accent-orange);
-            border-radius: var(--radius-lg);
-            padding: 16px;
-            margin-bottom: 16px;
-            text-align: center;
-            box-shadow: var(--shadow-card);
-            display: none;
-        }
-        
-        .last-pick-display.show {
-            display: block;
-            animation: fadeInSlide 0.5s ease-out;
-        }
-        
-        @keyframes fadeInSlide {
-            from { opacity: 0; transform: translateY(-16px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .last-pick-content {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 14px;
-        }
-        
-        .last-pick-logo {
-            width: 56px;
-            height: 56px;
-            border-radius: 50%;
-        }
-        
-        .last-pick-info h4 {
-            margin: 0 0 4px;
-            color: var(--accent-orange);
-            font-size: 1rem;
-            font-weight: 700;
-        }
-        
-        .last-pick-info .team-name {
-            font-size: 0.95rem;
-            font-weight: 700;
-            color: var(--text-primary);
-            margin-bottom: 2px;
-        }
-        
-        .last-pick-info .participant-name {
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-        }
-        
-        /* Notification toasts */
-        .notification {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 12px 20px;
-            border-radius: var(--radius-md);
-            color: #fff;
+        .panel-title i { font-size: 0.82rem; color: var(--text-muted); }
+        .panel-count {
+            font-size: 0.72rem;
             font-weight: 600;
-            font-family: 'Outfit', sans-serif;
-            z-index: 1000;
-            transform: translateX(400px);
-            transition: transform 0.3s ease;
-            box-shadow: var(--shadow-elevated);
-        }
-        
-        .notification.show { transform: translateX(0); }
-        .notification.success { background: var(--accent-green); }
-        .notification.error   { background: var(--accent-red); }
-        .notification.warning { background: var(--accent-orange); }
-        .notification.info    { background: var(--accent-blue); }
-        
-        /* Loading state */
-        .loading {
-            text-align: center;
-            padding: 40px;
-            font-size: 1rem;
             color: var(--text-muted);
-        }
-        
-        .spinner {
-            border: 3px solid var(--border-color);
-            border-top: 3px solid var(--accent-orange);
-            border-radius: 50%;
-            width: 36px;
-            height: 36px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 16px;
-        }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        /* Commissioner Controls */
-        .commissioner-controls {
-            background: var(--accent-orange-dim);
-            border: 1px solid rgba(210, 153, 34, 0.3);
-            border-radius: var(--radius-lg);
-            padding: 16px;
-            margin-top: 30px;
-        }
-        
-        .commissioner-controls h3 {
-            color: var(--accent-orange);
-            margin: 0 0 14px;
-            font-size: 1rem;
-            font-weight: 700;
-        }
-        
-        /* Navigation overrides for dark theme */
-        .menu-container {
-            position: fixed;
-            top: 0;
-            left: 0;
-            z-index: 1000;
-        }
-        
-        .menu-button {
-            position: fixed;
-            top: 5.5rem;
-            left: 1rem;
             background: var(--bg-elevated);
-            color: var(--text-primary);
-            border: 1px solid var(--border-color);
-            border-radius: var(--radius-sm);
-            padding: 0.5rem;
-            cursor: pointer;
-            z-index: 1002;
-            width: 40px;
-            height: 40px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: var(--shadow-card);
+            padding: 2px 8px;
+            border-radius: 999px;
         }
-        
-        .menu-button:hover { background: var(--bg-card-hover); }
-        
-        .menu-overlay {
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0, 0, 0, 0.6);
-            z-index: 1001;
-        }
-        
-        .menu-panel {
-            position: fixed;
-            top: 0;
-            left: -300px;
-            width: 300px;
-            height: 100vh;
-            background: var(--bg-card);
-            box-shadow: 4px 0 20px rgba(0,0,0,0.5);
-            transition: left 0.3s ease;
-            z-index: 1002;
-        }
-        
-        .menu-panel.menu-open { left: 0; }
-        
-        .menu-header {
-            padding: 1rem;
-            display: flex;
-            justify-content: flex-end;
-            border-bottom: 1px solid var(--border-color);
-        }
-        
-        .close-button {
-            background: none;
-            border: none;
-            color: var(--text-secondary);
-            cursor: pointer;
-            padding: 0.5rem;
-        }
-        .close-button:hover { color: var(--text-primary); }
-        
-        .menu-content { padding: 1rem; }
-        .menu-list { list-style: none; padding: 0; margin: 0; }
-        
-        .menu-link {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.85rem 1rem;
-            color: var(--text-secondary);
-            text-decoration: none;
-            transition: all var(--transition-fast);
-            border-radius: var(--radius-sm);
-        }
-        
-        .menu-link:hover {
-            background: var(--bg-elevated);
-            color: var(--text-primary);
-        }
-        
-        .menu-link i { width: 20px; }
-        
-        /* Mobile adjustments */
-        @media (max-width: 600px) {
-            .container { padding: 12px; }
-            
-            h1 { font-size: 1.35rem; }
-            
-            .current-pick { font-size: 1.1rem; }
-            
-            .team-grid {
-                grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-                gap: 8px;
-            }
-            
-            .team-card {
-                padding: 10px;
-                min-height: 105px;
-            }
-            
-            .team-card.selected { padding-bottom: 50px; }
-            
-            .team-name { font-size: 0.78rem; }
-            .team-abbr { font-size: 0.72rem; }
-            
-            .order-item, .pick-item {
-                padding: 8px 10px;
-                font-size: 0.82rem;
-            }
-            
-            .btn { padding: 8px 16px; font-size: 0.82rem; }
-            .team-selection-btn { padding: 5px 10px; font-size: 0.7rem; }
-            
-            .last-pick-content { flex-direction: column; gap: 8px; }
-            .last-pick-logo { width: 48px; height: 48px; }
-        }
-        
-        @media (min-width: 601px) {
-            .container { max-width: 1200px; padding: 24px; }
-        }
+        .panel-body { padding: 12px 16px 16px; }
 
-        /* ===== FLOATING PILL NAV ===== */
-        .floating-pill {
-            position: fixed;
-            bottom: 18px;
-            left: 50%;
-            z-index: 9999;
+        /* Teams panel spans full width */
+        .teams-panel { grid-column: 1 / -1; }
+
+        /* Sidebar: order + picks stacked */
+        .sidebar-stack { grid-column: 2; grid-row: 1 / 3; display: flex; flex-direction: column; gap: 14px; }
+
+        /* Actually let's do: teams top-left, sidebar right, picks below teams */
+        .draft-board {
+            grid-template-columns: 1fr 280px;
+            grid-template-rows: auto;
+        }
+        .teams-panel { grid-column: 1; grid-row: 1; }
+        .sidebar-stack { grid-column: 2; grid-row: 1; }
+
+        /* ============================================================
+           TEAM GRID
+           ============================================================ */
+        .team-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 8px;
+        }
+        .team-card {
             display: flex;
             flex-direction: column;
             align-items: center;
-            background: rgba(24, 33, 47, 0.82);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 999px;
-            padding: 6px;
-            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03);
-            -webkit-backdrop-filter: blur(20px);
-            backdrop-filter: blur(20px);
-            -webkit-transform: translateX(-50%) translateZ(0);
-            transform: translateX(-50%) translateZ(0);
-            will-change: transform;
-            transition: border-radius 0.35s ease, padding 0.35s ease;
-        }
-        .floating-pill.expanded { border-radius: 22px; padding: 8px; }
-        .pill-main-row { display: flex; align-items: center; gap: 2px; }
-        .pill-expanded-row {
-            display: flex; align-items: center; justify-content: center; gap: 4px;
-            max-height: 0; opacity: 0; overflow: hidden;
-            transition: max-height 0.35s ease, opacity 0.25s ease, margin 0.35s ease, padding 0.35s ease;
-            margin-bottom: 0; padding: 0 4px;
-        }
-        .floating-pill.expanded .pill-expanded-row {
-            max-height: 60px; opacity: 1; margin-bottom: 6px;
-            padding: 0 4px 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-        }
-        .pill-expanded-item {
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            gap: 2px; width: 52px; height: 44px; border-radius: 12px;
-            text-decoration: none; color: var(--text-muted); font-size: 14px;
-            transition: all var(--transition-fast); cursor: pointer;
-            border: none; background: none; -webkit-tap-highlight-color: transparent;
-        }
-        .pill-expanded-item span {
-            font-size: 9px; font-weight: 600; font-family: 'Outfit', sans-serif;
-            letter-spacing: 0.02em; line-height: 1; white-space: nowrap;
-        }
-        .pill-expanded-item:hover { color: var(--text-primary); background: rgba(255, 255, 255, 0.08); }
-        .pill-expanded-item.logout-item:hover { color: var(--accent-red); }
-        .pill-menu-btn .fa-bars,
-        .pill-menu-btn .fa-xmark { transition: transform 0.3s ease, opacity 0.2s ease; }
-        .pill-menu-btn .fa-xmark { position: absolute; opacity: 0; transform: rotate(-90deg); }
-        .floating-pill.expanded .pill-menu-btn .fa-bars { opacity: 0; transform: rotate(90deg); }
-        .floating-pill.expanded .pill-menu-btn .fa-xmark { opacity: 1; transform: rotate(0deg); }
-        body { padding-bottom: 84px; }
-        @media (max-width: 600px) {
-            .floating-pill { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
-        }
-        .pill-item {
-            display: flex; align-items: center; justify-content: center;
-            width: 46px; height: 46px; border-radius: 999px;
-            text-decoration: none; color: var(--text-muted); font-size: 17px;
-            transition: all var(--transition-fast); cursor: pointer;
-            border: none; background: none; -webkit-tap-highlight-color: transparent;
+            padding: 14px 8px 12px;
+            border-radius: var(--radius-md);
+            background: var(--bg-elevated);
+            border: 2px solid var(--border-color);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            text-align: center;
             position: relative;
         }
-        .pill-item:hover { color: var(--text-primary); background: var(--bg-elevated); }
-        .pill-item.active { color: white; background: var(--accent-blue); }
-        .pill-item:active { transform: scale(0.92); }
-        .pill-divider { width: 1px; height: 26px; background: var(--border-color); flex-shrink: 0; }
-        @media (min-width: 601px) {
-            .pill-item::after {
-                content: attr(data-label); position: absolute; bottom: calc(100% + 8px);
-                left: 50%; transform: translateX(-50%) scale(0.9);
-                background: var(--bg-elevated); color: var(--text-primary);
-                font-size: 11px; font-weight: 600; font-family: 'Outfit', sans-serif;
-                padding: 4px 10px; border-radius: var(--radius-sm);
-                white-space: nowrap; opacity: 0; pointer-events: none;
-                transition: all 0.15s ease; border: 1px solid var(--border-color);
+        .team-card:hover {
+            border-color: rgba(56,139,253,0.3);
+            background: var(--bg-card-hover);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-elevated);
+        }
+        .team-card.selected {
+            border-color: var(--accent-green);
+            background: var(--accent-green-dim);
+            padding-bottom: 52px;
+        }
+        .team-card.disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+        .team-card img {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            margin-bottom: 6px;
+            object-fit: contain;
+        }
+        .tc-name {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            line-height: 1.2;
+        }
+        .tc-abbr {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+        .tc-check {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            color: #fff;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+        }
+        .team-card.selected .tc-check { display: flex; }
+
+        /* Inline action buttons inside selected team card */
+        .tc-actions {
+            position: absolute;
+            bottom: 6px;
+            left: 6px;
+            right: 6px;
+            display: none;
+            gap: 4px;
+        }
+        .team-card.selected .tc-actions { display: flex; }
+        .tc-actions .btn {
+            flex: 1;
+            justify-content: center;
+            padding: 5px 8px;
+            font-size: 0.72rem;
+            border-radius: 4px;
+        }
+
+        /* ============================================================
+           SIDEBAR LISTS (order + picks)
+           ============================================================ */
+        .order-list, .picks-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            overflow-y: auto;
+        }
+        .order-list { max-height: 280px; }
+        .picks-list { max-height: 500px; }
+        .order-list::-webkit-scrollbar, .picks-list::-webkit-scrollbar { width: 4px; }
+        .order-list::-webkit-scrollbar-thumb, .picks-list::-webkit-scrollbar-thumb {
+            background: var(--text-muted);
+            border-radius: 2px;
+        }
+        .order-list::-webkit-scrollbar-track, .picks-list::-webkit-scrollbar-track { background: transparent; }
+
+        .order-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 9px 12px;
+            border-radius: var(--radius-sm);
+            font-size: 0.82rem;
+            color: var(--text-primary);
+            transition: background var(--transition-fast);
+        }
+        .order-item + .order-item { margin-top: 2px; }
+        .order-item .oi-pos {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: var(--bg-elevated);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            flex-shrink: 0;
+        }
+        .order-item .oi-name { flex: 1; margin-left: 10px; font-weight: 500; }
+        .order-item.current {
+            background: var(--accent-orange-dim);
+            border: 1px solid rgba(210,153,34,0.3);
+        }
+        .order-item.current .oi-pos {
+            background: var(--accent-orange);
+            color: #fff;
+        }
+        .order-item.is-me .oi-name { color: var(--accent-blue); }
+
+        .pick-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            border-radius: var(--radius-sm);
+            font-size: 0.82rem;
+            transition: background var(--transition-fast);
+            position: relative;
+            overflow: hidden;
+        }
+        .pick-item + .pick-item { margin-top: 2px; }
+        .pick-item:first-child { background: var(--bg-elevated); }
+
+        /* New pick sweep animation */
+        .pick-item.new-pick::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, var(--accent-blue-dim) 0%, var(--accent-blue-dim) 50%, transparent 100%);
+            animation: pickSweep 1.2s ease-out forwards;
+            pointer-events: none;
+            border-radius: inherit;
+        }
+        @keyframes pickSweep {
+            0%   { transform: translateX(-100%); opacity: 1; }
+            60%  { transform: translateX(0%); opacity: 1; }
+            100% { transform: translateX(0%); opacity: 0; }
+        }
+        .pick-item .pi-num {
+            background: var(--accent-blue);
+            color: #fff;
+            font-size: 0.68rem;
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 999px;
+            flex-shrink: 0;
+        }
+        .pick-item img { width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; }
+        .pick-item .pi-details { min-width: 0; }
+        .pick-item .pi-team { font-weight: 600; color: var(--text-primary); font-size: 0.8rem; }
+        .pick-item .pi-by { font-size: 0.72rem; color: var(--text-muted); }
+        .pick-item .pi-auto {
+            font-size: 0.65rem;
+            color: var(--accent-orange);
+            font-weight: 600;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 28px 12px;
+            color: var(--text-muted);
+            font-size: 0.82rem;
+            font-style: italic;
+        }
+
+        /* ============================================================
+           TOGGLE SWITCH (shared)
+           ============================================================ */
+        .toggle-switch {
+            position: relative;
+            width: 40px;
+            height: 22px;
+            flex-shrink: 0;
+        }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-track {
+            position: absolute;
+            inset: 0;
+            background: var(--bg-elevated);
+            border-radius: 999px;
+            border: 1px solid var(--border-color);
+            transition: background 0.2s ease, border-color 0.2s ease;
+            cursor: pointer;
+        }
+        .toggle-track::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            transition: transform 0.2s ease, background 0.2s ease;
+        }
+        .toggle-switch input:checked + .toggle-track {
+            background: var(--accent-green-dim);
+            border-color: var(--accent-green);
+        }
+        .toggle-switch input:checked + .toggle-track::after {
+            transform: translateX(18px);
+            background: var(--accent-green);
+        }
+        .auto-draft-hint {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            margin-left: auto;
+        }
+
+        /* ============================================================
+           COMMISSIONER CONTROLS
+           ============================================================ */
+        .commissioner-panel {
+            padding: 14px 16px;
+            background: var(--bg-card);
+            border: 1px solid rgba(210,153,34,0.2);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-card);
+            margin-bottom: 14px;
+        }
+        .commissioner-panel .cp-title {
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: var(--accent-orange);
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .commissioner-panel .cp-title i { font-size: 0.78rem; }
+        .cp-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+        /* ============================================================
+           BUTTONS
+           ============================================================ */
+        .btn {
+            padding: 8px 18px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            font-size: 0.82rem;
+            font-family: 'Outfit', sans-serif;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+        .btn:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; filter: none; box-shadow: none; }
+        .btn-green  { background: var(--accent-green); color: #fff; }
+        .btn-orange { background: var(--accent-orange); color: #fff; }
+        .btn-red    { background: var(--accent-red); color: #fff; }
+        .btn-ghost  { background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border-color); }
+        .btn-ghost:hover { color: var(--text-primary); }
+        .btn-sm { padding: 6px 12px; font-size: 0.78rem; }
+
+        /* ============================================================
+           NOTIFICATIONS
+           ============================================================ */
+        .toast-stack { position: fixed; top: 16px; right: 16px; z-index: 9998; display: flex; flex-direction: column; gap: 8px; }
+        .toast {
+            padding: 10px 18px;
+            border-radius: var(--radius-md);
+            color: #fff;
+            font-weight: 600;
+            font-size: 0.82rem;
+            font-family: 'Outfit', sans-serif;
+            box-shadow: var(--shadow-elevated);
+            transform: translateX(120%);
+            transition: transform 0.3s ease, opacity 0.3s ease;
+            max-width: 340px;
+        }
+        .toast.show { transform: translateX(0); }
+        .toast.success { background: var(--accent-green); }
+        .toast.error   { background: var(--accent-red); }
+        .toast.warning { background: var(--accent-orange); }
+        .toast.info    { background: var(--accent-blue); }
+
+        /* ============================================================
+           LOADING
+           ============================================================ */
+        .loading-state {
+            text-align: center;
+            padding: 48px 20px;
+            color: var(--text-muted);
+        }
+        .spinner {
+            width: 32px; height: 32px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-orange);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 14px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ============================================================
+           RESPONSIVE
+           ============================================================ */
+        @media (max-width: 860px) {
+            .draft-board {
+                grid-template-columns: 1fr;
             }
-            .pill-item:hover::after { opacity: 1; transform: translateX(-50%) scale(1); }
-            .floating-pill.expanded .pill-item:hover::after { opacity: 0; }
+            .sidebar-stack { grid-column: 1; grid-row: auto; }
+            .teams-panel { grid-column: 1; grid-row: auto; }
+        }
+        @media (max-width: 600px) {
+            .container { padding: 10px; }
+            .draft-header { padding: 12px 14px; }
+            .draft-header-left h1 { font-size: 1.15rem; }
+            .draft-header-left img { width: 36px; height: 36px; }
+            .status-bar { padding: 12px 14px; gap: 10px; }
+            .team-grid { grid-template-columns: repeat(auto-fill, minmax(105px, 1fr)); gap: 6px; }
+            .team-card { padding: 10px 6px 8px; }
+            .team-card img { width: 34px; height: 34px; }
+            .tc-name { font-size: 0.72rem; }
+            .tc-actions .btn { font-size: 0.65rem; padding: 4px 6px; }
+            .tc-actions { flex-direction: column; }
+            .team-card.selected { padding-bottom: 62px; }
+            .di-last-pick { padding: 10px 14px; gap: 10px; }
+            .di-last-pick img { width: 36px; height: 36px; }
+            .di-last-pick .lp-text { font-size: 0.85rem; }
+            .di-top { padding: 10px 14px; gap: 8px; }
+            .di-auto-label { display: none; }
+            .countdown-value { font-size: 2rem; }
+            .countdown-unit { min-width: 58px; }
+            .timer-ring-wrap { width: 48px; height: 48px; }
+            .timer-ring-svg { width: 48px; height: 48px; }
+            .timer-seconds { font-size: 0.92rem; }
         }
     </style>
 </head>
 <body>
-    <?php 
-    // Include the navigation menu component (dark theme version)
-    $navFile = $_SERVER['DOCUMENT_ROOT'] . '/nba-wins-platform/components/navigation_menu.php';
-    if (file_exists($navFile)) {
-        include $navFile;
-    } else {
-        include $_SERVER['DOCUMENT_ROOT'] . '/nba-wins-platform/components/navigation_menu.php';
-    }
-    ?>
-    
+    <div class="toast-stack" id="toastStack"></div>
+
     <div class="container">
-        <div class="header">
-            <img src="nba-wins-platform/public/assets/team_logos/Logo.png" alt="NBA Logo" class="basketball-logo">
-            <h1>Live Draft</h1>
-            <h2><?= htmlspecialchars($league['display_name']) ?></h2>
-            <p>Welcome, <?= htmlspecialchars($user_info['display_name']) ?></p>
-        </div>
-        
-        <div class="last-pick-display" id="lastPickDisplay">
-            <h4 style="color: var(--accent-orange); margin-bottom: 8px; font-weight: 700;">Latest Pick</h4>
-            <div class="last-pick-content" id="lastPickContent">
-                <!-- Last pick info will be populated here -->
-            </div>
-        </div>
-        
-        <div class="draft-status" id="draftStatus">
-            <div class="loading">
-                <div class="spinner"></div>
-                Loading draft status...
-            </div>
-        </div>
-        
-        <div class="draft-board" id="draftBoard" style="display: none;">
-            <div class="available-teams">
-                <h3><i class="fas fa-basketball-ball" style="color: var(--accent-orange); margin-right: 6px;"></i>Available Teams</h3>
-                <div class="team-grid" id="teamGrid">
-                    <!-- Teams loaded via JavaScript -->
+
+        <!-- HEADER -->
+        <div class="draft-header">
+            <div class="draft-header-left">
+                <img src="nba-wins-platform/public/assets/team_logos/Logo.png" alt="NBA">
+                <div>
+                    <h1>Live Draft</h1>
+                    <div class="league-label"><?= htmlspecialchars($league['display_name']) ?></div>
                 </div>
             </div>
-            
-            <div class="draft-order">
-                <h3><i class="fas fa-list-ol" style="color: var(--accent-blue); margin-right: 6px;"></i>Draft Order</h3>
-                <ul class="order-list" id="draftOrderList">
-                    <!-- Order loaded via JavaScript -->
-                </ul>
-            </div>
-            
-            <div class="recent-picks">
-                <h3><i class="fas fa-check-circle" style="color: var(--accent-orange); margin-right: 6px;"></i>Draft Picks</h3>
-                <ul class="picks-list" id="recentPicksList">
-                    <!-- Picks loaded via JavaScript -->
-                </ul>
+            <div class="draft-header-right">
+                <div class="user-badge">
+                    <i class="fas fa-user"></i>
+                    <?= htmlspecialchars($user_info['display_name'] ?? 'Unknown') ?>
+                </div>
             </div>
         </div>
-        
+
+        <!-- LOADING STATE -->
+        <div id="loadingState" class="loading-state">
+            <div class="spinner"></div>
+            Loading draft...
+        </div>
+
+        <!-- PRE-DRAFT COUNTDOWN (hidden by default) -->
+        <div id="preDraftPanel" class="pre-draft-panel" style="display:none;">
+            <h2>Draft Starts In</h2>
+            <div class="countdown-grid" id="countdownGrid">
+                <div class="countdown-unit"><span class="countdown-value" id="cdDays">--</span><span class="countdown-label">Days</span></div>
+                <div class="countdown-unit"><span class="countdown-value" id="cdHours">--</span><span class="countdown-label">Hours</span></div>
+                <div class="countdown-unit"><span class="countdown-value" id="cdMins">--</span><span class="countdown-label">Min</span></div>
+                <div class="countdown-unit"><span class="countdown-value" id="cdSecs">--</span><span class="countdown-label">Sec</span></div>
+            </div>
+            <div class="pre-draft-note" id="preDraftNote">Waiting for the draft to begin...</div>
+        </div>
+
+        <!-- COMBINED DRAFT INFO CARD (status + last pick + auto-draft) -->
+        <div id="draftInfoCard" class="draft-info-card" style="display:none;">
+            <!-- Top row: pick info + auto-draft toggle + timer -->
+            <div class="di-top">
+                <div class="di-left">
+                    <span class="status-pick-badge" id="pickBadge">Pick 1 of 30</span>
+                    <div>
+                        <div class="status-now-picking" id="nowPicking">Now Picking: <strong>---</strong></div>
+                        <div class="status-your-turn" id="yourTurnLabel" style="display:none;">It's your turn!</div>
+                    </div>
+                </div>
+                <div class="di-right">
+                    <label class="di-auto-toggle" id="autoDraftToggle" style="display:none;">
+                        <span class="toggle-switch">
+                            <input type="checkbox" id="autoDraftCheckbox" onchange="toggleAutoDraft(this.checked)">
+                            <span class="toggle-track"></span>
+                        </span>
+                        <span class="di-auto-label">Auto</span>
+                    </label>
+                    <div id="timerArea">
+                        <div class="timer-ring-wrap" id="timerRing">
+                            <svg class="timer-ring-svg" viewBox="0 0 56 56">
+                                <circle class="timer-ring-bg" cx="28" cy="28" r="24"></circle>
+                                <circle class="timer-ring-fg" id="timerArc" cx="28" cy="28" r="24"
+                                        stroke-dasharray="150.8" stroke-dashoffset="0"></circle>
+                            </svg>
+                            <div class="timer-seconds" id="timerText">--</div>
+                        </div>
+                    </div>
+                    <div class="status-paused-badge" id="pausedBadge" style="display:none;">
+                        <i class="fas fa-pause"></i> Paused
+                    </div>
+                </div>
+            </div>
+            <!-- Bottom row: last pick (hidden until a pick is made) -->
+            <div class="di-last-pick" id="lastPickBanner">
+                <img id="lpLogo" src="" alt="" onerror="this.style.opacity='0.3'">
+                <div>
+                    <div class="lp-text" id="lpText"></div>
+                    <div class="lp-pick-num" id="lpPickNum"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DRAFT BOARD -->
+        <div class="draft-board" id="draftBoard" style="display:none;">
+            <!-- Teams Panel -->
+            <div class="panel teams-panel">
+                <div class="panel-header">
+                    <span class="panel-title">Available Teams</span>
+                    <span class="panel-count" id="teamsCount">30</span>
+                </div>
+                <div class="panel-body">
+                    <div class="team-grid" id="teamGrid"></div>
+                </div>
+            </div>
+
+            <!-- Sidebar: Order + Picks -->
+            <div class="sidebar-stack">
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title"><i class="fas fa-list-ol"></i> Draft Order</span>
+                    </div>
+                    <div class="panel-body">
+                        <ul class="order-list" id="draftOrderList"></ul>
+                    </div>
+                </div>
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title"><i class="fas fa-history"></i> Pick History</span>
+                        <span class="panel-count" id="picksCount">0</span>
+                    </div>
+                    <div class="panel-body">
+                        <ul class="picks-list" id="picksList"></ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- COMMISSIONER CONTROLS -->
         <?php if ($is_commissioner): ?>
-        <div class="commissioner-controls">
-            <h3><i class="fas fa-shield-alt" style="margin-right: 6px;"></i>Commissioner Controls</h3>
-            <div class="draft-controls">
-                <button id="startDraftBtn" class="btn btn-primary">Start Draft</button>
-                <button id="pauseDraftBtn" class="btn btn-warning" style="display: none;">Pause Draft</button>
-                <button id="resumeDraftBtn" class="btn btn-primary" style="display: none;">Resume Draft</button>
-                <button id="commissionerPickBtn" class="btn btn-secondary" style="display: none;">Make Pick for Current Player</button>
+        <div class="commissioner-panel" id="commPanel" style="display:none;">
+            <div class="cp-title"><i class="fas fa-shield-alt"></i> Commissioner Controls</div>
+            <div class="cp-actions">
+                <button class="btn btn-green btn-sm" id="btnStart" onclick="startDraft()" style="display:none;" disabled><i class="fas fa-play"></i> Start Draft</button>
+                <button class="btn btn-ghost btn-sm" id="btnStartEarly" onclick="startDraftEarly()" style="display:none;"><i class="fas fa-forward"></i> Start Early</button>
+                <button class="btn btn-orange btn-sm" id="btnPause" onclick="pauseDraft()" style="display:none;"><i class="fas fa-pause"></i> Pause</button>
+                <button class="btn btn-green btn-sm" id="btnResume" onclick="resumeDraft()" style="display:none;"><i class="fas fa-play"></i> Resume</button>
             </div>
         </div>
         <?php endif; ?>
-    </div>
 
+    </div><!-- /.container -->
+
+    <!-- ================================================================
+         JAVASCRIPT
+         ================================================================ -->
     <script>
-        // Global variables
-        let selectedTeamId = null;
-        let selectedTeamData = null;
+    (function() {
+        'use strict';
+
+        // ── State ──────────────────────────────────────────────────
         let userInfo = {};
+        let currentStatus = null;
+        let selectedTeamId = null;
         let pollInterval = null;
-        let currentDraftStatus = null;
-        let pollFrequency = 5000; // 5 seconds
-        
-        // Caching variables to prevent unnecessary DOM updates
-        let lastTeamsData = null;
-        let lastOrderData = null;
-        let lastPicksData = null;
-        
+        let timerInterval = null;
+        let localTimer = 0;
+        let pickTimeLimit = 120;
+        let timerExpiredFired = false;    // prevent duplicate timer_expired calls per pick
+        let lastPickNumber = 0;          // track pick changes for timer reset
+        let draftDatePassed = false;     // whether draft_date is in the past
+        let lastBannerPickNum = 0;       // track last displayed pick for auto-pick detection
+        let lastRenderedPickNum = 0;     // track highest pick number rendered for new-pick animation
+        let autoPickPaused = false;      // true when pausing to show an auto-pick
+        let preDraftInterval = null;
+        const API = 'nba-wins-platform/api/draft_api.php';
+
+        // ── Init ───────────────────────────────────────────────────
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('Initializing simplified draft interface...');
-            getUserInfo();
+            fetchUserInfo();
             pollDraftStatus();
             startPolling();
-            
-            // Event listeners
-            document.getElementById('startDraftBtn')?.addEventListener('click', startDraft);
-            document.getElementById('pauseDraftBtn')?.addEventListener('click', pauseDraft);
-            document.getElementById('resumeDraftBtn')?.addEventListener('click', resumeDraft);
-            document.getElementById('commissionerPickBtn')?.addEventListener('click', commissionerPick);
         });
-        
-        // Get current user info
-        function getUserInfo() {
-            fetch('nba-wins-platform/api/draft_api.php?action=get_user_info')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        userInfo = data.data;
-                        console.log('User info loaded:', userInfo);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error getting user info:', error);
-                });
+
+        window.addEventListener('beforeunload', stopPolling);
+
+        // ── User Info ──────────────────────────────────────────────
+        function fetchUserInfo() {
+            fetch(API + '?action=get_user_info')
+                .then(r => r.json())
+                .then(d => { if (d.success) userInfo = d.data; })
+                .catch(e => console.error('User info error:', e));
         }
-        
-        // Start polling for draft updates
+
+        // ── Polling ────────────────────────────────────────────────
         function startPolling() {
-            if (pollInterval) {
-                clearInterval(pollInterval);
-            }
-            pollInterval = setInterval(pollDraftStatus, pollFrequency);
-            console.log(`Started polling every ${pollFrequency/1000} seconds`);
+            stopPolling();
+            pollInterval = setInterval(pollDraftStatus, 5000);
         }
-        
-        // Stop polling
         function stopPolling() {
-            if (pollInterval) {
-                clearInterval(pollInterval);
-                pollInterval = null;
-                console.log('Stopped polling');
-            }
+            if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
         }
-        
-        // Data comparison functions to prevent unnecessary updates
-        function hasTeamsChanged(newTeams) {
-            if (!lastTeamsData || !newTeams) return true;
-            if (lastTeamsData.length !== newTeams.length) return true;
-            return false;
-        }
-        
-        function hasOrderChanged(newOrder) {
-            if (!lastOrderData || !newOrder) return true;
-            if (lastOrderData.length !== newOrder.length) return true;
-            
-            try {
-                const lastCurrent = lastOrderData.find(p => p.is_current);
-                const newCurrent = newOrder.find(p => p.is_current);
-                
-                const currentChanged = (!lastCurrent && newCurrent) || 
-                                     (lastCurrent && !newCurrent) ||
-                                     (lastCurrent && newCurrent && lastCurrent.participant_id !== newCurrent.participant_id);
-                
-                return currentChanged;
-            } catch (e) {
-                return true;
-            }
-        }
-        
-        function hasPicksChanged(newPicks) {
-            if (!lastPicksData || !newPicks) return true;
-            if (lastPicksData.length !== newPicks.length) return true;
-            
-            if (newPicks.length > 0 && lastPicksData.length > 0) {
-                const lastFirstPick = lastPicksData[0];
-                const newFirstPick = newPicks[0];
-                
-                if (!lastFirstPick || !newFirstPick) return true;
-                
-                return (lastFirstPick.pick_number !== newFirstPick.pick_number ||
-                       lastFirstPick.team_name !== newFirstPick.team_name ||
-                       lastFirstPick.participant_name !== newFirstPick.participant_name);
-            }
-            
-            return false;
-        }
-        
-        // Check for completion
-        function checkFor30PicksAndRedirect(status) {
-            const pickCount = status.recent_picks ? status.recent_picks.length : 0;
-            const apiPickCount = status.pick_count || 0;
-            const isCompleted = status.status === 'completed';
-            
-            console.log('Completion check:', { pickCount, apiPickCount, isCompleted, status: status.status });
-            
-            if (pickCount >= 30 || apiPickCount >= 30 || isCompleted) {
-                console.log('Draft completed detected, redirecting to summary...');
-                stopPolling();
-                window.location.href = 'draft_summary.php';
-                return true;
-            }
-            return false;
-        }
-        
-        // Poll for draft status updates
+
         function pollDraftStatus() {
-            fetch('nba-wins-platform/api/draft_api.php?action=get_draft_status')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        const status = data.data;
-                        
-                        if (checkFor30PicksAndRedirect(status)) return;
-                        
-                        updateDraftDisplay(status);
-                        currentDraftStatus = status;
-                    } else {
-                        console.error('Draft status error:', data.error);
+            fetch(API + '?action=get_draft_status')
+                .then(r => r.json())
+                .then(d => {
+                    if (!d.success) return;
+                    const s = d.data;
+
+                    // Completion check
+                    if (s.pick_count >= 30 || s.status === 'completed') {
+                        stopPolling();
+                        stopTimer();
+                        window.location.href = 'draft_summary.php';
+                        return;
                     }
+
+                    // Sync auto-draft checkbox
+                    const cb = document.getElementById('autoDraftCheckbox');
+                    if (cb && s.user_auto_draft_enabled !== undefined) {
+                        cb.checked = s.user_auto_draft_enabled;
+                    }
+
+                    pickTimeLimit = s.pick_time_limit || 120;
+
+                    renderDraftState(s);
+                    currentStatus = s;
                 })
-                .catch(error => {
-                    console.error('Error polling draft status:', error);
-                    showNotification('Connection error. Retrying...', 'warning');
+                .catch(e => {
+                    console.error('Poll error:', e);
                 });
         }
-        
-        // Update the draft display
-        function updateDraftDisplay(status) {
-            const statusDiv = document.getElementById('draftStatus');
-            const boardDiv = document.getElementById('draftBoard');
-            
-            console.log('Updating draft display:', status.status);
-            
-            if (status.status === 'not_started') {
-                statusDiv.innerHTML = `
-                    <h2>Draft Not Started</h2>
-                    <p style="color: var(--text-muted);">Waiting for commissioner to start the draft...</p>
-                    ${userInfo.is_commissioner ? '<p style="color: var(--accent-green); font-weight: 600;">You can start the draft when ready!</p>' : ''}
-                `;
-                boardDiv.style.display = 'none';
-                updateCommissionerControls('not_started');
-            }
-            else if (status.status === 'active' || status.status === 'paused') {
-                const isPaused = status.status === 'paused';
-                
-                const pickCount = status.pick_count || (status.recent_picks ? status.recent_picks.length : 0);
-                const currentPickNumber = pickCount + 1;
-                
-                statusDiv.innerHTML = `
-                    <div class="current-pick">
-                        Pick ${currentPickNumber} of 30
-                    </div>
-                    ${status.current_participant ? `
-                        <h2>${isPaused ? 'DRAFT PAUSED' : 'Now Picking:'}</h2>
-                        <h3>${status.current_participant.display_name}</h3>
-                    ` : ''}
-                `;
-                
-                boardDiv.style.display = 'block';
-                
-                updateTeamGrid(status.available_teams, status.current_participant);
-                
-                if (status.draft_order && hasOrderChanged(status.draft_order)) {
-                    updateDraftOrder(status.draft_order, status.current_participant);
+
+        // ── Render ─────────────────────────────────────────────────
+        function renderDraftState(s) {
+            // Skip UI updates during auto-pick pause so everyone can see the pick
+            if (autoPickPaused) return;
+
+            const loading = document.getElementById('loadingState');
+            const preDraft = document.getElementById('preDraftPanel');
+            const draftInfoCard = document.getElementById('draftInfoCard');
+            const board = document.getElementById('draftBoard');
+            const commPanel = document.getElementById('commPanel');
+            const autoDraftToggle = document.getElementById('autoDraftToggle');
+
+            loading.style.display = 'none';
+
+            if (s.status === 'not_started') {
+                preDraft.style.display = 'block';
+                if (draftInfoCard) draftInfoCard.style.display = 'none';
+                board.style.display = 'none';
+                stopTimer();
+
+                // Pre-draft countdown (use server time to avoid client clock drift)
+                if (s.draft_date) {
+                    const serverNow = s.server_time ? new Date(s.server_time).getTime() : Date.now();
+                    const clockOffset = serverNow - Date.now(); // positive = server ahead
+                    draftDatePassed = new Date(s.draft_date).getTime() <= serverNow;
+                    startPreDraftCountdown(s.draft_date, clockOffset);
+                    document.getElementById('preDraftNote').textContent = draftDatePassed
+                        ? 'Draft time has arrived — ready to start.'
+                        : 'The draft will auto-start at the scheduled time.';
+                } else {
+                    draftDatePassed = true; // No date set — commissioner controls it
+                    document.getElementById('preDraftNote').textContent = 'Waiting for the commissioner to start the draft...';
+                    clearCountdown();
                 }
-                if (status.recent_picks && hasPicksChanged(status.recent_picks)) {
-                    updateDraftPicks(status.recent_picks);
+
+                showCommControls('not_started');
+                return;
+            }
+
+            // Active or Paused
+            preDraft.style.display = 'none';
+            if (draftInfoCard) draftInfoCard.style.display = 'block';
+            board.style.display = 'grid';
+            if (autoDraftToggle) autoDraftToggle.style.display = 'flex';
+
+            const isPaused = s.status === 'paused';
+            const pickCount = s.pick_count || 0;
+            const currentPick = pickCount + 1;
+
+            // Pick badge
+            document.getElementById('pickBadge').textContent = `Pick ${currentPick} of 30`;
+
+            // Now picking
+            const nowPicking = document.getElementById('nowPicking');
+            const yourTurn = document.getElementById('yourTurnLabel');
+            const myParticipantId = userInfo.participant_id || s.user_participant_id;
+            const isMyTurn = s.current_participant && myParticipantId && s.current_participant.participant_id == myParticipantId;
+
+            if (s.current_participant) {
+                nowPicking.innerHTML = isPaused
+                    ? '<strong>DRAFT PAUSED</strong>'
+                    : `Now Picking: <strong>${escHtml(s.current_participant.display_name)}</strong>`;
+            } else {
+                nowPicking.innerHTML = '<strong>---</strong>';
+            }
+
+            yourTurn.style.display = (isMyTurn && !isPaused) ? 'block' : 'none';
+
+            // Timer
+            const timerRing = document.getElementById('timerRing');
+            const pausedBadge = document.getElementById('pausedBadge');
+            if (isPaused) {
+                timerRing.style.display = 'none';
+                pausedBadge.style.display = 'flex';
+                stopTimer();
+            } else {
+                timerRing.style.display = 'block';
+                pausedBadge.style.display = 'none';
+
+                // Reset timer if pick changed
+                const serverPickNum = s.current_pick_number || currentPick;
+                if (serverPickNum !== lastPickNumber) {
+                    lastPickNumber = serverPickNum;
+                    timerExpiredFired = false;
+                    localTimer = (s.timer_seconds_remaining != null) ? s.timer_seconds_remaining : pickTimeLimit;
+                    startTimer();
+                } else if (s.timer_seconds_remaining != null) {
+                    // Sync from server only when it provides actual timer data
+                    if (Math.abs(localTimer - s.timer_seconds_remaining) > 3) {
+                        localTimer = s.timer_seconds_remaining;
+                    }
                 }
-                
-                updateCommissionerControls(status.status);
+                renderTimer();
+            }
+
+            // Teams grid
+            renderTeamGrid(s.available_teams || [], isMyTurn, isPaused);
+            document.getElementById('teamsCount').textContent = (s.available_teams || []).length;
+
+            // Draft order
+            renderDraftOrder(s.draft_order || [], s.current_participant);
+
+            // Pick history
+            renderPickHistory(s.recent_picks || []);
+            document.getElementById('picksCount').textContent = pickCount;
+
+            // Commissioner
+            showCommControls(s.status);
+        }
+
+        // ── Pre-Draft Countdown ────────────────────────────────────
+        function startPreDraftCountdown(draftDateStr, clockOffset) {
+            if (preDraftInterval) clearInterval(preDraftInterval);
+            const target = new Date(draftDateStr).getTime();
+            const offset = clockOffset || 0; // ms difference: server - client
+
+            function tick() {
+                // Use client time + offset to approximate server time
+                const serverNow = Date.now() + offset;
+                const diff = target - serverNow;
+                if (diff <= 0) {
+                    clearInterval(preDraftInterval);
+                    document.getElementById('cdDays').textContent = '0';
+                    document.getElementById('cdHours').textContent = '0';
+                    document.getElementById('cdMins').textContent = '0';
+                    document.getElementById('cdSecs').textContent = '0';
+                    document.getElementById('preDraftNote').textContent = 'Draft starting shortly...';
+                    draftDatePassed = true;
+                    showCommControls('not_started');
+                    // Poll more frequently to catch the draft starting
+                    let startCheck = setInterval(function() {
+                        pollDraftStatus();
+                        if (currentStatus && currentStatus.status !== 'not_started') {
+                            clearInterval(startCheck);
+                        }
+                    }, 3000);
+                    return;
+                }
+                const d = Math.floor(diff / 86400000);
+                const h = Math.floor((diff % 86400000) / 3600000);
+                const m = Math.floor((diff % 3600000) / 60000);
+                const sec = Math.floor((diff % 60000) / 1000);
+                document.getElementById('cdDays').textContent = d;
+                document.getElementById('cdHours').textContent = h;
+                document.getElementById('cdMins').textContent = m;
+                document.getElementById('cdSecs').textContent = sec;
+            }
+            tick();
+            preDraftInterval = setInterval(tick, 1000);
+        }
+
+        function clearCountdown() {
+            if (preDraftInterval) clearInterval(preDraftInterval);
+            ['cdDays','cdHours','cdMins','cdSecs'].forEach(id => {
+                document.getElementById(id).textContent = '--';
+            });
+        }
+
+        // ── Per-Pick Timer ─────────────────────────────────────────
+        function startTimer() {
+            stopTimer();
+            timerInterval = setInterval(function() {
+                localTimer = localTimer - 1;
+                renderTimer();
+                // Fire 2 seconds after local zero to account for server/client clock drift
+                if (localTimer <= -2 && !timerExpiredFired) {
+                    timerExpiredFired = true;
+                    handleTimerExpired();
+                }
+            }, 1000);
+        }
+        function stopTimer() {
+            if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+        }
+
+        function renderTimer() {
+            const arc = document.getElementById('timerArc');
+            const text = document.getElementById('timerText');
+            const circumference = 2 * Math.PI * 24; // r=24
+            const fraction = Math.max(0, localTimer / pickTimeLimit);
+            arc.setAttribute('stroke-dashoffset', circumference * (1 - fraction));
+
+            text.textContent = Math.max(0, localTimer);
+
+            // Color states
+            arc.classList.remove('warning', 'danger');
+            text.classList.remove('warning', 'danger');
+            if (localTimer <= 10) {
+                arc.classList.add('danger');
+                text.classList.add('danger');
+            } else if (localTimer <= 30) {
+                arc.classList.add('warning');
+                text.classList.add('warning');
             }
         }
-        
-        function getTeamLogoPath(team) {
-            if (team.logo && team.logo !== null && team.logo !== '') {
-                return fixLogoPath(team.logo);
+
+        function handleTimerExpired() {
+            // Only the user whose turn it is (or commissioner) should trigger the auto-pick
+            const isMyTurn = currentStatus && currentStatus.current_participant &&
+                             currentStatus.current_participant.participant_id == userInfo.participant_id;
+            const isComm = userInfo.is_commissioner;
+
+            if (isMyTurn || isComm) {
+                fetch(API, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: 'action=timer_expired'
+                })
+                .then(r => r.json())
+                .then(d => {
+                    if (d.success) {
+                        let msg = 'Time expired — auto-picked ' + (d.auto_picked_team || 'a team');
+                        if (d.auto_draft_forced) {
+                            msg += '. Auto-draft enabled due to consecutive timeouts.';
+                            // Sync the checkbox if auto-draft was force-enabled for this user
+                            const cb = document.getElementById('autoDraftCheckbox');
+                            if (cb && isMyTurn) cb.checked = true;
+                        }
+                        showToast(msg, 'warning');
+
+                        if (d.is_completed) {
+                            setTimeout(() => { window.location.href = 'draft_summary.php'; }, 1500);
+                        } else {
+                            // Fetch once to update the banner, then auto-pick pause kicks in
+                            setTimeout(pollDraftStatus, 500);
+                        }
+                    } else {
+                        // Server says timer not expired yet (clock drift) — retry in 2 seconds
+                        timerExpiredFired = false;
+                    }
+                })
+                .catch(e => {
+                    console.error('Timer expired error:', e);
+                    // Network error — allow retry
+                    timerExpiredFired = false;
+                });
+            } else {
+                // Not our turn — just wait for next poll to pick up the change
+                setTimeout(pollDraftStatus, 2000);
             }
-            
-            if (team.team_name) {
-                const teamName = team.team_name.toLowerCase().replace(/\s+/g, '_');
-                return fixLogoPath(`${teamName}.png`);
-            }
-            
-            return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMTgiIHN0cm9rZT0iIzMzMzMzMyIgc3Ryb2tlLXdpZHRoPSIyIi8+Cjx0ZXh0IHg9IjIwIiB5PSIyNSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIyMCIgZmlsbD0iIzMzMzMzMyI+Pz88L3RleHQ+Cjwvc3ZnPgo=';
         }
-        
-        function fixLogoPath(logoPath) {
-            if (!logoPath || logoPath === null || logoPath === undefined || logoPath === '') {
-                return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMTgiIHN0cm9rZT0iIzMzMzMzMyIgc3Ryb2tlLXdpZHRoPSIyIi8+Cjx0ZXh0IHg9IjIwIiB5PSIyNSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIyMCIgZmlsbD0iIzMzMzMzMyI+Pz88L3RleHQ+Cjwvc3ZnPgo=';
-            }
-            
-            if (logoPath.indexOf('/media/') === 0) {
-                return 'nba-wins-platform/public/assets/team_logos/' + logoPath.split('/').pop();
-            }
-            if (logoPath.indexOf('nba-wins-platform/public/assets/') === 0) {
-                return logoPath;
-            }
-            return 'nba-wins-platform/public/assets/team_logos/' + logoPath.split('/').pop();
+
+        /**
+         * Flash the banner to draw attention to a new pick
+         */
+        function flashBanner() {
+            const banner = document.getElementById('lastPickBanner');
+            if (!banner) return;
+            banner.classList.remove('flash');
+            // Force reflow to restart animation
+            void banner.offsetWidth;
+            banner.classList.add('flash');
         }
-        
-        // Updated updateTeamGrid function with buttons directly on cards
-        function updateTeamGrid(teams, currentParticipant = null) {
+
+        /**
+         * Pause the draft display for 7 seconds when an auto-pick happens
+         * so everyone can see what was picked before moving on.
+         */
+        function triggerAutoPickPause() {
+            if (autoPickPaused) return; // already pausing
+            autoPickPaused = true;
+            stopTimer(); // freeze the timer ring
+
+            // Show a paused countdown in the timer area
+            const text = document.getElementById('timerText');
+            const arc = document.getElementById('timerArc');
+            if (text) text.textContent = '...';
+            if (arc) arc.classList.remove('warning', 'danger');
+
+            setTimeout(function() {
+                autoPickPaused = false;
+                const banner = document.getElementById('lastPickBanner');
+                if (banner) banner.classList.remove('auto-highlight');
+                pollDraftStatus(); // resume normal flow
+            }, 7000);
+        }
+
+        // ── Team Grid ──────────────────────────────────────────────
+        function renderTeamGrid(teams, isMyTurn, isPaused) {
             const grid = document.getElementById('teamGrid');
-            const isMyTurn = currentParticipant && currentParticipant.participant_id == userInfo.participant_id;
-            const canPick = isMyTurn || userInfo.is_commissioner;
-            
-            console.log('Updating team grid - refreshing DOM');
-            lastTeamsData = teams;
-            
-            grid.innerHTML = teams.map(team => {
-                const teamDataStr = JSON.stringify(team).replace(/"/g, '&quot;');
-                const onClickHandler = canPick ? `onclick="selectTeam(${teamDataStr})"` : '';
-                const isSelected = selectedTeamId === team.id;
-                
-                return `
-                <div class="team-card ${!canPick ? 'disabled' : ''} ${isSelected ? 'selected' : ''}" 
-                     data-team-id="${team.id}" 
-                     ${onClickHandler}
-                     style="cursor: ${canPick ? 'pointer' : 'not-allowed'};">
-                    <img src="${getTeamLogoPath(team)}" 
-                         alt="${team.team_name} logo" 
-                         class="team-logo"
-                         onerror="this.style.opacity='0.3'">
-                    <div class="team-name">${team.team_name}</div>
-                    <div class="team-abbr">${team.abbreviation}</div>
-                    ${canPick ? `
-                    <div class="team-selection-buttons">
-                        <button class="team-selection-btn confirm" onclick="event.stopPropagation(); confirmPick();">Confirm Pick</button>
-                        <button class="team-selection-btn clear" onclick="event.stopPropagation(); clearSelection();">Clear</button>
-                    </div>
-                    ` : ''}
-                </div>
-            `;
+            const canPick = isMyTurn && !isPaused;
+
+            grid.innerHTML = teams.map(t => {
+                const sel = selectedTeamId === t.id;
+                return `<div class="team-card ${sel ? 'selected' : ''} ${!canPick ? 'disabled' : ''}"
+                             data-team-id="${t.id}"
+                             onclick="${canPick ? 'selectTeam(' + t.id + ',this)' : ''}">
+                    <div class="tc-check"><i class="fas fa-check"></i></div>
+                    <img src="${logoPath(t)}" alt="${escHtml(t.team_name)}" onerror="this.style.opacity='0.3'">
+                    <div class="tc-name">${escHtml(t.team_name)}</div>
+                    <div class="tc-abbr">${escHtml(t.abbreviation)}</div>
+                    ${canPick ? `<div class="tc-actions">
+                        <button class="btn btn-green" onclick="event.stopPropagation(); confirmPick();"><i class="fas fa-check"></i> Confirm</button>
+                        <button class="btn btn-ghost" onclick="event.stopPropagation(); clearSelection();">Cancel</button>
+                    </div>` : ''}
+                </div>`;
+            }).join('');
+
+            // Clear selection if selected team no longer available
+            if (selectedTeamId && canPick) {
+                if (!teams.find(t => t.id === selectedTeamId)) {
+                    selectedTeamId = null;
+                }
+            }
+        }
+
+        // ── Draft Order ────────────────────────────────────────────
+        function renderDraftOrder(order, currentParticipant) {
+            const list = document.getElementById('draftOrderList');
+            if (!order.length) { list.innerHTML = '<li class="empty-state">No draft order yet</li>'; return; }
+
+            list.innerHTML = order.map(p => {
+                const isCurrent = currentParticipant && currentParticipant.participant_id == p.participant_id;
+                const isMe = p.participant_id == userInfo.participant_id;
+                return `<li class="order-item ${isCurrent ? 'current' : ''} ${isMe ? 'is-me' : ''}">
+                    <span class="oi-pos">${p.draft_position}</span>
+                    <span class="oi-name">${escHtml(p.display_name)}${isMe ? ' (You)' : ''}</span>
+                </li>`;
             }).join('');
         }
-        
-        function updateDraftOrder(order, currentParticipant = null) {
-            const list = document.getElementById('draftOrderList');
-            
-            const orderWithCurrent = order.map(participant => ({
-                ...participant,
-                is_current: currentParticipant && currentParticipant.participant_id == participant.participant_id
-            }));
-            
-            console.log('Updating draft order - order changed');
-            lastOrderData = orderWithCurrent;
-            
-            list.innerHTML = orderWithCurrent.map(participant => `
-                <li class="order-item ${participant.is_current ? 'current' : ''}">
-                    <span>${participant.display_name}</span>
-                    <span class="pick-number">${participant.draft_position}</span>
-                </li>
-            `).join('');
-        }
-        
-        function updateDraftPicks(picks) {
-            const list = document.getElementById('recentPicksList');
-            
-            if (picks.length > 0) {
-                list.innerHTML = picks.map(pick => {
-                    const teamObj = {
-                        team_name: pick.team_name,
-                        abbreviation: pick.team_abbreviation,
-                        logo: pick.team_logo
-                    };
-                    
-                    return `
-                    <li class="pick-item">
-                        <span>${pick.participant_name}</span>
-                        <div class="pick-team-info">
-                            <img src="${getTeamLogoPath(teamObj)}" 
-                                 alt="${pick.team_name} logo" 
-                                 class="pick-team-logo"
-                                 onerror="this.style.opacity='0.3'">
-                            <div>
-                                <strong>${pick.team_name}</strong><br>
-                                <small>Pick #${pick.pick_number}</small>
-                            </div>
-                        </div>
-                    </li>
-                `;
-                }).join('');
-                
-                updateLastPickDisplay(picks[0]);
-            } else {
-                list.innerHTML = '<li style="text-align: center; color: var(--text-muted); padding: 30px; font-style: italic;">No picks made yet...</li>';
+
+        // ── Pick History ───────────────────────────────────────────
+        function renderPickHistory(picks) {
+            const list = document.getElementById('picksList');
+            if (!picks.length) { list.innerHTML = '<li class="empty-state">No picks yet</li>'; return; }
+
+            // Detect how many new picks appeared since last render
+            const highestPick = picks[0]?.pick_number || 0;
+            const newPickCount = highestPick - lastRenderedPickNum;
+
+            list.innerHTML = picks.map((p, i) => {
+                const teamObj = { team_name: p.team_name, abbreviation: p.abbreviation, logo: p.team_logo };
+                const isNew = (lastRenderedPickNum > 0) && (p.pick_number > lastRenderedPickNum);
+                return `<li class="pick-item ${isNew ? 'new-pick' : ''}">
+                    <span class="pi-num">#${p.pick_number}</span>
+                    <img src="${logoPath(teamObj)}" alt="${escHtml(p.team_name)}" onerror="this.style.opacity='0.3'">
+                    <div class="pi-details">
+                        <div class="pi-team">${escHtml(p.team_name)}</div>
+                        <div class="pi-by">${escHtml(p.participant_name)}${Number(p.auto_picked) ? ' <span class="pi-auto">AUTO</span>' : ''}</div>
+                    </div>
+                </li>`;
+            }).join('');
+
+            // Show toast for any auto-picks that happened between polls (back-to-back)
+            if (lastRenderedPickNum > 0 && newPickCount > 1) {
+                picks.slice(0, newPickCount).reverse().forEach(p => {
+                    if (Number(p.auto_picked)) {
+                        showToast(`${p.participant_name} auto-picked ${p.team_name} (Pick #${p.pick_number})`, 'warning');
+                    }
+                });
             }
-            
-            lastPicksData = picks;
+
+            lastRenderedPickNum = highestPick;
+
+            // Update last pick banner
+            const lp = picks[0];
+            if (lp) {
+                const banner = document.getElementById('lastPickBanner');
+                const teamObj = { team_name: lp.team_name, abbreviation: lp.abbreviation, logo: lp.team_logo };
+                const isAuto = Number(lp.auto_picked);
+                document.getElementById('lpLogo').src = logoPath(teamObj);
+                document.getElementById('lpText').innerHTML = `<strong>${escHtml(lp.team_name)}</strong> selected by ${escHtml(lp.participant_name)}${isAuto ? '<span class="lp-auto-badge">AUTO</span>' : ''}`;
+                document.getElementById('lpPickNum').textContent = `Pick #${lp.pick_number}`;
+
+                // Detect new auto-pick → pause to let everyone see it
+                const isNewPick = lp.pick_number !== lastBannerPickNum;
+                lastBannerPickNum = lp.pick_number;
+
+                banner.classList.remove('auto-highlight');
+                banner.classList.add('show');
+
+                if (isNewPick) {
+                    flashBanner();
+                    if (isAuto) {
+                        banner.classList.add('auto-highlight');
+                        triggerAutoPickPause();
+                    }
+                }
+            }
         }
-        
-        function updateLastPickDisplay(pick) {
-            const lastPickDisplay = document.getElementById('lastPickDisplay');
-            const lastPickContent = document.getElementById('lastPickContent');
-            
-            const teamObj = {
-                team_name: pick.team_name,
-                abbreviation: pick.team_abbreviation,
-                logo: pick.team_logo
-            };
-            
-            lastPickContent.innerHTML = `
-                <img src="${getTeamLogoPath(teamObj)}" 
-                     alt="${pick.team_name} logo" 
-                     class="last-pick-logo"
-                     onerror="this.style.opacity='0.3'">
-                <div class="last-pick-info">
-                    <h4>Pick #${pick.pick_number}</h4>
-                    <div class="team-name">${pick.team_name}</div>
-                    <div class="participant-name">Selected by ${pick.participant_name}</div>
-                </div>
-            `;
-            
-            lastPickDisplay.classList.add('show');
-        }
-        
-        function updateCommissionerControls(status) {
-            if (!userInfo.is_commissioner) return;
-            
-            const startBtn = document.getElementById('startDraftBtn');
-            const pauseBtn = document.getElementById('pauseDraftBtn');
-            const resumeBtn = document.getElementById('resumeDraftBtn');
-            const commPickBtn = document.getElementById('commissionerPickBtn');
-            
-            [startBtn, pauseBtn, resumeBtn, commPickBtn].forEach(btn => {
-                if (btn) btn.style.display = 'none';
-            });
-            
+
+        // ── Commissioner Controls ──────────────────────────────────
+        function showCommControls(status) {
+            const panel = document.getElementById('commPanel');
+            if (!panel) return;
+            panel.style.display = 'block';
+
+            const allBtns = ['btnStart', 'btnStartEarly', 'btnPause', 'btnResume'];
+            allBtns.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+
             switch (status) {
                 case 'not_started':
-                    if (startBtn) startBtn.style.display = 'inline-block';
+                    const startBtn = document.getElementById('btnStart');
+                    if (startBtn) {
+                        startBtn.style.display = 'inline-flex';
+                        startBtn.disabled = !draftDatePassed;
+                    }
+                    // Show "Start Early" only when draft time hasn't arrived yet
+                    if (!draftDatePassed) {
+                        show('btnStartEarly');
+                    }
                     break;
                 case 'active':
-                    if (pauseBtn) pauseBtn.style.display = 'inline-block';
-                    if (commPickBtn) commPickBtn.style.display = 'inline-block';
-                    break;
+                    show('btnPause'); break;
                 case 'paused':
-                    if (resumeBtn) resumeBtn.style.display = 'inline-block';
-                    if (commPickBtn) commPickBtn.style.display = 'inline-block';
-                    break;
+                    show('btnResume'); break;
             }
+            function show(id) { const el = document.getElementById(id); if (el) el.style.display = 'inline-flex'; }
         }
-        
-        // Select / clear team
-        function selectTeam(team) {
-            console.log('Selecting team:', team);
-            
-            document.querySelectorAll('.team-card.selected').forEach(card => {
-                card.classList.remove('selected');
-            });
-            
-            const teamCard = document.querySelector(`[data-team-id="${team.id}"]`);
-            if (teamCard) teamCard.classList.add('selected');
-            
-            selectedTeamId = team.id;
-            selectedTeamData = team;
-            
-            if (currentDraftStatus && currentDraftStatus.available_teams) {
-                updateTeamGrid(currentDraftStatus.available_teams, currentDraftStatus.current_participant);
-            }
-        }
-        
-        function clearSelection() {
-            document.querySelectorAll('.team-card.selected').forEach(card => card.classList.remove('selected'));
+
+        // ── Actions ────────────────────────────────────────────────
+        window.selectTeam = function(teamId, el) {
+            if (selectedTeamId === teamId) { clearSelection(); return; }
+            document.querySelectorAll('.team-card.selected').forEach(c => c.classList.remove('selected'));
+            if (el) el.classList.add('selected');
+            selectedTeamId = teamId;
+        };
+
+        window.clearSelection = function() {
             selectedTeamId = null;
-            selectedTeamData = null;
-            
-            if (currentDraftStatus && currentDraftStatus.available_teams) {
-                updateTeamGrid(currentDraftStatus.available_teams, currentDraftStatus.current_participant);
-            }
-        }
-        
-        // Draft actions
-        function startDraft() {
-            if (!confirm('Are you sure you want to start the draft? This cannot be undone.')) return;
-            
-            fetch('nba-wins-platform/api/draft_api.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'action=start_draft'
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showNotification('Draft started!', 'success');
-                    setTimeout(() => pollDraftStatus(), 1000);
-                } else {
-                    showNotification('Error: ' + data.error, 'error');
-                }
-            })
-            .catch(error => {
-                showNotification('Error starting draft', 'error');
-                console.error('Error:', error);
-            });
-        }
-        
-        function pauseDraft() {
-            fetch('nba-wins-platform/api/draft_api.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'action=pause_draft'
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showNotification('Draft paused', 'info');
-                    pollDraftStatus();
-                } else {
-                    showNotification('Error: ' + data.error, 'error');
-                }
-            });
-        }
-        
-        function resumeDraft() {
-            fetch('nba-wins-platform/api/draft_api.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'action=resume_draft'
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showNotification('Draft resumed', 'success');
-                    pollDraftStatus();
-                } else {
-                    showNotification('Error: ' + data.error, 'error');
-                }
-            });
-        }
-        
-        function confirmPick() {
-            if (!selectedTeamId) {
-                showNotification('Please select a team first', 'warning');
-                return;
-            }
-            
-            fetch('nba-wins-platform/api/draft_api.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `action=make_pick&team_id=${selectedTeamId}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showNotification('Pick confirmed!', 'success');
+            document.querySelectorAll('.team-card.selected').forEach(c => c.classList.remove('selected'));
+        };
+
+        window.confirmPick = function() {
+            if (!selectedTeamId) { showToast('Select a team first', 'warning'); return; }
+
+            // Grab team info BEFORE clearing selection
+            const pickedTeam = (currentStatus?.available_teams || []).find(t => t.id === selectedTeamId);
+            const pickNum = (currentStatus?.pick_count || 0) + 1;
+            const myName = userInfo.display_name || currentStatus?.current_participant?.display_name || 'You';
+
+            // Disable confirm buttons to prevent double-click
+            document.querySelectorAll('.tc-actions .btn-green').forEach(b => b.disabled = true);
+
+            apiPost('make_pick', `team_id=${selectedTeamId}`, function(d) {
+                if (d.success) {
+                    showToast('Pick confirmed!', 'success');
                     clearSelection();
-                    
-                    lastTeamsData = null;
-                    lastOrderData = null;
-                    lastPicksData = null;
-                    
-                    if (data.pick_count >= 30) {
-                        console.log('30 picks reached, redirecting...');
-                        setTimeout(() => {
-                            window.location.href = 'draft_summary.php';
-                        }, 1500);
+
+                    // Immediately show YOUR pick in the banner so it doesn't get swallowed
+                    if (pickedTeam) {
+                        const banner = document.getElementById('lastPickBanner');
+                        document.getElementById('lpLogo').src = logoPath(pickedTeam);
+                        document.getElementById('lpText').innerHTML = `<strong>${escHtml(pickedTeam.team_name)}</strong> selected by ${escHtml(myName)}`;
+                        document.getElementById('lpPickNum').textContent = `Pick #${pickNum}`;
+                        banner.classList.remove('auto-highlight');
+                        banner.classList.add('show');
+                        flashBanner();
+                        lastBannerPickNum = pickNum;
+                    }
+
+                    if (d.pick_count >= 30) {
+                        setTimeout(() => { window.location.href = 'draft_summary.php'; }, 1500);
                     } else {
-                        setTimeout(() => pollDraftStatus(), 1000);
+                        // Delay poll so the user sees their own pick for 5 seconds
+                        setTimeout(pollDraftStatus, 5000);
                     }
                 } else {
-                    showNotification('Error: ' + data.error, 'error');
+                    showToast('Error: ' + d.error, 'error');
+                    document.querySelectorAll('.tc-actions .btn-green').forEach(b => b.disabled = false);
                 }
-            })
-            .catch(error => {
-                showNotification('Error making pick', 'error');
-                console.error('Error:', error);
             });
-        }
-        
-        function commissionerPick() {
-            if (!currentDraftStatus || !currentDraftStatus.current_participant) return;
-            
-            if (!selectedTeamId) {
-                showNotification('Please select a team for the current participant', 'warning');
-                return;
+        };
+
+        window.startDraft = function() {
+            if (!confirm('Start the draft? This cannot be undone.')) return;
+            apiPost('start_draft', '', function(d) {
+                if (d.success) { showToast('Draft started!', 'success'); setTimeout(pollDraftStatus, 1000); }
+                else showToast('Error: ' + d.error, 'error');
+            });
+        };
+
+        window.startDraftEarly = function() {
+            // Calculate how far away the draft_date is
+            let timeMsg = '';
+            if (currentStatus && currentStatus.draft_date) {
+                const diff = new Date(currentStatus.draft_date).getTime() - Date.now();
+                if (diff > 0) {
+                    const hours = Math.floor(diff / 3600000);
+                    const mins = Math.floor((diff % 3600000) / 60000);
+                    timeMsg = hours > 0 ? `${hours}h ${mins}m` : `${mins} minutes`;
+                }
             }
-            
-            const currentParticipant = currentDraftStatus.current_participant;
-            const confirmMsg = `Make pick for ${currentParticipant.display_name}?`;
-            
-            if (!confirm(confirmMsg)) return;
-            
-            fetch('nba-wins-platform/api/draft_api.php', {
+
+            const warning = `The draft isn't scheduled for another ${timeMsg || 'some time'}.\n\nParticipants may not be online yet. Starting early cannot be undone.\n\nAre you sure you want to start now?`;
+            if (!confirm(warning)) return;
+
+            apiPost('start_draft', '', function(d) {
+                if (d.success) { showToast('Draft started early!', 'success'); setTimeout(pollDraftStatus, 1000); }
+                else showToast('Error: ' + d.error, 'error');
+            });
+        };
+
+        window.pauseDraft = function() {
+            apiPost('pause_draft', '', function(d) {
+                if (d.success) { showToast('Draft paused', 'info'); pollDraftStatus(); }
+                else showToast('Error: ' + d.error, 'error');
+            });
+        };
+
+        window.resumeDraft = function() {
+            apiPost('resume_draft', '', function(d) {
+                if (d.success) { showToast('Draft resumed', 'success'); pollDraftStatus(); }
+                else showToast('Error: ' + d.error, 'error');
+            });
+        };
+
+        window.toggleAutoDraft = function(enabled) {
+            apiPost('toggle_auto_draft', `enabled=${enabled ? 'true' : 'false'}`, function(d) {
+                if (d.success) {
+                    showToast(d.message, 'info');
+                } else {
+                    showToast('Error: ' + d.error, 'error');
+                    // Revert checkbox
+                    document.getElementById('autoDraftCheckbox').checked = !enabled;
+                }
+            });
+        };
+
+        // ── Helpers ────────────────────────────────────────────────
+        function apiPost(action, body, cb) {
+            fetch(API, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `action=make_pick&team_id=${selectedTeamId}&participant_id=${currentParticipant.participant_id}&commissioner_pick=1`
+                body: `action=${action}${body ? '&' + body : ''}`
             })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showNotification('Commissioner pick made!', 'success');
-                    clearSelection();
-                    
-                    lastTeamsData = null;
-                    lastOrderData = null;
-                    lastPicksData = null;
-                    
-                    if (data.pick_count >= 30) {
-                        console.log('30 picks reached, redirecting...');
-                        setTimeout(() => {
-                            window.location.href = 'draft_summary.php';
-                        }, 1500);
-                    } else {
-                        setTimeout(() => pollDraftStatus(), 1000);
-                    }
-                } else {
-                    showNotification('Error: ' + data.error, 'error');
-                }
-            });
+            .then(r => r.json())
+            .then(cb)
+            .catch(e => { console.error('API error:', e); showToast('Connection error', 'error'); });
         }
-        
-        // Show notification
-        function showNotification(message, type = 'info') {
-            const notification = document.createElement('div');
-            notification.className = `notification ${type}`;
-            notification.textContent = message;
-            
-            document.body.appendChild(notification);
-            
-            setTimeout(() => notification.classList.add('show'), 100);
-            
+
+        function logoPath(team) {
+            if (!team) return '';
+            const name = team.team_name || '';
+            if (team.logo && team.logo !== '') {
+                return fixLogo(team.logo);
+            }
+            if (name) {
+                return fixLogo(name.toLowerCase().replace(/\s+/g, '_') + '.png');
+            }
+            return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSIxOCIgc3Ryb2tlPSIjNTU1IiBzdHJva2Utd2lkdGg9IjIiLz48dGV4dCB4PSIyMCIgeT0iMjUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMjAiIGZpbGw9IiM1NTUiPj88L3RleHQ+PC9zdmc+';
+        }
+
+        function fixLogo(path) {
+            if (!path) return '';
+            if (path.indexOf('/media/') === 0) return 'nba-wins-platform/public/assets/team_logos/' + path.split('/').pop();
+            if (path.indexOf('nba-wins-platform/public/assets/') === 0) return path;
+            return 'nba-wins-platform/public/assets/team_logos/' + path.split('/').pop();
+        }
+
+        function escHtml(str) {
+            if (!str) return '';
+            const d = document.createElement('div');
+            d.textContent = str;
+            return d.innerHTML;
+        }
+
+        function showToast(message, type) {
+            const stack = document.getElementById('toastStack');
+            const t = document.createElement('div');
+            t.className = 'toast ' + (type || 'info');
+            t.textContent = message;
+            stack.appendChild(t);
+            requestAnimationFrame(() => t.classList.add('show'));
             setTimeout(() => {
-                notification.classList.remove('show');
-                setTimeout(() => {
-                    if (notification.parentNode) {
-                        document.body.removeChild(notification);
-                    }
-                }, 300);
+                t.classList.remove('show');
+                setTimeout(() => { if (t.parentNode) t.parentNode.removeChild(t); }, 300);
             }, 4000);
         }
-        
-        // Clean up on page unload
-        window.addEventListener('beforeunload', function() {
-            stopPolling();
-        });
-        
-        console.log('Draft interface initialized (dark theme)');
+
+    })();
     </script>
 
-    <!-- Floating Pill Navigation -->
-    <nav class="floating-pill" id="floatingPill">
-        <div class="pill-expanded-row" id="pillExpandedRow">
-            <a href="/nba_standings.php" class="pill-expanded-item">
-                <i class="fas fa-basketball-ball"></i>
-                <span>Standings</span>
-            </a>
-            <a href="/draft_summary.php" class="pill-expanded-item">
-                <i class="fas fa-file-alt"></i>
-                <span>Draft</span>
-            </a>
-            <a href="https://buymeacoffee.com/taylorstvns" target="_blank" class="pill-expanded-item">
-                <i class="fas fa-mug-hot"></i>
-                <span>Tip Jar</span>
-            </a>
-            <?php if (empty($is_guest)): ?>
-            <a href="/nba-wins-platform/auth/logout.php" class="pill-expanded-item logout-item">
-                <i class="fas fa-sign-out-alt"></i>
-                <span>Logout</span>
-            </a>
-            <?php endif; ?>
-        </div>
-        <div class="pill-main-row">
-            <a href="/index.php" class="pill-item" data-label="Home">
-                <i class="fas fa-home"></i>
-            </a>
-            <a href="/nba-wins-platform/profiles/participant_profile.php?league_id=<?php echo $currentLeagueId ?? ($_SESSION['current_league_id'] ?? 0); ?>&user_id=<?php echo $profileUserId ?? ($_SESSION['user_id'] ?? 0); ?>" class="pill-item" data-label="Profile">
-                <i class="fas fa-user"></i>
-            </a>
-            <a href="/analytics.php" class="pill-item" data-label="Analytics">
-                <i class="fas fa-chart-line"></i>
-            </a>
-            <a href="/claudes-column.php" class="pill-item" data-label="Column" style="position:relative">
-                <i class="fa-solid fa-newspaper"></i>
-                <?php if ($hasNewArticles): ?><span style="position:absolute;top:2px;right:2px;width:7px;height:7px;background:#f85149;border-radius:50%;box-shadow:0 0 4px rgba(248,81,73,0.5)"></span><?php endif; ?>
-            </a>
-            <div class="pill-divider"></div>
-            <button class="pill-item pill-menu-btn" data-label="Menu" onclick="togglePillMenu()">
-                <i class="fas fa-bars"></i>
-                <i class="fas fa-xmark"></i>
-            </button>
-        </div>
-    </nav>
-    <script>
-    function togglePillMenu() {
-        document.getElementById('floatingPill').classList.toggle('expanded');
-    }
-    document.addEventListener('click', function(e) {
-        var pill = document.getElementById('floatingPill');
-        if (pill.classList.contains('expanded') && !pill.contains(e.target)) {
-            pill.classList.remove('expanded');
-        }
-    });
-    </script>
+    <?php $currentPage = 'draft'; include '/data/www/default/nba-wins-platform/components/pill_nav.php'; ?>
 </body>
 </html>

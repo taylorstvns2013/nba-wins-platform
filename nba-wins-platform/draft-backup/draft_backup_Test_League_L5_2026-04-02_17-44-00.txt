@@ -1,0 +1,87 @@
+NBA WINS POOL - DRAFT BACKUP
+==============================
+
+League: Test League
+League ID: 5
+Draft Completed: 2026-04-02 17:44:00
+Backup Created: 2026-04-02 17:44:01
+Total Picks: 30
+
+DRAFT RESULTS (Pick Order)
+==========================
+
+Pick #01: test51               selected Los Angeles Lakers        (LAL) [50-26] at 17:32:38
+Pick #02: Test1                selected Boston Celtics            (BOS) [51-25] at 17:32:47
+Pick #03: test4                selected Indiana Pacers            (IND) [18-58] at 17:34:48
+Pick #04: test3                selected Detroit Pistons           (DET) [55-21] at 17:35:01
+Pick #05: test2                selected Oklahoma City Thunder     (OKC) [60-16] at 17:35:01
+Pick #06: test2                selected Cleveland Cavaliers       (CLE) [47-29] at 17:35:01
+Pick #07: test3                selected Brooklyn Nets             (BKN) [18-58] at 17:35:28
+Pick #08: test4                selected Milwaukee Bucks           (MIL) [30-46] at 17:37:28
+Pick #09: Test1                selected New York Knicks           (NYK) [50-28] at 17:37:45
+Pick #10: test51               selected Houston Rockets           (HOU) [47-29] at 17:38:00
+Pick #11: test51               selected Phoenix Suns              (PHX) [42-34] at 17:38:07
+Pick #12: Test1                selected Dallas Mavericks          (DAL) [24-52] at 17:38:15
+Pick #13: test4                selected Charlotte Hornets         (CHA) [40-36] at 17:38:15
+Pick #14: test3                selected Chicago Bulls             (CHI) [29-47] at 17:38:36
+Pick #15: test2                selected Denver Nuggets            (DEN) [49-28] at 17:38:36
+Pick #16: test2                selected Orlando Magic             (ORL) [40-36] at 17:38:36
+Pick #17: test3                selected Golden State Warriors     (GSW) [36-40] at 17:38:56
+Pick #18: test4                selected Atlanta Hawks             (ATL) [44-33] at 17:38:56
+Pick #19: Test1                selected Utah Jazz                 (UTA) [21-56] at 17:40:56
+Pick #20: test51               selected Memphis Grizzlies         (MEM) [25-51] at 17:41:10
+Pick #21: test51               selected San Antonio Spurs         (SAS) [58-18] at 17:41:19
+Pick #22: Test1                selected Minnesota Timberwolves    (MIN) [46-29] at 17:41:28
+Pick #23: test4                selected Miami Heat                (MIA) [40-37] at 17:41:28
+Pick #24: test3                selected LA Clippers               (LAC) [39-37] at 17:41:43
+Pick #25: test2                selected Philadelphia 76ers        (PHI) [42-34] at 17:41:43
+Pick #26: test2                selected Toronto Raptors           (TOR) [42-34] at 17:41:43
+Pick #27: test3                selected Washington Wizards        (WAS) [17-59] at 17:43:43
+Pick #28: test4                selected Sacramento Kings          (SAC) [20-57] at 17:43:43
+Pick #29: Test1                selected Portland Trail Blazers    (POR) [39-38] at 17:43:53
+Pick #30: test51               selected New Orleans Pelicans      (NOP) [25-51] at 17:44:00
+
+
+TEAMS BY PARTICIPANT
+====================
+
+test51 (247W-209L):
+  - Los Angeles Lakers (LAL) [50-26]
+  - Houston Rockets (HOU) [47-29]
+  - Phoenix Suns (PHX) [42-34]
+  - Memphis Grizzlies (MEM) [25-51]
+  - San Antonio Spurs (SAS) [58-18]
+  - New Orleans Pelicans (NOP) [25-51]
+
+Test1 (231W-228L):
+  - Boston Celtics (BOS) [51-25]
+  - New York Knicks (NYK) [50-28]
+  - Dallas Mavericks (DAL) [24-52]
+  - Utah Jazz (UTA) [21-56]
+  - Minnesota Timberwolves (MIN) [46-29]
+  - Portland Trail Blazers (POR) [39-38]
+
+test4 (192W-267L):
+  - Indiana Pacers (IND) [18-58]
+  - Milwaukee Bucks (MIL) [30-46]
+  - Charlotte Hornets (CHA) [40-36]
+  - Atlanta Hawks (ATL) [44-33]
+  - Miami Heat (MIA) [40-37]
+  - Sacramento Kings (SAC) [20-57]
+
+test3 (194W-262L):
+  - Detroit Pistons (DET) [55-21]
+  - Brooklyn Nets (BKN) [18-58]
+  - Chicago Bulls (CHI) [29-47]
+  - Golden State Warriors (GSW) [36-40]
+  - LA Clippers (LAC) [39-37]
+  - Washington Wizards (WAS) [17-59]
+
+test2 (280W-177L):
+  - Oklahoma City Thunder (OKC) [60-16]
+  - Cleveland Cavaliers (CLE) [47-29]
+  - Denver Nuggets (DEN) [49-28]
+  - Orlando Magic (ORL) [40-36]
+  - Philadelphia 76ers (PHI) [42-34]
+  - Toronto Raptors (TOR) [42-34]
+

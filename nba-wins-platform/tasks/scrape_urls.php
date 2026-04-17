@@ -58,15 +58,12 @@ function normalizeTeamName($teamName) {
 }
 
 // Function to convert UTC time string to local time
+// NOTE: thetvapp.to timestamps flip between real UTC and fake UTC periodically.
+// Current behavior (April 2026): timestamps are TRUE UTC, need conversion to ET.
 function convertUtcToLocalTime($utcTimeString) {
     try {
-        // Parse the UTC time string (format: 2025-04-29T22:05:00Z)
         $utcTime = new DateTime($utcTimeString, new DateTimeZone('UTC'));
-        
-        // Convert to EST/EDT (America/New_York timezone)
         $utcTime->setTimezone(new DateTimeZone('America/New_York'));
-        
-        // Return as TIME format (HH:MM:SS)
         return $utcTime->format('H:i:s');
     } catch (Exception $e) {
         echo "Error parsing time: " . $e->getMessage() . "\n";
@@ -130,12 +127,29 @@ $crawler->filter('li, div, a')->each(function ($node) use (&$foundGames) {
     // Get the node text and check for team pattern
     $nodeText = $node->text();
     
-    // Check if this element contains a team pattern: "Team1 @ Team2"
-    // Use regex that can handle cases with or without "NBA Streams" prefix
-    if (preg_match('/((?:NBA\s+Streams\s+)?[A-Za-z0-9\s]+) @ ([A-Za-z0-9\s]+)/', $nodeText, $teamMatches)) {
-        $awayTeam = normalizeTeamName(preg_replace('/\s+\d{4}$/', '', trim($teamMatches[1])));
-        $homeTeam = normalizeTeamName(preg_replace('/\s+\d{4}$/', '', trim($teamMatches[2])));
-        
+    // Check if this element contains a team pattern
+    // NEW format: "Home Team vs Away Team @ Mar 31 7" (site changed ~March 2026)
+    // OLD format: "Away Team @ Home Team"
+    $awayTeam = null;
+    $homeTeam = null;
+    
+    if (preg_match('/(.+?)\s+vs\s+(.+?)\s+@\s/', $nodeText, $vsMatches)) {
+        // New format: "Home vs Away @ Date" — first team is home
+        $homeTeam = trim($vsMatches[1]);
+        $awayTeam = trim($vsMatches[2]);
+        // Strip known prefixes (Free Trial promo text, NBA Streams, etc.)
+        $homeTeam = preg_replace('/^.*?(?:Free Trial|NBA Streams)\s+/i', '', $homeTeam);
+        $homeTeam = normalizeTeamName(preg_replace('/\s+\d{4}$/', '', trim($homeTeam)));
+        $awayTeam = normalizeTeamName(preg_replace('/\s+\d{4}$/', '', trim($awayTeam)));
+    } elseif (preg_match('/((?:NBA\s+Streams\s+)?[A-Za-z0-9\s]+?) @ ([A-Za-z0-9\s]+)/', $nodeText, $teamMatches)) {
+        // Old format: "Away @ Home" — only if no "vs" before the @
+        if (strpos($teamMatches[1], ' vs ') === false) {
+            $awayTeam = normalizeTeamName(preg_replace('/\s+\d{4}$/', '', trim($teamMatches[1])));
+            $homeTeam = normalizeTeamName(preg_replace('/\s+\d{4}$/', '', trim($teamMatches[2])));
+        }
+    }
+    
+    if ($awayTeam && $homeTeam) {
         echo "Found team pattern: $awayTeam @ $homeTeam\n";
         
         // Get full HTML to extract all relevant data
